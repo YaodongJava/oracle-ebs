@@ -18,10 +18,18 @@ Customer → OM → Shipping → AR → Receipt ─┘
 
 ## 阅读路径
 
-- 实施人员：先读 `01-common`，再读业务模块的 `process.md` 和专题文档。
-- 财务顾问：沿子账业务、SLA、GL、对账和结账链路阅读。
-- 技术顾问：结合 `09-technical/data-model.md`、接口文档和各章的核心表/SQL。
-- 运维人员：优先使用每章“排查顺序”，再执行 SQL；不直接 DML EBS 基表。
+| 角色/任务 | 建议起点 | 推荐路径 |
+| --- | --- | --- |
+| 实施顾问 | [财务公共基础](01-common/README.md) | 企业结构 → COA/期间/安全 → 模块流程 → 配置/接口 → UAT/关账演练 |
+| AP/P2P 顾问 | [AP](02-ap/README.md) | Supplier → PO/Receipt → Invoice → Payment/CE → SLA/GL → 对账 |
+| AR/O2C 顾问 | [AR](03-ar/README.md) | TCA → Transaction → Receipt → Collections → SLA/GL → Aging/对账 |
+| R2R 顾问 | [GL](04-gl/README.md) | Ledger → SLA → Journal → Posting → Revaluation/Consolidation → Close |
+| 资产/成本顾问 | [FA](05-fa/README.md)、[成本](06-cost/README.md) | 来源交易 → 成本/资本化 → 子账会计 → 报表/关账 |
+| 资金/税务顾问 | [CE/IBY/EBTax](07-ce-tax/README.md) | 银行主数据 → 支付/收款 → 对账单 → 税务确定/报告 → 对账 |
+| 集成/技术顾问 | [技术与运维](09-technical/README.md) | 数据模型 → 接口选型 → 标准入口/API → 并发/监控 → ADOP/发布 |
+| 生产运维 | [技术与运维](09-technical/README.md) | 先读排错与运行边界，再使用受控 SQL；不得直接 DML EBS 基表 |
+
+跨模块业务请使用 [端到端流程](08-e2e/README.md)。它维护状态、主键、会计和关账依赖；单一模块的设置、表结构和 API 仍以对应模块文档为准。
 
 ## 模块数据字典
 
