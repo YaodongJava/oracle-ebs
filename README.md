@@ -2,7 +2,7 @@
 knowledge about  oracle ebs
 # Oracle EBS 财务知识库
 
-本仓库用于沉淀 Oracle E-Business Suite（EBS）R12 财务与相关供应链模块的业务流程、配置说明、常用 SQL、接口及运维排错经验。当前已包含一个[轻量 PL/SQL Web Service 网关](#通用-web-service轻量-plsql-网关)示例；以下目录可作为后续文档的统一入口。
+本仓库用于沉淀 Oracle E-Business Suite（EBS）R12 财务与相关供应链模块的业务流程、配置说明、常用 SQL、接口及运维排错经验。
 
 ## 知识目录
 
