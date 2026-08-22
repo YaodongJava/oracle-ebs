@@ -37,6 +37,22 @@ Customer → OM → Shipping → AR → Receipt ─┘
 | E2E | [08-e2e/tables.md](08-e2e/tables.md) | P2P、O2C、Projects-Assets 的跨模块 ID 链 |
 | FND/Workflow | [09-technical/tables.md](09-technical/tables.md) | User/Responsibility/Profile、Concurrent、Workflow |
 
+## 模块接口实现手册
+
+| 模块 | 实现手册 | 具体代码与业界案例 |
+| --- | --- | --- |
+| 财务公共 | [01-common/interfaces.md](01-common/interfaces.md) | 统一暂存表、FND/MOAC、提交/等待并发请求、Business Event |
+| AP | [02-ap/interfaces.md](02-ap/interfaces.md) | 发票头行导入、PO/Receipt 匹配、Invoice Import、错误与成功对账 |
+| AR | [03-ar/interfaces.md](03-ar/interfaces.md) | AutoInvoice、收入分配、AutoLockbox、ISG REST 调用 |
+| GL | [04-gl/interfaces.md](04-gl/interfaces.md) | `GL_INTERFACE`、批次平衡、Journal Import、Journal 追溯 |
+| FA | [05-fa/interfaces.md](05-fa/interfaces.md) | `FA_MASS_ADDITIONS`、遗留迁移、Prepare/Post 与资产对账 |
+| INV/CST/WIP | [06-cost/interfaces.md](06-cost/interfaces.md) | MTI、Lot Interface、Transaction Manager、成本状态追踪 |
+| CE/IBY/EBTax | [07-ce-tax/interfaces.md](07-ce-tax/interfaces.md) | 银行对账单接口、付款/ACK、Reconciliation Open Interface、税分类 |
+| E2E | [08-e2e/interfaces.md](08-e2e/interfaces.md) | P2P/O2C/项目资产化、相关号、Transactional Outbox、补偿 |
+| 技术集成 | [09-technical/interfaces.md](09-technical/interfaces.md) | Concurrent Worker、API 模板、ISG REST、退避重试、可观测性 |
+
+所有写入示例仅使用 Oracle 标准 Open Interface/公开 API 或客户自定义对象，不直接修改 EBS 业务基表。上线前必须按目标 R12.2.x 实例的 Integration Repository、并发程序参数、eTRM 和 `ALL_TAB_COLUMNS` 复核签名与字段。
+
 ## SQL 约定
 
 - SQL 默认为 APPS 视角的只读诊断样例，`:p_*` 为绑定变量。

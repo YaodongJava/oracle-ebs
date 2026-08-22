@@ -1,5 +1,7 @@
 # 付款/收款清算、现金预测与银行接口
 
+> 银行对账单两张接口表、IBY 付款/回执和 EBTax 传参代码见 [CE/IBY/EBTax 接口实现案例](interfaces.md)。
+
 ## 现金预测
 
 Cash Forecast Template 定义来源、时间桶、币种和包含条件。来源可包括 AP Invoices/Payments、AR Transactions/Receipts、PO/Requisitions、Payroll、Cashflows 和手工预测。Forecast 是预期流动性，不是 GL 实际现金余额。

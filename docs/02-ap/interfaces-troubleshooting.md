@@ -1,5 +1,7 @@
 # AP Open Interface、发票导入与排错
 
+> 需要可落地的发票头行、PO/Receipt 匹配、并发提交与对账代码，请先读 [AP 接口实现案例](interfaces.md)。
+
 ## 架构
 
 ```text

@@ -1,5 +1,7 @@
 # 开放接口、API、报表与数据迁移
 
+> Concurrent Worker、标准 API 模板、ISG REST、重试与可观测性代码见 [技术接口实现手册](interfaces.md)。
+
 ## 选型原则
 
 | 方式 | 适用场景 | 控制要点 |

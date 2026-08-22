@@ -1,5 +1,7 @@
 # AutoInvoice、Lockbox 接口与排错
 
+> 需要 AutoInvoice、收入分配、AutoLockbox 和 ISG REST 的完整代码，请先读 [AR 接口实现案例](interfaces.md)。
+
 ## AutoInvoice
 
 ```text

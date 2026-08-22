@@ -1,5 +1,7 @@
 # FA 月结、报表、Mass Additions 与排错
 
+> `FA_MASS_ADDITIONS`、遗留资产迁移、Prepare/Post 和资产对账代码见 [FA 接口实现案例](interfaces.md)。
+
 ## Mass Additions
 
 ```text

@@ -1,5 +1,7 @@
 # FSG、Smart View、Web ADI 与日记账导入
 
+> `GL_INTERFACE`、批次平衡、Journal Import 提交和结果对账代码见 [GL 接口实现案例](interfaces.md)。
+
 ## 报表与接口
 
 - **FSG**：Row Set 定义账户/计算行，Column Set 定义期间/金额/计算列，Content Set 按段拆分，Row Order 定义排序，Display Set 控制显示。

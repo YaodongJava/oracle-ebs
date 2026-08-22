@@ -1,5 +1,7 @@
 # 成本接口、Transaction Processor 与排错
 
+> `MTL_TRANSACTIONS_INTERFACE`、Lot Interface、幂等和 Transaction Manager 处理代码见 [库存/WIP/成本接口实现案例](interfaces.md)。
+
 ## 处理器链路
 
 ```text
