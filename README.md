@@ -2,7 +2,7 @@
 
 本仓库面向 Oracle EBS R12.2.x 财务功能顾问、技术顾问、集成顾问、实施经理、测试人员和生产运维人员，规划覆盖核心财务、扩展财务、供应链财务边界、端到端流程、技术开发及实施运维全生命周期。
 
-> 本次仅优化知识库目录结构。现有文档不移动、不重命名；尚未建设的目录以代码路径展示，不创建空文件或失效链接。
+> 目标知识域已建立首批实际文档入口；现有文档仍不移动、不重命名，后续按专题逐步迁移、深化并建立权威正文链接。
 
 ## 快速入口
 
@@ -44,20 +44,20 @@
 
 | 编号 | 目标目录 | 知识域 | 主要范围 | 当前状态 |
 | --- | --- | --- | --- | --- |
-| 00 | `docs/00-guide/` | 导航与知识库治理 | 阅读路径、版本、术语、规范、官方资料 | ⬜ |
-| 01 | `docs/01-foundation/` | 财务公共基础 | 企业结构、Ledger、MOAC、COA、TCA、银行模型、审批 | 🔀 |
-| 02 | `docs/02-record-to-report/` | Record to Report | GL、SLA、FAH、AGIS、预算、合并 | 🔀 |
-| 03 | `docs/03-procure-to-pay/` | Procure to Pay | 供应商、采购收货、AP、IBY、iExpenses | 🔀 |
-| 04 | `docs/04-credit-to-cash/` | Credit to Cash | TCA、AR、信用、催收、iReceivables、Loans | 🔀 |
-| 05 | `docs/05-assets-projects/` | 资产、项目与资本化 | FA、iAssets、Projects、Grants、Property、Lease | 🔀 |
-| 06 | `docs/06-cash-tax/` | 现金、资金与税务 | CE、Treasury、EBTax、银行接口、税务报告 | 🔀 |
-| 07 | `docs/07-cost-accounting/` | 供应链财务与成本 | PO/RCV、INV、WIP、CST、OPM、LCM、COGS | 🔀 |
-| 08 | `docs/08-reporting-governance/` | 报表、关账与治理 | 财务报告、ECC、对账、内控、审计、本地化 | ⬜ |
-| 09 | `docs/09-end-to-end/` | 端到端流程 | R2R、P2P、O2C、A2R、项目、税务、公司间 | 🔀 |
-| 10 | `docs/10-technical/` | 技术架构与开发 | 数据模型、接口、Concurrent、Workflow、OAF、Forms、EBR | 🔀 |
-| 11 | `docs/11-implementation-operations/` | 实施与运维生命周期 | 蓝图、迁移、测试、切换、运维、性能、升级、灾备 | 🔀 |
-| 90 | `docs/90-reference/` | 统一索引 | 表、SQL、API、并发程序、Profile、Lookup、错误码 | ⬜ |
-| 99 | `docs/99-archive/` | 历史归档 | 已废弃或仅用于历史追溯的内容 | ⬜ |
+| 00 | `docs/00-guide/` | 导航与知识库治理 | 阅读路径、版本、术语、规范、官方资料 | 🚧 |
+| 01 | `docs/01-foundation/` | 财务公共基础 | 企业结构、Ledger、MOAC、COA、TCA、银行模型、审批 | 🚧 |
+| 02 | `docs/02-record-to-report/` | Record to Report | GL、SLA、FAH、AGIS、预算、合并 | 🚧 |
+| 03 | `docs/03-procure-to-pay/` | Procure to Pay | 供应商、采购收货、AP、IBY、iExpenses | 🚧 |
+| 04 | `docs/04-credit-to-cash/` | Credit to Cash | TCA、AR、信用、催收、iReceivables、Loans | 🚧 |
+| 05 | `docs/05-assets-projects/` | 资产、项目与资本化 | FA、iAssets、Projects、Grants、Property、Lease | 🚧 |
+| 06 | `docs/06-cash-tax/` | 现金、资金与税务 | CE、Treasury、EBTax、银行接口、税务报告 | 🚧 |
+| 07 | `docs/07-cost-accounting/` | 供应链财务与成本 | PO/RCV、INV、WIP、CST、OPM、LCM、COGS | 🚧 |
+| 08 | `docs/08-reporting-governance/` | 报表、关账与治理 | 财务报告、ECC、对账、内控、审计、本地化 | 🚧 |
+| 09 | `docs/09-end-to-end/` | 端到端流程 | R2R、P2P、O2C、A2R、项目、税务、公司间 | 🚧 |
+| 10 | `docs/10-technical/` | 技术架构与开发 | 数据模型、接口、Concurrent、Workflow、OAF、Forms、EBR | 🚧 |
+| 11 | `docs/11-implementation-operations/` | 实施与运维生命周期 | 蓝图、迁移、测试、切换、运维、性能、升级、灾备 | 🚧 |
+| 90 | `docs/90-reference/` | 统一索引 | 表、SQL、API、并发程序、Profile、Lookup、错误码 | 🚧 |
+| 99 | `docs/99-archive/` | 历史归档 | 已废弃或仅用于历史追溯的内容 | 🚧 |
 
 ## 完整目标目录蓝图
 
