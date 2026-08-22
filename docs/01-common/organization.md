@@ -734,6 +734,7 @@ MOAC 只是数据访问的一层。继续检查：
 
 ## 11. 官方参考资料
 
+- [财务公共基础常用表结构与状态字典](tables.md)
 - [Oracle E-Business Suite Multiple Organizations Implementation Guide, Release 12.2](https://docs.oracle.com/cd/E26401_01/doc.122/e48833/T443823T443827.htm)
 - [Oracle E-Business Suite Multiple Organizations 架构与术语](https://docs.oracle.com/cd/E26401_01/doc.122/e48833/T443823T443826.htm)
 - [Oracle E-Business Suite Concepts: Multiple Organization Architecture](https://docs.oracle.com/cd/E26401_01/doc.122/e22949/T120505T120523.htm)

@@ -6,8 +6,11 @@ knowledge about  oracle ebs
 
 ## 知识目录
 
+> [查看 R12.2.x 跨模块知识图谱、阅读路径与 SQL 约定](docs/README.md)
+
 ### 01. 财务公共基础（Financials Common）
 
+- [常用表结构与状态字典](docs/01-common/tables.md)
 - [企业结构与多组织（Ledger / Legal Entity / Operating Unit）](docs/01-common/organization.md)
 - [会计科目与弹性域（Chart of Accounts / Key Flexfield）](docs/01-common/coa.md)
 - [日历、币种、汇率与期间控制](docs/01-common/calendar-currency-period.md)
@@ -17,6 +20,7 @@ knowledge about  oracle ebs
 
 ### 02. 应付账款 AP（Payables）
 
+- [AP 常用表结构与字段含义](docs/02-ap/tables.md)
 - [业务流程：供应商、采购订单、收货、发票、付款](docs/02-ap/process.md)
 - [供应商与供应商地点](docs/02-ap/suppliers.md)
 - [发票录入、验证、暂估与税务](docs/02-ap/invoices.md)
@@ -27,6 +31,7 @@ knowledge about  oracle ebs
 
 ### 03. 应收账款 AR（Receivables）
 
+- [AR/TCA 常用表结构与字段含义](docs/03-ar/tables.md)
 - [业务流程：客户、订单、开票、收款、核销](docs/03-ar/process.md)
 - [客户、客户地点、付款条件与信用管理](docs/03-ar/customers-credit.md)
 - [交易类型、发票、贷项通知单与调整](docs/03-ar/transactions.md)
@@ -37,6 +42,7 @@ knowledge about  oracle ebs
 
 ### 04. 总账 GL（General Ledger）
 
+- [GL 常用表结构与字段含义](docs/04-gl/tables.md)
 - [账簿、会计科目、日记账与过账流程](docs/04-gl/process.md)
 - [日记账来源、类别、审批与自动过账](docs/04-gl/journals.md)
 - [预算、预算控制与资金可用性](docs/04-gl/budgetary-control.md)
@@ -46,6 +52,7 @@ knowledge about  oracle ebs
 
 ### 05. 固定资产 FA（Assets）
 
+- [FA 常用表结构与字段含义](docs/05-fa/tables.md)
 - [资产全生命周期：资本化、折旧、处置](docs/05-fa/process.md)
 - [资产账簿、资产类别、位置与关键配置](docs/05-fa/setup.md)
 - [资产增加、调整、转移、重分类与盘点](docs/05-fa/asset-transactions.md)
@@ -54,6 +61,7 @@ knowledge about  oracle ebs
 
 ### 06. 成本管理 Cost Management（CST）
 
+- [INV/CST/WIP 常用表结构与字段含义](docs/06-cost/tables.md)
 - [成本组织、成本类型、成本要素与成本组](docs/06-cost/setup.md)
 - [标准成本、平均成本与周期成本](docs/06-cost/costing-methods.md)
 - [物料成本、资源成本、间接费用与成本更新](docs/06-cost/cost-elements.md)
@@ -63,12 +71,14 @@ knowledge about  oracle ebs
 
 ### 07. 现金管理与税务（CE / EBTax）
 
+- [CE/IBY/EBTax 常用表结构与字段含义](docs/07-ce-tax/tables.md)
 - [银行、银行账户、对账单与自动核对](docs/07-ce-tax/cash-management.md)
 - [付款/收款清算、现金预测与银行接口](docs/07-ce-tax/cash-forecast-interfaces.md)
 - [税种、税率、税务规则与税务报表](docs/07-ce-tax/ebtax.md)
 
 ### 08. 关联模块与端到端流程
 
+- [端到端常用表与跨模块关联](docs/08-e2e/tables.md)
 - [采购到付款（PO → Receiving → AP → GL）](docs/08-e2e/procure-to-pay.md)
 - [订单到收款（OM → Shipping → AR → GL）](docs/08-e2e/order-to-cash.md)
 - [库存、WIP、成本与总账衔接](docs/08-e2e/inventory-wip-cost-gl.md)
@@ -76,6 +86,7 @@ knowledge about  oracle ebs
 
 ### 09. 技术、接口与运维
 
+- [FND、Concurrent、Workflow 与运维常用表](docs/09-technical/tables.md)
 - [EBS 数据模型与常用表](docs/09-technical/data-model.md)
 - [Concurrent Program、请求集与日志排错](docs/09-technical/concurrent-programs.md)
 - [PL/SQL、Forms、Personalization 与 OAF](docs/09-technical/customization.md)
@@ -86,4 +97,4 @@ knowledge about  oracle ebs
 
 - 每篇文档优先说明适用版本、业务前提、菜单路径、关键配置、操作步骤、会计影响、常用表与排错方式。
 - 涉及 SQL 时标注环境与只读/写入风险；生产环境执行更新脚本前须走变更与备份流程。
-- 目录中的链接为后续文档预留路径；新增资料时请按模块归档，并同步更新本页。
+- 所有文档已按模块归档；新增、拆分或重命名资料时，请同步更新本页和知识图谱中的交叉链接。
