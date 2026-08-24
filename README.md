@@ -6,6 +6,10 @@
 
 ## 快速入口
 
+- [财务功能与技术顾问学习手册](docs/00-guide/consultant-handbook.md)
+- [按角色阅读与练习路径](docs/00-guide/reading-paths-by-role.md)
+- [财务产品地图与边界](docs/00-guide/financials-product-map.md)
+- [中英文术语与缩略语](docs/90-reference/glossary-and-acronyms.md)
 - [现有 R12.2.x 知识图谱、阅读路径与 SQL 约定](docs/README.md)
 - [财务公共基础](docs/01-common/organization.md)
 - [应付账款 AP](docs/02-ap/process.md)
@@ -15,7 +19,7 @@
 - [库存、WIP 与成本](docs/06-cost/accounting-flow.md)
 - [现金管理与 E-Business Tax](docs/07-ce-tax/cash-management.md)
 - [端到端业务流程](docs/08-e2e/procure-to-pay.md)
-- [技术、接口与运维](docs/09-technical/integration.md)
+- [技术架构、接口与运维](docs/10-technical/README.md)
 
 ## 目录状态
 

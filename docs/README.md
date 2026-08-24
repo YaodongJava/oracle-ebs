@@ -1,5 +1,13 @@
 # Oracle EBS R12.2.x 知识图谱
 
+## 新读者入口
+
+- [财务功能与技术顾问学习手册](00-guide/consultant-handbook.md)：从企业结构、端到端流程、SLA/GL 到技术架构、接口、发布和排障。
+- [按角色阅读与练习路径](00-guide/reading-paths-by-role.md)：包含功能顾问、技术顾问、集成、测试、经理和运维路线。
+- [财务产品地图与边界](00-guide/financials-product-map.md)：分清各产品负责什么、不负责什么。
+- [中英文术语与缩略语](90-reference/glossary-and-acronyms.md)：英文全称、中文解释和常见使用语境。
+- [范围、版本与适用性](00-guide/scope-and-version.md)：使用表、API、补丁或配置结论前先确认版本基线。
+
 ## 使用方法
 
 本目录以“企业结构与共享设置 → 子账交易 → SLA 会计 → GL 过账与报表 → 期间结账”为主线，同时以 P2P、O2C、库存/制造成本和项目资产化为端到端视角。
@@ -20,13 +28,14 @@ Customer → OM → Shipping → AR → Receipt ─┘
 
 | 角色/任务 | 建议起点 | 推荐路径 |
 | --- | --- | --- |
+| 初学者/转岗顾问 | [顾问学习手册](00-guide/consultant-handbook.md) | 产品地图 → 企业结构 → SLA/GL → 选择主修模块 → 端到端练习 |
 | 实施顾问 | [财务公共基础](01-common/README.md) | 企业结构 → COA/期间/安全 → 模块流程 → 配置/接口 → UAT/关账演练 |
 | AP/P2P 顾问 | [AP](02-ap/README.md) | Supplier → PO/Receipt → Invoice → Payment/CE → SLA/GL → 对账 |
 | AR/O2C 顾问 | [AR](03-ar/README.md) | TCA → Transaction → Receipt → Collections → SLA/GL → Aging/对账 |
 | R2R 顾问 | [GL](04-gl/README.md) | Ledger → SLA → Journal → Posting → Revaluation/Consolidation → Close |
 | 资产/成本顾问 | [FA](05-fa/README.md)、[成本](06-cost/README.md) | 来源交易 → 成本/资本化 → 子账会计 → 报表/关账 |
 | 资金/税务顾问 | [CE/IBY/EBTax](07-ce-tax/README.md) | 银行主数据 → 支付/收款 → 对账单 → 税务确定/报告 → 对账 |
-| 集成/技术顾问 | [技术与运维](09-technical/README.md) | 数据模型 → 接口选型 → 标准入口/API → 并发/监控 → ADOP/发布 |
+| 集成/技术顾问 | [技术架构与开发](10-technical/README.md) | 数据模型 → 接口选型 → 标准入口/API → 并发/监控 → ADOP/发布 |
 | 生产运维 | [技术与运维](09-technical/README.md) | 先读排错与运行边界，再使用受控 SQL；不得直接 DML EBS 基表 |
 
 跨模块业务请使用 [端到端流程](08-e2e/README.md)。它维护状态、主键、会计和关账依赖；单一模块的设置、表结构和 API 仍以对应模块文档为准。
