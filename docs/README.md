@@ -1,84 +1,42 @@
-# Oracle EBS R12.2.x 知识图谱
+# Oracle EBS R12.2.x 文档总导航
 
-## 新读者入口
+本目录采用“一个模块一个文件”的结构。每个模块文件顶部提供章节导航，正文中的来源标记可追溯到整理前的文件路径。
 
-- [财务功能与技术顾问学习手册](00-guide/consultant-handbook.md)：从企业结构、端到端流程、SLA/GL 到技术架构、接口、发布和排障。
-- [按角色阅读与练习路径](00-guide/reading-paths-by-role.md)：包含功能顾问、技术顾问、集成、测试、经理和运维路线。
-- [财务产品地图与边界](00-guide/financials-product-map.md)：分清各产品负责什么、不负责什么。
-- [中英文术语与缩略语](90-reference/glossary-and-acronyms.md)：英文全称、中文解释和常见使用语境。
-- [范围、版本与适用性](00-guide/scope-and-version.md)：使用表、API、补丁或配置结论前先确认版本基线。
+## 模块导航
 
-## 使用方法
-
-本目录以“企业结构与共享设置 → 子账交易 → SLA 会计 → GL 过账与报表 → 期间结账”为主线，同时以 P2P、O2C、库存/制造成本和项目资产化为端到端视角。
-
-```text
-Organization / COA / Calendar / Security
-                 │
-Supplier → PO → Receipt → AP → Payment ─┐
-                                            ├→ SLA → GL → Reporting / Close
-Customer → OM → Shipping → AR → Receipt ─┘
-                 │
-          Inventory ↔ WIP ↔ Cost
-                 │
-              Projects → Assets
-```
-
-## 阅读路径
-
-| 角色/任务 | 建议起点 | 推荐路径 |
+| 模块 | 文件 | 内容重点 |
 | --- | --- | --- |
-| 初学者/转岗顾问 | [顾问学习手册](00-guide/consultant-handbook.md) | 产品地图 → 企业结构 → SLA/GL → 选择主修模块 → 端到端练习 |
-| 实施顾问 | [财务公共基础](01-common/README.md) | 企业结构 → COA/期间/安全 → 模块流程 → 配置/接口 → UAT/关账演练 |
-| AP/P2P 顾问 | [AP](02-ap/README.md) | Supplier → PO/Receipt → Invoice → Payment/CE → SLA/GL → 对账 |
-| AR/O2C 顾问 | [AR](03-ar/README.md) | TCA → Transaction → Receipt → Collections → SLA/GL → Aging/对账 |
-| R2R 顾问 | [GL](04-gl/README.md) | Ledger → SLA → Journal → Posting → Revaluation/Consolidation → Close |
-| 资产/成本顾问 | [FA](05-fa/README.md)、[成本](06-cost/README.md) | 来源交易 → 成本/资本化 → 子账会计 → 报表/关账 |
-| 资金/税务顾问 | [CE/IBY/EBTax](07-ce-tax/README.md) | 银行主数据 → 支付/收款 → 对账单 → 税务确定/报告 → 对账 |
-| 集成/技术顾问 | [技术架构与开发](10-technical/README.md) | 数据模型 → 接口选型 → 标准入口/API → 并发/监控 → ADOP/发布 |
-| 生产运维 | [技术与运维](09-technical/README.md) | 先读排错与运行边界，再使用受控 SQL；不得直接 DML EBS 基表 |
+| 学习与治理 | [00-guide.md](00-guide.md) | 顾问手册、产品地图、阅读路径、版本、安全和官方资料 |
+| 财务公共基础 | [01-foundation.md](01-foundation.md) | 组织、Ledger、COA、期间、MOAC、TCA、银行和安全 |
+| R2R | [02-record-to-report.md](02-record-to-report.md) | GL、SLA、FAH、AGIS、预算、合并、报告和关账 |
+| P2P | [03-procure-to-pay.md](03-procure-to-pay.md) | Supplier、PO、Receiving、AP、IBY、费用和对账 |
+| C2C | [04-credit-to-cash.md](04-credit-to-cash.md) | Customer/TCA、AR、Receipt、Credit、Collections 和对账 |
+| 资产与项目 | [05-assets-projects.md](05-assets-projects.md) | FA、Projects、资本化、折旧、开票及项目转资产 |
+| 现金与税务 | [06-cash-tax.md](06-cash-tax.md) | CE、银行对账、Cash/Treasury 和 E-Business Tax |
+| 成本会计 | [07-cost-accounting.md](07-cost-accounting.md) | Receiving、Inventory、WIP、Costing、LCM 和 COGS |
+| 报表与治理 | [08-reporting-governance.md](08-reporting-governance.md) | FSG、BI Publisher、ECC、内控、审计和本地化 |
+| 端到端流程 | [09-end-to-end.md](09-end-to-end.md) | 跨模块状态、主键、会计、接口、对账和关账依赖 |
+| 技术模块 | [10-technical.md](10-technical.md) | 架构、数据、接口、并发、Workflow、OAF、Forms 和 ADOP |
+| 实施与运维 | [11-implementation-operations.md](11-implementation-operations.md) | 蓝图、迁移、测试、切换、运行、补丁、克隆和灾备 |
+| 统一参考 | [90-reference.md](90-reference.md) | 中英术语、表、接口、程序、Profile、Lookup、报表和错误 |
+| 历史归档 | [99-archive.md](99-archive.md) | 历史追溯和废弃资料 |
 
-跨模块业务请使用 [端到端流程](08-e2e/README.md)。它维护状态、主键、会计和关账依赖；单一模块的设置、表结构和 API 仍以对应模块文档为准。
+## 按角色进入
 
-## 模块数据字典
-
-| 模块 | 数据字典 | 覆盖内容 |
+| 角色 | 建议起点 | 后续路径 |
 | --- | --- | --- |
-| 财务公共 | [01-common/tables.md](01-common/tables.md) | Organization、Ledger、COA、Period、FND、SLA |
-| AP | [02-ap/tables.md](02-ap/tables.md) | Supplier、Invoice、Distribution、Hold、Payment、Interface |
-| AR/TCA | [03-ar/tables.md](03-ar/tables.md) | Customer、Transaction、Schedule、Receipt、Application、AutoInvoice |
-| GL | [04-gl/tables.md](04-gl/tables.md) | Batch、Journal、Interface、Reference、Balance |
-| FA | [05-fa/tables.md](05-fa/tables.md) | Asset、Book、Distribution、Depreciation、Retirement、Mass Additions |
-| INV/CST/WIP | [06-cost/tables.md](06-cost/tables.md) | Item、On-hand、Material Transaction、Cost、WIP、Interface |
-| CE/IBY/EBTax | [07-ce-tax/tables.md](07-ce-tax/tables.md) | Bank Account、Statement、Payment Instruction、Tax Line/Rate/Registration |
-| E2E | [08-e2e/tables.md](08-e2e/tables.md) | P2P、O2C、Projects-Assets 的跨模块 ID 链 |
-| FND/Workflow | [09-technical/tables.md](09-technical/tables.md) | User/Responsibility/Profile、Concurrent、Workflow |
+| 财务功能顾问 | [综合顾问学习手册](00-guide.md#src-docs-00-guide-consultant-handbook) | 公共基础 → 主修模块 → SLA/GL → E2E → 报表/关账 |
+| R2R 顾问 | [记录到报告](02-record-to-report.md) | Ledger/SLA → Journal/Posting → Revaluation/Consolidation → Close |
+| P2P 顾问 | [采购到付款](03-procure-to-pay.md) | Supplier → PO/Receipt → AP Invoice → IBY/CE → SLA/GL |
+| C2C 顾问 | [信用到收款](04-credit-to-cash.md) | TCA → AR Transaction → Receipt → Collections → SLA/GL |
+| 资产/项目顾问 | [资产与项目](05-assets-projects.md) | 来源成本 → 资本化/资产 → 折旧/开票 → 对账 |
+| 成本顾问 | [供应链财务与成本](07-cost-accounting.md) | PO/RCV → INV/WIP/CST → SLA/GL → 期间关闭 |
+| 技术/集成顾问 | [技术模块](10-technical.md) | 数据模型 → 标准接口/API → 并发/Workflow → ADOP/运维 |
+| 实施经理/运维 | [实施与运维](11-implementation-operations.md) | Assessment → Blueprint → Test → Cutover → Hypercare/BAU |
 
-## 模块接口实现手册
+## 使用边界
 
-| 模块 | 实现手册 | 具体代码与业界案例 |
-| --- | --- | --- |
-| 财务公共 | [01-common/interfaces.md](01-common/interfaces.md) | 统一暂存表、FND/MOAC、提交/等待并发请求、Business Event |
-| AP | [02-ap/interfaces.md](02-ap/interfaces.md) | 发票头行导入、PO/Receipt 匹配、Invoice Import、错误与成功对账 |
-| AR | [03-ar/interfaces.md](03-ar/interfaces.md) | AutoInvoice、收入分配、AutoLockbox、ISG REST 调用 |
-| GL | [04-gl/interfaces.md](04-gl/interfaces.md) | `GL_INTERFACE`、批次平衡、Journal Import、Journal 追溯 |
-| FA | [05-fa/interfaces.md](05-fa/interfaces.md) | `FA_MASS_ADDITIONS`、遗留迁移、Prepare/Post 与资产对账 |
-| INV/CST/WIP | [06-cost/interfaces.md](06-cost/interfaces.md) | MTI、Lot Interface、Transaction Manager、成本状态追踪 |
-| CE/IBY/EBTax | [07-ce-tax/interfaces.md](07-ce-tax/interfaces.md) | 银行对账单接口、付款/ACK、Reconciliation Open Interface、税分类 |
-| E2E | [08-e2e/interfaces.md](08-e2e/interfaces.md) | P2P/O2C/项目资产化、相关号、Transactional Outbox、补偿 |
-| 技术集成 | [09-technical/interfaces.md](09-technical/interfaces.md) | Concurrent Worker、API 模板、ISG REST、退避重试、可观测性 |
-
-所有写入示例仅使用 Oracle 标准 Open Interface/公开 API 或客户自定义对象，不直接修改 EBS 业务基表。上线前必须按目标 R12.2.x 实例的 Integration Repository、并发程序参数、eTRM 和 `ALL_TAB_COLUMNS` 复核签名与字段。
-
-## SQL 约定
-
-- SQL 默认为 APPS 视角的只读诊断样例，`:p_*` 为绑定变量。
-- 大表查询必须增加 `ORG_ID`、`LEDGER_ID`、业务日期或主键范围。
-- 先在测试库验证列名和执行计划；对象以当前 R12.2 补丁级别的 eTRM/`ALL_TAB_COLUMNS` 为准。
-- 数据修复应使用标准页面、公开 API 或 Oracle Support 方案，不将本库 SQL 改为 UPDATE/DELETE 直接执行。
-
-## 官方资料
-
-- [Oracle E-Business Suite Release 12.2 Documentation Library](https://docs.oracle.com/cd/E26401_01/index.htm)
-- [Oracle Financials Implementation Guide](https://docs.oracle.com/cd/E26401_01/doc.122/e48783/T348488T348491.htm)
-- [Oracle Subledger Accounting Implementation Guide](https://docs.oracle.com/cd/E26401_01/doc.122/e48771/title.htm)
+- 表、列、API 签名、状态、并发程序参数和菜单以目标实例验证为准。
+- 示例会计分录用于理解业务，实际结果以项目 SLA 配置和测试为准。
+- 可选产品、本地化和数据库诊断能力需确认许可证及安装范围。
+- 生产写入和数据修复必须遵守 [生产安全边界](00-guide.md#src-docs-00-guide-safety-and-production-boundaries)。
