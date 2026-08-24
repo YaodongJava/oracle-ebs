@@ -1,419 +1,90 @@
-# 信用到收款（C2C）
+# 信用到收款（Credit to Cash，C2C）
 
-> TCA 客户、订单边界、应收、收款、信用、催收与客户自助。本文件由原目录中的 21 份资料合并而成；各章节保留原来源标记，便于审计与后续去重。
+> C2C 覆盖客户主数据、信用、订单/开票边界、应收交易、收款、核销、催收、争议、银行对账和收入/应收会计。
 
-## 本模块章节导航
+## 阅读导航
 
-- [Credit to Cash](#src-docs-04-credit-to-cash-readme)（原 `docs/04-credit-to-cash/README.md`）
-- [Credit to Cash： advanced-collections](#src-docs-04-credit-to-cash-advanced-collections-readme)（原 `docs/04-credit-to-cash/advanced-collections/README.md`）
-- [Credit to Cash： credit-management](#src-docs-04-credit-to-cash-credit-management-readme)（原 `docs/04-credit-to-cash/credit-management/README.md`）
-- [Credit to Cash： credit-to-cash-controls](#src-docs-04-credit-to-cash-credit-to-cash-controls-readme)（原 `docs/04-credit-to-cash/credit-to-cash-controls/README.md`）
-- [Credit to Cash： deductions-and-disputes](#src-docs-04-credit-to-cash-deductions-and-disputes-readme)（原 `docs/04-credit-to-cash/deductions-and-disputes/README.md`）
-- [Credit to Cash： ireceivables-and-bill-presentment](#src-docs-04-credit-to-cash-ireceivables-and-bill-presentment-readme)（原 `docs/04-credit-to-cash/ireceivables-and-bill-presentment/README.md`）
-- [Credit to Cash： loans](#src-docs-04-credit-to-cash-loans-readme)（原 `docs/04-credit-to-cash/loans/README.md`）
-- [Credit to Cash： order-shipping-boundary](#src-docs-04-credit-to-cash-order-shipping-boundary-readme)（原 `docs/04-credit-to-cash/order-shipping-boundary/README.md`）
-- [Credit to Cash： receivables](#src-docs-04-credit-to-cash-receivables-readme)（原 `docs/04-credit-to-cash/receivables/README.md`）
-- [Credit to Cash： tca-customer-master](#src-docs-04-credit-to-cash-tca-customer-master-readme)（原 `docs/04-credit-to-cash/tca-customer-master/README.md`）
-- [Oracle Receivables（AR / Credit to Cash）](#src-docs-03-ar-readme)（原 `docs/03-ar/README.md`）
-- [AR 会计、过账、月结与报表](#src-docs-03-ar-accounting-close-reports)（原 `docs/03-ar/accounting-close-reports.md`）
-- [AR 催收、账龄、坏账准备与核销](#src-docs-03-ar-collections-aging)（原 `docs/03-ar/collections-aging.md`）
-- [信用管理、催收、争议与客户自助](#src-docs-03-ar-credit-collections-ireceivables)（原 `docs/03-ar/credit-collections-ireceivables.md`）
-- [客户、客户地点、付款条件与信用管理](#src-docs-03-ar-customers-credit)（原 `docs/03-ar/customers-credit.md`）
-- [AutoInvoice、Lockbox 接口与排错](#src-docs-03-ar-interfaces-troubleshooting)（原 `docs/03-ar/interfaces-troubleshooting.md`）
-- [Oracle Receivables 接口实现案例](#src-docs-03-ar-interfaces)（原 `docs/03-ar/interfaces.md`）
-- [Oracle Receivables 业务流程（O2C 子账视角）](#src-docs-03-ar-process)（原 `docs/03-ar/process.md`）
-- [AR 收款、Lockbox、自动核销与退款](#src-docs-03-ar-receipts)（原 `docs/03-ar/receipts.md`）
-- [Oracle Receivables 常用表结构](#src-docs-03-ar-tables)（原 `docs/03-ar/tables.md`）
-- [AR 交易类型、发票、贷项通知单与调整](#src-docs-03-ar-transactions)（原 `docs/03-ar/transactions.md`）
+- [范围](#1-学习目标与范围) · [业务主链](#2-业务主链) · [对象与状态](#3-关键对象与状态) · [功能设计](#4-功能设计重点) · [会计对账](#5-会计与对账) · [接口排错](#6-技术与接口视角) · [专题详解](#9-专题详解)
 
----
+## 1. 学习目标与范围
 
-<!-- source: docs/04-credit-to-cash/README.md -->
-<a id="src-docs-04-credit-to-cash-readme"></a>
-## Credit to Cash
+应能区分 TCA 客户模型、Credit Management（信用管理）、Receivables（应收，AR）、Advanced Collections（高级催收）、iReceivables（客户自助应收）、Order Management（订单管理，OM）与 CE 的边界，并能设计 AutoInvoice、Lockbox（自动收款箱）、收款核销和 AR-GL 对账。
 
+## 2. 业务主链
 
-<a id="src-docs-04-credit-to-cash-readme--范围与目标"></a>
-### 范围与目标
-覆盖 TCA 客户、订单/发运边界、应收交易、信用、催收、自助、扣款/争议、Loans 和 C2C 内控。
-
-<a id="src-docs-04-credit-to-cash-readme--运行与实施控制"></a>
-### 运行与实施控制
-以 Party/Account/Site 分层治理客户；定义交易来源/类型、AutoAccounting、收款方法、信用策略、催收和坏账审批；以交易、收款、会计和 GL 完成对账。
-
-<a id="src-docs-04-credit-to-cash-readme--核心数据对象"></a>
-### 核心数据对象
-HZ_PARTIES、HZ_CUST_ACCOUNTS、RA_CUSTOMER_TRX_ALL、RA_CUSTOMER_TRX_LINES_ALL、AR_PAYMENT_SCHEDULES_ALL、AR_CASH_RECEIPTS_ALL、AR_RECEIVABLE_APPLICATIONS_ALL、XLA_AE_HEADERS。对象、列、状态和 API 签名须在目标实例 eTRM、Integration Repository 与数据字典复核。
-
-<a id="src-docs-04-credit-to-cash-readme--与既有知识的关系"></a>
-### 与既有知识的关系
-本目标目录新增详细入口；已有专题保留在 [03-ar/README](#src-docs-03-ar-readme) 并逐步迁移链接，不复制历史内容。
-
-<a id="src-docs-04-credit-to-cash-readme--官方依据"></a>
-### 官方依据
-[Oracle Financials Documentation](https://docs.oracle.com/cd/E26401_01/nav/financials.htm)
-
-
-<!-- source: docs/04-credit-to-cash/advanced-collections/README.md -->
-<a id="src-docs-04-credit-to-cash-advanced-collections-readme"></a>
-## Credit to Cash： advanced-collections
-
-
-<a id="src-docs-04-credit-to-cash-advanced-collections-readme--业务定位"></a>
-### 业务定位
-本专题是 Credit to Cash 中的 advanced-collections 子域。覆盖 TCA 客户、订单/发运边界、应收交易、信用、催收、自助、扣款/争议、Loans 和 C2C 内控。
-
-<a id="src-docs-04-credit-to-cash-advanced-collections-readme--设计与配置"></a>
-### 设计与配置
-以 Party/Account/Site 分层治理客户；定义交易来源/类型、AutoAccounting、收款方法、信用策略、催收和坏账审批；以交易、收款、会计和 GL 完成对账。
-上线前以正常、跨期、外币/多组织（如适用）、拒绝、冲销/撤回、重跑和月结场景完成验证。
-
-<a id="src-docs-04-credit-to-cash-advanced-collections-readme--数据接口与会计追溯"></a>
-### 数据、接口与会计追溯
-HZ_PARTIES、HZ_CUST_ACCOUNTS、RA_CUSTOMER_TRX_ALL、RA_CUSTOMER_TRX_LINES_ALL、AR_PAYMENT_SCHEDULES_ALL、AR_CASH_RECEIPTS_ALL、AR_RECEIVABLE_APPLICATIONS_ALL、XLA_AE_HEADERS。接口必须维护来源业务键、批次号、行号、状态、错误码和可重放策略；会计追溯按交易主键、事件、分录和 GL 链分层进行。
-
-```sql
-select owner, table_name, column_name, data_type
-  from all_tab_columns
- where owner = upper(:p_owner)
-   and table_name = upper(:p_table_name)
- order by column_id;
+```text
+客户/信用评估 → 订单与履约 → AutoInvoice/手工开票 → 收入与应收
+→ 到期与催收 → 收款/Lockbox → 核销/On-account/Unapplied
+→ 银行清算与对账 → 调整/贷项/坏账 → GL
 ```
 
-<a id="src-docs-04-credit-to-cash-advanced-collections-readme--常见问题与排查"></a>
-### 常见问题与排查
-将客户名称当唯一键；重传 AutoInvoice 造成重复交易；把账龄异常与信用/催收产品未部署混淆。 先确认产品是否已安装、职责和组织/账簿上下文是否正确，再检查业务状态、接口批次、并发日志、SLA 和报告。
+## 3. 关键对象与状态
 
-<a id="src-docs-04-credit-to-cash-advanced-collections-readme--实施边界"></a>
-### 实施边界
-不直接 DML Oracle EBS 业务表。写入使用标准页面、公开 API、Open Interface 或受控自定义对象；可选产品需确认许可证、安装和补丁范围。
+TCA 中 Party（参与方）是现实主体，Customer Account（客户账户）是商业关系，Account Site/Site Use（账户地点/用途）承载 Bill-to、Ship-to 等用途。Transaction Type（交易类型）影响会计、余额和后续处理；Receipt Class/Method（收款分类/方法）控制确认、汇款和清算路径。
 
-<a id="src-docs-04-credit-to-cash-advanced-collections-readme--关联与官方依据"></a>
-### 关联与官方依据
-[本知识域入口](#src-docs-04-credit-to-cash-readme)｜[Oracle Financials Documentation](https://docs.oracle.com/cd/E26401_01/nav/financials.htm)
+收款不能简单分为“已收/未收”。需区分 Unidentified（未识别）、Unapplied（未核销）、On-account（挂账户）、Applied（已核销）、Remitted（已汇款）和 Cleared（已清算）等业务状态，并以目标实例定义为准。
 
+## 4. 功能设计重点
 
-<!-- source: docs/04-credit-to-cash/credit-management/README.md -->
-<a id="src-docs-04-credit-to-cash-credit-management-readme"></a>
-## Credit to Cash： credit-management
+### 4.1 信用与争议
 
+信用额度、评分、检查规则、订单 Hold 和人工复核要有明确责任边界。Deduction（扣款）与 Dispute（争议）必须记录原因、所有者、证据、处理时限和最终的贷项/调整/收回结果，避免长期停留在未核销收款。
 
-<a id="src-docs-04-credit-to-cash-credit-management-readme--业务定位"></a>
-### 业务定位
-本专题是 Credit to Cash 中的 credit-management 子域。覆盖 TCA 客户、订单/发运边界、应收交易、信用、催收、自助、扣款/争议、Loans 和 C2C 内控。
+### 4.2 AutoInvoice
 
-<a id="src-docs-04-credit-to-cash-credit-management-readme--设计与配置"></a>
-### 设计与配置
-以 Party/Account/Site 分层治理客户；定义交易来源/类型、AutoAccounting、收款方法、信用策略、催收和坏账审批；以交易、收款、会计和 GL 完成对账。
-上线前以正常、跨期、外币/多组织（如适用）、拒绝、冲销/撤回、重跑和月结场景完成验证。
+AutoInvoice（自动开票）把 OM、Projects 或外部来源送入 AR。设计时确定 Transaction Source、Transaction Type、Line/Tax/Freight 关联、分组规则、会计日期、销售人员和收入账户来源。接口成功标准应包括业务数量、金额、税额、拒绝数和生成交易号。
 
-<a id="src-docs-04-credit-to-cash-credit-management-readme--数据接口与会计追溯"></a>
-### 数据、接口与会计追溯
-HZ_PARTIES、HZ_CUST_ACCOUNTS、RA_CUSTOMER_TRX_ALL、RA_CUSTOMER_TRX_LINES_ALL、AR_PAYMENT_SCHEDULES_ALL、AR_CASH_RECEIPTS_ALL、AR_RECEIVABLE_APPLICATIONS_ALL、XLA_AE_HEADERS。接口必须维护来源业务键、批次号、行号、状态、错误码和可重放策略；会计追溯按交易主键、事件、分录和 GL 链分层进行。
+### 4.3 Lockbox 与收款
 
-```sql
-select owner, table_name, column_name, data_type
-  from all_tab_columns
- where owner = upper(:p_owner)
-   and table_name = upper(:p_table_name)
- order by column_id;
+Lockbox 处理银行收款文件、客户识别和自动核销。匹配规则应有优先级与置信度；无法可靠识别的款项进入例外队列，不应为了自动率牺牲错误核销风险。
+
+## 5. 会计与对账
+
+常见分录（以 SLA 为准）：
+
+```text
+开票：Dr Receivables   Cr Revenue/Tax/Freight
+收款：Dr Cash/Clearing Cr Receivables 或 Unapplied/On-account
+清算：Dr Cash          Cr Cash Clearing
+调整/贷项：按交易类型和活动规则冲减应收、收入或费用
 ```
 
-<a id="src-docs-04-credit-to-cash-credit-management-readme--常见问题与排查"></a>
-### 常见问题与排查
-将客户名称当唯一键；重传 AutoInvoice 造成重复交易；把账龄异常与信用/催收产品未部署混淆。 先确认产品是否已安装、职责和组织/账簿上下文是否正确，再检查业务状态、接口批次、并发日志、SLA 和报告。
+月结依次清理 AutoInvoice 拒绝、未完成交易、未会计收款/调整、未传 GL 分录、未核销/未识别款项，再核对 Aging（账龄）、AR Trial Balance、收款清算和 GL 应收控制账户。
 
-<a id="src-docs-04-credit-to-cash-credit-management-readme--实施边界"></a>
-### 实施边界
-不直接 DML Oracle EBS 业务表。写入使用标准页面、公开 API、Open Interface 或受控自定义对象；可选产品需确认许可证、安装和补丁范围。
+## 6. 技术与接口视角
 
-<a id="src-docs-04-credit-to-cash-credit-management-readme--关联与官方依据"></a>
-### 关联与官方依据
-[本知识域入口](#src-docs-04-credit-to-cash-readme)｜[Oracle Financials Documentation](https://docs.oracle.com/cd/E26401_01/nav/financials.htm)
+常用对象：`HZ_PARTIES`、`HZ_CUST_ACCOUNTS`、`HZ_CUST_ACCT_SITES_ALL`、`RA_CUSTOMER_TRX_ALL`、`RA_CUSTOMER_TRX_LINES_ALL`、`AR_PAYMENT_SCHEDULES_ALL`、`AR_CASH_RECEIPTS_ALL`、`AR_RECEIVABLE_APPLICATIONS_ALL` 和 XLA 表。
 
+接口必须保留来源业务键、原始单据号、批次、行关联、币种、金额、会计日期和处理状态。对 AutoInvoice 和 Lockbox 的重跑，应先判断接口记录、已生成业务单据和部分成功情况，确保幂等。
 
-<!-- source: docs/04-credit-to-cash/credit-to-cash-controls/README.md -->
-<a id="src-docs-04-credit-to-cash-credit-to-cash-controls-readme"></a>
-## Credit to Cash： credit-to-cash-controls
+## 7. 高频问题定位
 
+| 现象 | 优先检查 |
+| --- | --- |
+| AutoInvoice 拒绝 | 来源/类型、客户用途、行关联、会计日期、币种和分配 |
+| 收款无法自动核销 | 客户/交易识别、金额容差、核销规则和币种 |
+| 账龄与 GL 不符 | 截止日期、未会计/未传输、手工 GL、账户和期间 |
+| 信用 Hold 不符合预期 | 信用配置、客户层级、订单条件、并发评估和人工覆盖 |
+| 银行已到账但 AR 未清 | Lockbox、汇款、清算和 CE 对账状态 |
 
-<a id="src-docs-04-credit-to-cash-credit-to-cash-controls-readme--业务定位"></a>
-### 业务定位
-本专题是 Credit to Cash 中的 credit-to-cash-controls 子域。覆盖 TCA 客户、订单/发运边界、应收交易、信用、催收、自助、扣款/争议、Loans 和 C2C 内控。
+## 8. 建议练习
 
-<a id="src-docs-04-credit-to-cash-credit-to-cash-controls-readme--设计与配置"></a>
-### 设计与配置
-以 Party/Account/Site 分层治理客户；定义交易来源/类型、AutoAccounting、收款方法、信用策略、催收和坏账审批；以交易、收款、会计和 GL 完成对账。
-上线前以正常、跨期、外币/多组织（如适用）、拒绝、冲销/撤回、重跑和月结场景完成验证。
+- 完成外部订单经 AutoInvoice 开票、部分收款、扣款和最终核销案例。
+- 设计 Lockbox 匹配优先级和例外队列。
+- 从账龄差异反向定位到交易、核销、XLA 和 GL。
 
-<a id="src-docs-04-credit-to-cash-credit-to-cash-controls-readme--数据接口与会计追溯"></a>
-### 数据、接口与会计追溯
-HZ_PARTIES、HZ_CUST_ACCOUNTS、RA_CUSTOMER_TRX_ALL、RA_CUSTOMER_TRX_LINES_ALL、AR_PAYMENT_SCHEDULES_ALL、AR_CASH_RECEIPTS_ALL、AR_RECEIVABLE_APPLICATIONS_ALL、XLA_AE_HEADERS。接口必须维护来源业务键、批次号、行号、状态、错误码和可重放策略；会计追溯按交易主键、事件、分录和 GL 链分层进行。
-
-```sql
-select owner, table_name, column_name, data_type
-  from all_tab_columns
- where owner = upper(:p_owner)
-   and table_name = upper(:p_table_name)
- order by column_id;
-```
-
-<a id="src-docs-04-credit-to-cash-credit-to-cash-controls-readme--常见问题与排查"></a>
-### 常见问题与排查
-将客户名称当唯一键；重传 AutoInvoice 造成重复交易；把账龄异常与信用/催收产品未部署混淆。 先确认产品是否已安装、职责和组织/账簿上下文是否正确，再检查业务状态、接口批次、并发日志、SLA 和报告。
-
-<a id="src-docs-04-credit-to-cash-credit-to-cash-controls-readme--实施边界"></a>
-### 实施边界
-不直接 DML Oracle EBS 业务表。写入使用标准页面、公开 API、Open Interface 或受控自定义对象；可选产品需确认许可证、安装和补丁范围。
-
-<a id="src-docs-04-credit-to-cash-credit-to-cash-controls-readme--关联与官方依据"></a>
-### 关联与官方依据
-[本知识域入口](#src-docs-04-credit-to-cash-readme)｜[Oracle Financials Documentation](https://docs.oracle.com/cd/E26401_01/nav/financials.htm)
-
-
-<!-- source: docs/04-credit-to-cash/deductions-and-disputes/README.md -->
-<a id="src-docs-04-credit-to-cash-deductions-and-disputes-readme"></a>
-## Credit to Cash： deductions-and-disputes
-
-
-<a id="src-docs-04-credit-to-cash-deductions-and-disputes-readme--业务定位"></a>
-### 业务定位
-本专题是 Credit to Cash 中的 deductions-and-disputes 子域。覆盖 TCA 客户、订单/发运边界、应收交易、信用、催收、自助、扣款/争议、Loans 和 C2C 内控。
-
-<a id="src-docs-04-credit-to-cash-deductions-and-disputes-readme--设计与配置"></a>
-### 设计与配置
-以 Party/Account/Site 分层治理客户；定义交易来源/类型、AutoAccounting、收款方法、信用策略、催收和坏账审批；以交易、收款、会计和 GL 完成对账。
-上线前以正常、跨期、外币/多组织（如适用）、拒绝、冲销/撤回、重跑和月结场景完成验证。
-
-<a id="src-docs-04-credit-to-cash-deductions-and-disputes-readme--数据接口与会计追溯"></a>
-### 数据、接口与会计追溯
-HZ_PARTIES、HZ_CUST_ACCOUNTS、RA_CUSTOMER_TRX_ALL、RA_CUSTOMER_TRX_LINES_ALL、AR_PAYMENT_SCHEDULES_ALL、AR_CASH_RECEIPTS_ALL、AR_RECEIVABLE_APPLICATIONS_ALL、XLA_AE_HEADERS。接口必须维护来源业务键、批次号、行号、状态、错误码和可重放策略；会计追溯按交易主键、事件、分录和 GL 链分层进行。
-
-```sql
-select owner, table_name, column_name, data_type
-  from all_tab_columns
- where owner = upper(:p_owner)
-   and table_name = upper(:p_table_name)
- order by column_id;
-```
-
-<a id="src-docs-04-credit-to-cash-deductions-and-disputes-readme--常见问题与排查"></a>
-### 常见问题与排查
-将客户名称当唯一键；重传 AutoInvoice 造成重复交易；把账龄异常与信用/催收产品未部署混淆。 先确认产品是否已安装、职责和组织/账簿上下文是否正确，再检查业务状态、接口批次、并发日志、SLA 和报告。
-
-<a id="src-docs-04-credit-to-cash-deductions-and-disputes-readme--实施边界"></a>
-### 实施边界
-不直接 DML Oracle EBS 业务表。写入使用标准页面、公开 API、Open Interface 或受控自定义对象；可选产品需确认许可证、安装和补丁范围。
-
-<a id="src-docs-04-credit-to-cash-deductions-and-disputes-readme--关联与官方依据"></a>
-### 关联与官方依据
-[本知识域入口](#src-docs-04-credit-to-cash-readme)｜[Oracle Financials Documentation](https://docs.oracle.com/cd/E26401_01/nav/financials.htm)
-
-
-<!-- source: docs/04-credit-to-cash/ireceivables-and-bill-presentment/README.md -->
-<a id="src-docs-04-credit-to-cash-ireceivables-and-bill-presentment-readme"></a>
-## Credit to Cash： ireceivables-and-bill-presentment
-
-
-<a id="src-docs-04-credit-to-cash-ireceivables-and-bill-presentment-readme--业务定位"></a>
-### 业务定位
-本专题是 Credit to Cash 中的 ireceivables-and-bill-presentment 子域。覆盖 TCA 客户、订单/发运边界、应收交易、信用、催收、自助、扣款/争议、Loans 和 C2C 内控。
-
-<a id="src-docs-04-credit-to-cash-ireceivables-and-bill-presentment-readme--设计与配置"></a>
-### 设计与配置
-以 Party/Account/Site 分层治理客户；定义交易来源/类型、AutoAccounting、收款方法、信用策略、催收和坏账审批；以交易、收款、会计和 GL 完成对账。
-上线前以正常、跨期、外币/多组织（如适用）、拒绝、冲销/撤回、重跑和月结场景完成验证。
-
-<a id="src-docs-04-credit-to-cash-ireceivables-and-bill-presentment-readme--数据接口与会计追溯"></a>
-### 数据、接口与会计追溯
-HZ_PARTIES、HZ_CUST_ACCOUNTS、RA_CUSTOMER_TRX_ALL、RA_CUSTOMER_TRX_LINES_ALL、AR_PAYMENT_SCHEDULES_ALL、AR_CASH_RECEIPTS_ALL、AR_RECEIVABLE_APPLICATIONS_ALL、XLA_AE_HEADERS。接口必须维护来源业务键、批次号、行号、状态、错误码和可重放策略；会计追溯按交易主键、事件、分录和 GL 链分层进行。
-
-```sql
-select owner, table_name, column_name, data_type
-  from all_tab_columns
- where owner = upper(:p_owner)
-   and table_name = upper(:p_table_name)
- order by column_id;
-```
-
-<a id="src-docs-04-credit-to-cash-ireceivables-and-bill-presentment-readme--常见问题与排查"></a>
-### 常见问题与排查
-将客户名称当唯一键；重传 AutoInvoice 造成重复交易；把账龄异常与信用/催收产品未部署混淆。 先确认产品是否已安装、职责和组织/账簿上下文是否正确，再检查业务状态、接口批次、并发日志、SLA 和报告。
-
-<a id="src-docs-04-credit-to-cash-ireceivables-and-bill-presentment-readme--实施边界"></a>
-### 实施边界
-不直接 DML Oracle EBS 业务表。写入使用标准页面、公开 API、Open Interface 或受控自定义对象；可选产品需确认许可证、安装和补丁范围。
-
-<a id="src-docs-04-credit-to-cash-ireceivables-and-bill-presentment-readme--关联与官方依据"></a>
-### 关联与官方依据
-[本知识域入口](#src-docs-04-credit-to-cash-readme)｜[Oracle Financials Documentation](https://docs.oracle.com/cd/E26401_01/nav/financials.htm)
-
-
-<!-- source: docs/04-credit-to-cash/loans/README.md -->
-<a id="src-docs-04-credit-to-cash-loans-readme"></a>
-## Credit to Cash： loans
-
-
-<a id="src-docs-04-credit-to-cash-loans-readme--业务定位"></a>
-### 业务定位
-本专题是 Credit to Cash 中的 loans 子域。覆盖 TCA 客户、订单/发运边界、应收交易、信用、催收、自助、扣款/争议、Loans 和 C2C 内控。
-
-<a id="src-docs-04-credit-to-cash-loans-readme--设计与配置"></a>
-### 设计与配置
-以 Party/Account/Site 分层治理客户；定义交易来源/类型、AutoAccounting、收款方法、信用策略、催收和坏账审批；以交易、收款、会计和 GL 完成对账。
-上线前以正常、跨期、外币/多组织（如适用）、拒绝、冲销/撤回、重跑和月结场景完成验证。
-
-<a id="src-docs-04-credit-to-cash-loans-readme--数据接口与会计追溯"></a>
-### 数据、接口与会计追溯
-HZ_PARTIES、HZ_CUST_ACCOUNTS、RA_CUSTOMER_TRX_ALL、RA_CUSTOMER_TRX_LINES_ALL、AR_PAYMENT_SCHEDULES_ALL、AR_CASH_RECEIPTS_ALL、AR_RECEIVABLE_APPLICATIONS_ALL、XLA_AE_HEADERS。接口必须维护来源业务键、批次号、行号、状态、错误码和可重放策略；会计追溯按交易主键、事件、分录和 GL 链分层进行。
-
-```sql
-select owner, table_name, column_name, data_type
-  from all_tab_columns
- where owner = upper(:p_owner)
-   and table_name = upper(:p_table_name)
- order by column_id;
-```
-
-<a id="src-docs-04-credit-to-cash-loans-readme--常见问题与排查"></a>
-### 常见问题与排查
-将客户名称当唯一键；重传 AutoInvoice 造成重复交易；把账龄异常与信用/催收产品未部署混淆。 先确认产品是否已安装、职责和组织/账簿上下文是否正确，再检查业务状态、接口批次、并发日志、SLA 和报告。
-
-<a id="src-docs-04-credit-to-cash-loans-readme--实施边界"></a>
-### 实施边界
-不直接 DML Oracle EBS 业务表。写入使用标准页面、公开 API、Open Interface 或受控自定义对象；可选产品需确认许可证、安装和补丁范围。
-
-<a id="src-docs-04-credit-to-cash-loans-readme--关联与官方依据"></a>
-### 关联与官方依据
-[本知识域入口](#src-docs-04-credit-to-cash-readme)｜[Oracle Financials Documentation](https://docs.oracle.com/cd/E26401_01/nav/financials.htm)
-
-
-<!-- source: docs/04-credit-to-cash/order-shipping-boundary/README.md -->
-<a id="src-docs-04-credit-to-cash-order-shipping-boundary-readme"></a>
-## Credit to Cash： order-shipping-boundary
-
-
-<a id="src-docs-04-credit-to-cash-order-shipping-boundary-readme--业务定位"></a>
-### 业务定位
-本专题是 Credit to Cash 中的 order-shipping-boundary 子域。覆盖 TCA 客户、订单/发运边界、应收交易、信用、催收、自助、扣款/争议、Loans 和 C2C 内控。
-
-<a id="src-docs-04-credit-to-cash-order-shipping-boundary-readme--设计与配置"></a>
-### 设计与配置
-以 Party/Account/Site 分层治理客户；定义交易来源/类型、AutoAccounting、收款方法、信用策略、催收和坏账审批；以交易、收款、会计和 GL 完成对账。
-上线前以正常、跨期、外币/多组织（如适用）、拒绝、冲销/撤回、重跑和月结场景完成验证。
-
-<a id="src-docs-04-credit-to-cash-order-shipping-boundary-readme--数据接口与会计追溯"></a>
-### 数据、接口与会计追溯
-HZ_PARTIES、HZ_CUST_ACCOUNTS、RA_CUSTOMER_TRX_ALL、RA_CUSTOMER_TRX_LINES_ALL、AR_PAYMENT_SCHEDULES_ALL、AR_CASH_RECEIPTS_ALL、AR_RECEIVABLE_APPLICATIONS_ALL、XLA_AE_HEADERS。接口必须维护来源业务键、批次号、行号、状态、错误码和可重放策略；会计追溯按交易主键、事件、分录和 GL 链分层进行。
-
-```sql
-select owner, table_name, column_name, data_type
-  from all_tab_columns
- where owner = upper(:p_owner)
-   and table_name = upper(:p_table_name)
- order by column_id;
-```
-
-<a id="src-docs-04-credit-to-cash-order-shipping-boundary-readme--常见问题与排查"></a>
-### 常见问题与排查
-将客户名称当唯一键；重传 AutoInvoice 造成重复交易；把账龄异常与信用/催收产品未部署混淆。 先确认产品是否已安装、职责和组织/账簿上下文是否正确，再检查业务状态、接口批次、并发日志、SLA 和报告。
-
-<a id="src-docs-04-credit-to-cash-order-shipping-boundary-readme--实施边界"></a>
-### 实施边界
-不直接 DML Oracle EBS 业务表。写入使用标准页面、公开 API、Open Interface 或受控自定义对象；可选产品需确认许可证、安装和补丁范围。
-
-<a id="src-docs-04-credit-to-cash-order-shipping-boundary-readme--关联与官方依据"></a>
-### 关联与官方依据
-[本知识域入口](#src-docs-04-credit-to-cash-readme)｜[Oracle Financials Documentation](https://docs.oracle.com/cd/E26401_01/nav/financials.htm)
-
-
-<!-- source: docs/04-credit-to-cash/receivables/README.md -->
-<a id="src-docs-04-credit-to-cash-receivables-readme"></a>
-## Credit to Cash： receivables
-
-
-<a id="src-docs-04-credit-to-cash-receivables-readme--业务定位"></a>
-### 业务定位
-本专题是 Credit to Cash 中的 receivables 子域。覆盖 TCA 客户、订单/发运边界、应收交易、信用、催收、自助、扣款/争议、Loans 和 C2C 内控。
-
-<a id="src-docs-04-credit-to-cash-receivables-readme--设计与配置"></a>
-### 设计与配置
-以 Party/Account/Site 分层治理客户；定义交易来源/类型、AutoAccounting、收款方法、信用策略、催收和坏账审批；以交易、收款、会计和 GL 完成对账。
-上线前以正常、跨期、外币/多组织（如适用）、拒绝、冲销/撤回、重跑和月结场景完成验证。
-
-<a id="src-docs-04-credit-to-cash-receivables-readme--数据接口与会计追溯"></a>
-### 数据、接口与会计追溯
-HZ_PARTIES、HZ_CUST_ACCOUNTS、RA_CUSTOMER_TRX_ALL、RA_CUSTOMER_TRX_LINES_ALL、AR_PAYMENT_SCHEDULES_ALL、AR_CASH_RECEIPTS_ALL、AR_RECEIVABLE_APPLICATIONS_ALL、XLA_AE_HEADERS。接口必须维护来源业务键、批次号、行号、状态、错误码和可重放策略；会计追溯按交易主键、事件、分录和 GL 链分层进行。
-
-```sql
-select owner, table_name, column_name, data_type
-  from all_tab_columns
- where owner = upper(:p_owner)
-   and table_name = upper(:p_table_name)
- order by column_id;
-```
-
-<a id="src-docs-04-credit-to-cash-receivables-readme--常见问题与排查"></a>
-### 常见问题与排查
-将客户名称当唯一键；重传 AutoInvoice 造成重复交易；把账龄异常与信用/催收产品未部署混淆。 先确认产品是否已安装、职责和组织/账簿上下文是否正确，再检查业务状态、接口批次、并发日志、SLA 和报告。
-
-<a id="src-docs-04-credit-to-cash-receivables-readme--实施边界"></a>
-### 实施边界
-不直接 DML Oracle EBS 业务表。写入使用标准页面、公开 API、Open Interface 或受控自定义对象；可选产品需确认许可证、安装和补丁范围。
-
-<a id="src-docs-04-credit-to-cash-receivables-readme--关联与官方依据"></a>
-### 关联与官方依据
-[本知识域入口](#src-docs-04-credit-to-cash-readme)｜[Oracle Financials Documentation](https://docs.oracle.com/cd/E26401_01/nav/financials.htm)
-
-
-<!-- source: docs/04-credit-to-cash/tca-customer-master/README.md -->
-<a id="src-docs-04-credit-to-cash-tca-customer-master-readme"></a>
-## Credit to Cash： tca-customer-master
-
-
-<a id="src-docs-04-credit-to-cash-tca-customer-master-readme--业务定位"></a>
-### 业务定位
-本专题是 Credit to Cash 中的 tca-customer-master 子域。覆盖 TCA 客户、订单/发运边界、应收交易、信用、催收、自助、扣款/争议、Loans 和 C2C 内控。
-
-<a id="src-docs-04-credit-to-cash-tca-customer-master-readme--设计与配置"></a>
-### 设计与配置
-以 Party/Account/Site 分层治理客户；定义交易来源/类型、AutoAccounting、收款方法、信用策略、催收和坏账审批；以交易、收款、会计和 GL 完成对账。
-上线前以正常、跨期、外币/多组织（如适用）、拒绝、冲销/撤回、重跑和月结场景完成验证。
-
-<a id="src-docs-04-credit-to-cash-tca-customer-master-readme--数据接口与会计追溯"></a>
-### 数据、接口与会计追溯
-HZ_PARTIES、HZ_CUST_ACCOUNTS、RA_CUSTOMER_TRX_ALL、RA_CUSTOMER_TRX_LINES_ALL、AR_PAYMENT_SCHEDULES_ALL、AR_CASH_RECEIPTS_ALL、AR_RECEIVABLE_APPLICATIONS_ALL、XLA_AE_HEADERS。接口必须维护来源业务键、批次号、行号、状态、错误码和可重放策略；会计追溯按交易主键、事件、分录和 GL 链分层进行。
-
-```sql
-select owner, table_name, column_name, data_type
-  from all_tab_columns
- where owner = upper(:p_owner)
-   and table_name = upper(:p_table_name)
- order by column_id;
-```
-
-<a id="src-docs-04-credit-to-cash-tca-customer-master-readme--常见问题与排查"></a>
-### 常见问题与排查
-将客户名称当唯一键；重传 AutoInvoice 造成重复交易；把账龄异常与信用/催收产品未部署混淆。 先确认产品是否已安装、职责和组织/账簿上下文是否正确，再检查业务状态、接口批次、并发日志、SLA 和报告。
-
-<a id="src-docs-04-credit-to-cash-tca-customer-master-readme--实施边界"></a>
-### 实施边界
-不直接 DML Oracle EBS 业务表。写入使用标准页面、公开 API、Open Interface 或受控自定义对象；可选产品需确认许可证、安装和补丁范围。
-
-<a id="src-docs-04-credit-to-cash-tca-customer-master-readme--关联与官方依据"></a>
-### 关联与官方依据
-[本知识域入口](#src-docs-04-credit-to-cash-readme)｜[Oracle Financials Documentation](https://docs.oracle.com/cd/E26401_01/nav/financials.htm)
+## 9. 专题详解
 
 
 <!-- source: docs/03-ar/README.md -->
 <a id="src-docs-03-ar-readme"></a>
-## Oracle Receivables（AR / Credit to Cash）
+### Oracle Receivables（AR / Credit to Cash）
 
 
 本目录覆盖客户主数据、应收交易、收款与核销、信用/催收、AutoInvoice/Lockbox、子账会计和关账。订单管理、Shipping 与税务并不属于 AR 的独立账簿边界，但会决定交易来源、开票时点和收入/税务结果。
 
 <a id="src-docs-03-ar-readme--专题导航"></a>
-### 专题导航
+#### 专题导航
 
 - [O2C 子账流程](#src-docs-03-ar-process)
 - [客户、地点与信用](#src-docs-03-ar-customers-credit)
@@ -427,7 +98,7 @@ select owner, table_name, column_name, data_type
 - [接口排错](#src-docs-03-ar-interfaces-troubleshooting)
 
 <a id="src-docs-03-ar-readme--核心业务链"></a>
-### 核心业务链
+#### 核心业务链
 
 ```text
 TCA Party / Account / Site
@@ -439,7 +110,7 @@ TCA Party / Account / Site
 ```
 
 <a id="src-docs-03-ar-readme--关键控制"></a>
-### 关键控制
+#### 关键控制
 
 - 客户、客户账户、地点和付款地点必须分层治理；不要仅以显示名称作为唯一业务键。
 - AutoInvoice 必须具备来源系统业务键、接口批次、幂等策略与拒绝行回写；重传前先确认原交易是否已成功创建。
@@ -447,7 +118,7 @@ TCA Party / Account / Site
 - 交易、收款、SLA 与 GL 的断点应按 `CUSTOMER_TRX_ID`、`CASH_RECEIPT_ID`、`EVENT_ID` 和 `GL_SL_LINK_ID` 分层定位。
 
 <a id="src-docs-03-ar-readme--官方依据"></a>
-### 官方依据
+#### 官方依据
 
 - [Oracle Receivables Documentation](https://docs.oracle.com/cd/E26401_01/nav/financials.htm)
 - [Oracle Advanced Collections Documentation](https://docs.oracle.com/cd/E26401_01/nav/financials.htm)
@@ -455,11 +126,11 @@ TCA Party / Account / Site
 
 <!-- source: docs/03-ar/accounting-close-reports.md -->
 <a id="src-docs-03-ar-accounting-close-reports"></a>
-## AR 会计、过账、月结与报表
+### AR 会计、过账、月结与报表
 
 
 <a id="src-docs-03-ar-accounting-close-reports--会计流"></a>
-### 会计流
+#### 会计流
 
 ```text
 Transaction/Receipt/Adjustment Event
@@ -470,7 +141,7 @@ Transaction/Receipt/Adjustment Event
 典型分录（以实际 AutoAccounting/SLA 为准）：Invoice 借 Receivable/贷 Revenue+Tax；Receipt 借 Cash/Remittance/未核销、贷 Receivable；Clear 在 Cash Clearing 与 Cash 间转换；Adjustment 在 Receivable 与 Adjustment Account 间转换。
 
 <a id="src-docs-03-ar-accounting-close-reports--月结"></a>
-### 月结
+#### 月结
 
 1. 完成 AutoInvoice/Lockbox，处理未完成交易、未识别/未核销收款、待批调整。
 2. 检查发票/收款 GL Date、交易税、外币和未处理接口。
@@ -479,7 +150,7 @@ Transaction/Receipt/Adjustment Event
 5. 对账 Receivable、Revenue、Tax、Unapplied/Unidentified、Cash/Clearing 账户，再关闭 AR 期间。
 
 <a id="src-docs-03-ar-accounting-close-reports--sql"></a>
-### SQL
+#### SQL
 
 ```sql
 -- 未会计/未转 GL 的 AR SLA 头
@@ -509,7 +180,7 @@ SELECT org_id, class, invoice_currency_code,
 ```
 
 <a id="src-docs-03-ar-accounting-close-reports--差异排查"></a>
-### 差异排查
+#### 差异排查
 
 - 统一 Ledger/OU、As-of Date、Currency、Account Range 和 Posted 参数。
 - 分别检查未会计、未转 GL、未 Import、未 Post、GL 手工调整。
@@ -517,7 +188,7 @@ SELECT org_id, class, invoice_currency_code,
 - 收款差异应同时跟踪 Receipt History、Application、CE Reconciliation 和 SLA。
 
 <a id="src-docs-03-ar-accounting-close-reports--关联"></a>
-### 关联
+#### 关联
 
 - [SLA](01-foundation.md#src-docs-01-common-sla)
 - [GL 结账](02-record-to-report.md#src-docs-04-gl-close-reports)
@@ -525,18 +196,18 @@ SELECT org_id, class, invoice_currency_code,
 
 <!-- source: docs/03-ar/collections-aging.md -->
 <a id="src-docs-03-ar-collections-aging"></a>
-## AR 催收、账龄、坏账准备与核销
+### AR 催收、账龄、坏账准备与核销
 
 
 <a id="src-docs-03-ar-collections-aging--原理"></a>
-### 原理
+#### 原理
 
 Aging 以 `AR_PAYMENT_SCHEDULES_ALL` 的 Due Date、Amount Due Remaining 和截止日计算，必须正确纳入发票、Debit Memo、Credit Memo、Chargeback 及收款。当前余额不等于历史截止日余额；历史 Aging 需考虑截止日后的核销/调整。
 
 Collections 可使用 Dunning Letters/Statements 或 Advanced Collections 的 Scoring、Strategy、Work Item、Promise to Pay、Dispute。坏账准备可通过 SLA/GL 调整流程实现；核销通常使用 Adjustment/Receivables Activity，需保留审批与税务证据。
 
 <a id="src-docs-03-ar-collections-aging--配置"></a>
-### 配置
+#### 配置
 
 - Aging Buckets、Statement Cycle、Dunning/Collections Profile、Collector、Customer Profile Class。
 - Adjustment Activity、Approval Limit、Reason、Write-off Account/SLA。
@@ -544,7 +215,7 @@ Collections 可使用 Dunning Letters/Statements 或 Advanced Collections 的 Sc
 - 信用损失政策需与会计准则、账龄、历史回收率和管理审批一致。
 
 <a id="src-docs-03-ar-collections-aging--sql"></a>
-### SQL
+#### SQL
 
 ```sql
 -- 当前开放应收简表，历史 Aging 请使用标准报表
@@ -568,7 +239,7 @@ SELECT customer_id, SUM(amount_due_remaining) open_amount
 ```
 
 <a id="src-docs-03-ar-collections-aging--排查"></a>
-### 排查
+#### 排查
 
 - Aging 与交易查询不一致：检查 As-of Date、GL Date、Currency、Open/Closed、截止日后 Application/Adjustment 和报表参数。
 - Statement 漏单：查 Customer/Site Profile、Statement Flag/Cycle、Minimum Amount、Site Use 和交易完成状态。
@@ -576,7 +247,7 @@ SELECT customer_id, SUM(amount_due_remaining) open_amount
 - Write-off 不能审批：查限额、Activity、Reason、Amount/Percentage、Period 和职责权限。
 
 <a id="src-docs-03-ar-collections-aging--关联"></a>
-### 关联
+#### 关联
 
 - [Customer/Credit](#src-docs-03-ar-customers-credit)
 - [AR 会计](#src-docs-03-ar-accounting-close-reports)
@@ -584,16 +255,16 @@ SELECT customer_id, SUM(amount_due_remaining) open_amount
 
 <!-- source: docs/03-ar/credit-collections-ireceivables.md -->
 <a id="src-docs-03-ar-credit-collections-ireceivables"></a>
-## 信用管理、催收、争议与客户自助
+### 信用管理、催收、争议与客户自助
 
 
 <a id="src-docs-03-ar-credit-collections-ireceivables--产品边界"></a>
-### 产品边界
+#### 产品边界
 
 Oracle Receivables 保存交易、收款和未结余额；Credit Management 对客户信用审核/额度提供决策；Advanced Collections 管理逾期、策略、承诺付款和催收工作；iReceivables/Bill Presentment 提供客户自助查询、在线付款等能力。它们均依赖 TCA 与 AR 的准确客户层级和账龄。
 
 <a id="src-docs-03-ar-credit-collections-ireceivables--业务流程"></a>
-### 业务流程
+#### 业务流程
 
 ```text
 TCA Party / Account / Site
@@ -606,7 +277,7 @@ TCA Party / Account / Site
 ```
 
 <a id="src-docs-03-ar-credit-collections-ireceivables--配置与治理清单"></a>
-### 配置与治理清单
+#### 配置与治理清单
 
 - 明确信用额度的层级（客户、账户、地点或业务单元）和审批责任，避免 OM/AR 使用不同的信用口径。
 - 定义账龄桶、逾期日、催收等级、策略、工作项、信函模板和承诺付款的到期跟踪。
@@ -614,7 +285,7 @@ TCA Party / Account / Site
 - 客户自助/在线支付仅在已部署产品、DMZ/SSO、安全证书和隐私要求均满足时启用。
 
 <a id="src-docs-03-ar-credit-collections-ireceivables--常用诊断-sql"></a>
-### 常用诊断 SQL
+#### 常用诊断 SQL
 
 ```sql
 -- AR 未结余额是账龄和催收的基础；金额字段须按报表口径核实。
@@ -643,14 +314,14 @@ select hca.account_number,
 ```
 
 <a id="src-docs-03-ar-credit-collections-ireceivables--排错方法"></a>
-### 排错方法
+#### 排错方法
 
 1. 先确认客户/账户/地点、交易与收款应用是否处于预期状态；账龄异常常由未应用、反应用、冲销或错误截止日期引起。
 2. 再检查信用/催收产品是否已安装且数据同步/并发程序正常，不将未部署产品的对象误作基础 AR 缺陷。
 3. 对争议和坏账先核对批准、原因码、原交易/收款关系和 SLA，再核查 GL 差异。
 
 <a id="src-docs-03-ar-credit-collections-ireceivables--官方参考"></a>
-### 官方参考
+#### 官方参考
 
 - [Oracle Credit Management Documentation](https://docs.oracle.com/cd/E26401_01/nav/financials.htm)
 - [Oracle Advanced Collections Documentation](https://docs.oracle.com/cd/E26401_01/nav/financials.htm)
@@ -659,11 +330,11 @@ select hca.account_number,
 
 <!-- source: docs/03-ar/customers-credit.md -->
 <a id="src-docs-03-ar-customers-credit"></a>
-## 客户、客户地点、付款条件与信用管理
+### 客户、客户地点、付款条件与信用管理
 
 
 <a id="src-docs-03-ar-customers-credit--tca-模型"></a>
-### TCA 模型
+#### TCA 模型
 
 ```text
 HZ_PARTIES（主体）
@@ -676,7 +347,7 @@ HZ_PARTY_SITES → HZ_LOCATIONS（地址）
 Party 表示真实世界主体，Customer Account 表示交易账户，Site Use 表示 OU 下的 Bill-To/Ship-To 用途。Profile 可在系统、Profile Class、Account、Site 层级默认，包括 Payment Terms、Credit Limit、Statement/Dunning、AutoCash 等。
 
 <a id="src-docs-03-ar-customers-credit--设置与数据治理"></a>
-### 设置与数据治理
+#### 设置与数据治理
 
 - 统一 Party/Account 命名、注册号/税号、地址标准化和重复防护。
 - 明确 Bill-To 与 Ship-To 关系、Primary Use、OU、Tax、Price List、Sales Territory。
@@ -684,7 +355,7 @@ Party 表示真实世界主体，Customer Account 表示交易账户，Site Use 
 - Merge 必须用 TCA Customer Merge 标准流程，并先评估 OM、AR、IBY、Tax、Install Base 等下游。
 
 <a id="src-docs-03-ar-customers-credit--sql"></a>
-### SQL
+#### SQL
 
 ```sql
 SELECT hp.party_id, hp.party_number, hp.party_name,
@@ -707,7 +378,7 @@ SELECT hcasa.cust_acct_site_id, hcasa.cust_account_id,
 ```
 
 <a id="src-docs-03-ar-customers-credit--排查"></a>
-### 排查
+#### 排查
 
 - Customer/Site LOV 缺失：检查 Account/Site/Site Use 状态、OU、用途、有效日期和职责 MOAC。
 - Bill-To 不可用：检查 Site Use `BILL_TO`、Primary、Payment Term、Currency/Tax 必要数据。
@@ -715,7 +386,7 @@ SELECT hcasa.cust_acct_site_id, hcasa.cust_account_id,
 - 重复客户：同时比较名称、税号、地址、电话/邮箱，避免仅按名称误合并。
 
 <a id="src-docs-03-ar-customers-credit--关联"></a>
-### 关联
+#### 关联
 
 - [AR 交易](#src-docs-03-ar-transactions)
 - [收款](#src-docs-03-ar-receipts)
@@ -723,13 +394,13 @@ SELECT hcasa.cust_acct_site_id, hcasa.cust_account_id,
 
 <!-- source: docs/03-ar/interfaces-troubleshooting.md -->
 <a id="src-docs-03-ar-interfaces-troubleshooting"></a>
-## AutoInvoice、Lockbox 接口与排错
+### AutoInvoice、Lockbox 接口与排错
 
 
 > 需要 AutoInvoice、收入分配、AutoLockbox 和 ISG REST 的完整代码，请先读 [AR 接口实现案例](#src-docs-03-ar-interfaces)。
 
 <a id="src-docs-03-ar-interfaces-troubleshooting--autoinvoice"></a>
-### AutoInvoice
+#### AutoInvoice
 
 ```text
 OM/Projects/External System
@@ -741,7 +412,7 @@ OM/Projects/External System
 `INTERFACE_LINE_CONTEXT + INTERFACE_LINE_ATTRIBUTE1..15` 应组成稳定的外部唯一键和 Drilldown 键。Grouping Rule 决定哪些行合并到同一交易；Transaction Source 决定自动编号、字段验证和引用规则。
 
 <a id="src-docs-03-ar-interfaces-troubleshooting--lockbox"></a>
-### Lockbox
+#### Lockbox
 
 ```text
 Bank File → SQL*Loader/Transmission
@@ -751,7 +422,7 @@ Bank File → SQL*Loader/Transmission
 ```
 
 <a id="src-docs-03-ar-interfaces-troubleshooting--sql"></a>
-### SQL
+#### SQL
 
 ```sql
 SELECT interface_line_id, interface_line_context,
@@ -780,7 +451,7 @@ SELECT transmission_record_id, transmission_id, record_type,
 ```
 
 <a id="src-docs-03-ar-interfaces-troubleshooting--排查"></a>
-### 排查
+#### 排查
 
 - AutoInvoice 无数据：检查 Source/Group ID/ORG_ID 参数、`REQUEST_ID`、已处理标志和 MOAC。
 - Invalid Bill-to：检查 TCA Account/Site Use、OU、Status、Orig System Reference 和 ID/Reference 使用方式。
@@ -790,25 +461,25 @@ SELECT transmission_record_id, transmission_id, record_type,
 - Lockbox 无法识别客户/发票：检查 Matching Order、Customer/Invoice/Bank Account 引用和 AutoCash Rules。
 
 <a id="src-docs-03-ar-interfaces-troubleshooting--关联"></a>
-### 关联
+#### 关联
 
 - [AR 交易](#src-docs-03-ar-transactions)
 - [AR 收款](#src-docs-03-ar-receipts)
 - [集成设计](10-technical.md#src-docs-09-technical-integration)
 
 <a id="src-docs-03-ar-interfaces-troubleshooting--官方参考"></a>
-### 官方参考
+#### 官方参考
 
 - [Oracle Receivables Implementation Guide R12.2](https://docs.oracle.com/cd/E26401_01/doc.122/f10310/)
 
 
 <!-- source: docs/03-ar/interfaces.md -->
 <a id="src-docs-03-ar-interfaces"></a>
-## Oracle Receivables 接口实现案例
+### Oracle Receivables 接口实现案例
 
 
 <a id="src-docs-03-ar-interfaces--1-业界常用场景"></a>
-### 1. 业界常用场景
+#### 1. 业界常用场景
 
 | 场景 | 推荐接口 | 说明 |
 | --- | --- | --- |
@@ -819,10 +490,10 @@ SELECT transmission_record_id, transmission_id, record_type,
 | 客户主数据同步 | TCA Customer Interface/公开 TCA API | 避免直接 DML `HZ_*` |
 
 <a id="src-docs-03-ar-interfaces--2-autoinvoice-实现"></a>
-### 2. AutoInvoice 实现
+#### 2. AutoInvoice 实现
 
 <a id="src-docs-03-ar-interfaces--21-最小非-po-销售发票行"></a>
-#### 2.1 最小非 PO 销售发票行
+##### 2.1 最小非 PO 销售发票行
 
 ```sql
 DECLARE
@@ -885,7 +556,7 @@ END;
 `ORIG_SYSTEM_BILL_ADDRESS_ID` 的目标对象与 Batch Source 的 ID/Reference 验证方式必须在目标实例中确认。如使用 `*_REF` 字段，不应同时传入互相矛盾的 ID。
 
 <a id="src-docs-03-ar-interfaces--22-指定收入账户autoaccounting-可派生时不必传"></a>
-#### 2.2 指定收入账户（AutoAccounting 可派生时不必传）
+##### 2.2 指定收入账户（AutoAccounting 可派生时不必传）
 
 ```sql
 INSERT INTO ra_interface_distributions_all (
@@ -920,12 +591,12 @@ INSERT INTO ra_interface_distributions_all (
 在多数实施中，建议由 AutoAccounting/SLA 统一派生账户；仅在有明确业务要求、Batch Source 允许且 CCID 经验证时由源系统传账户。
 
 <a id="src-docs-03-ar-interfaces--23-税务实现"></a>
-#### 2.3 税务实现
+##### 2.3 税务实现
 
 推荐传送 Tax Determining Factors（如 Product Fiscal Classification/Tax Classification、Ship-to/Bill-to），由 EBTax 计算；不推荐源系统直接传 Tax Amount 覆盖 EBTax。必须传税行时，`LINE_TYPE='TAX'` 的必填/禁填字段以 Receivables Reference Guide 为准。
 
 <a id="src-docs-03-ar-interfaces--3-提交-autoinvoice"></a>
-### 3. 提交 AutoInvoice
+#### 3. 提交 AutoInvoice
 
 ```sql
 DECLARE
@@ -958,7 +629,7 @@ END;
 > `RAXTRX` 参数位置随程序定义和补丁级别可变。在目标实例核对 Program Parameters 后再封装；也可将 AutoInvoice Concurrent Program 作为 ISG REST 服务部署。
 
 <a id="src-docs-03-ar-interfaces--4-autoinvoice-错误与成功对账"></a>
-### 4. AutoInvoice 错误与成功对账
+#### 4. AutoInvoice 错误与成功对账
 
 ```sql
 -- 错误
@@ -991,7 +662,7 @@ SELECT rctl.customer_trx_id,
 Transaction Flexfield 必须在 AR 中定义并设置唯一性，才能成为可靠的幂等/Drilldown 键。
 
 <a id="src-docs-03-ar-interfaces--5-autolockbox-银行收款案例"></a>
-### 5. AutoLockbox 银行收款案例
+#### 5. AutoLockbox 银行收款案例
 
 ```text
 Bank statement/lockbox file
@@ -1007,7 +678,7 @@ Bank statement/lockbox file
 业界常用于银行代收、零售门店汇总收款、B2B 虚拟账号收款。文件必须保存 Bank Account + File Sequence + File Hash，防止同一文件被重复 Import/Apply。Oracle 官方也提醒 AutoLockbox 需建立操作控制避免重复处理银行文件。
 
 <a id="src-docs-03-ar-interfaces--6-isg-autoinvoice-rest-调用方式"></a>
-### 6. ISG AutoInvoice REST 调用方式
+#### 6. ISG AutoInvoice REST 调用方式
 
 Oracle 官方以 Open Interface `RAXMTR` 作为 REST 示例。管理员在 Integration Repository 部署后，必须从当前实例 WADL 取得真实 endpoint/operation/payload schema。
 
@@ -1024,14 +695,14 @@ curl --fail-with-body \
 不在命令行历史、源码或日志中保存密码/Token。Open Interface REST 只负责写入接口数据，仍需调用 AutoInvoice Concurrent Program 完成业务导入。
 
 <a id="src-docs-03-ar-interfaces--7-关联文档"></a>
-### 7. 关联文档
+#### 7. 关联文档
 
 - [AutoInvoice/Lockbox 排错](#src-docs-03-ar-interfaces-troubleshooting)
 - [AR 常用表](#src-docs-03-ar-tables)
 - [EBTax](06-cash-tax.md#src-docs-07-ce-tax-ebtax)
 
 <a id="src-docs-03-ar-interfaces--8-官方参考"></a>
-### 8. 官方参考
+#### 8. 官方参考
 
 - [Oracle Receivables Reference Guide: Interface Tables](https://docs.oracle.com/cd/E26401_01/doc.122/f10312/T447348T383863.htm)
 - [Oracle Receivables User Guide: AutoInvoice](https://docs.oracle.com/cd/E26401_01/doc.122/f10570/T355475T382065.htm)
@@ -1041,11 +712,11 @@ curl --fail-with-body \
 
 <!-- source: docs/03-ar/process.md -->
 <a id="src-docs-03-ar-process"></a>
-## Oracle Receivables 业务流程（O2C 子账视角）
+### Oracle Receivables 业务流程（O2C 子账视角）
 
 
 <a id="src-docs-03-ar-process--主流程"></a>
-### 主流程
+#### 主流程
 
 ```text
 Customer/Account/Site → Order → Ship → AutoInvoice/Manual Transaction
@@ -1057,7 +728,7 @@ Customer/Account/Site → Order → Ship → AutoInvoice/Manual Transaction
 AR 发票头/行为 `RA_CUSTOMER_TRX_ALL/RA_CUSTOMER_TRX_LINES_ALL`，会计分配为 `RA_CUST_TRX_LINE_GL_DIST_ALL`，未收分期为 `AR_PAYMENT_SCHEDULES_ALL`，收款为 `AR_CASH_RECEIPTS_ALL`，核销历史为 `AR_RECEIVABLE_APPLICATIONS_ALL`。客户主数据使用 TCA，AR 交易以 OU 隔离。
 
 <a id="src-docs-03-ar-process--配置主线"></a>
-### 配置主线
+#### 配置主线
 
 1. 完成 Ledger/OU/MOAC、AR System Options、Receivables Activities、AutoAccounting。
 2. 定义 Transaction Source/Type、Payment Terms、Memo Lines、Salesperson、Document Sequence。
@@ -1066,7 +737,7 @@ AR 发票头/行为 `RA_CUSTOMER_TRX_ALL/RA_CUSTOMER_TRX_LINES_ALL`，会计分�
 5. 测试手工/AutoInvoice、Credit Memo、Receipt/Application、Chargeback、Adjustment、Refund、Unidentified/Unapplied 及外币。
 
 <a id="src-docs-03-ar-process--sql"></a>
-### SQL
+#### SQL
 
 ```sql
 SELECT rcta.customer_trx_id, rcta.trx_number, rcta.org_id,
@@ -1086,7 +757,7 @@ SELECT aps.payment_schedule_id, aps.class, aps.status,
 ```
 
 <a id="src-docs-03-ar-process--排查"></a>
-### 排查
+#### 排查
 
 - 交易不能 Complete：查 Line/Tax/Freight、GL Distribution、AutoAccounting、Payment Terms、Salesperson、Currency/Rate。
 - 不能会计：查 Complete Flag、GL Date、Period、Revenue Contingency/Scheduling、XLA Event 和 CCID。
@@ -1094,7 +765,7 @@ SELECT aps.payment_schedule_id, aps.class, aps.status,
 - AR/GL 不平：按 Transaction/Receipt/Adjustment 分类，对比 SLA Transfer/Post、GL 手工分录和截止日。
 
 <a id="src-docs-03-ar-process--关联"></a>
-### 关联
+#### 关联
 
 - [AR/TCA 常用表结构与字段含义](#src-docs-03-ar-tables)
 - [O2C 端到端](09-end-to-end.md#src-docs-08-e2e-order-to-cash)
@@ -1103,11 +774,11 @@ SELECT aps.payment_schedule_id, aps.class, aps.status,
 
 <!-- source: docs/03-ar/receipts.md -->
 <a id="src-docs-03-ar-receipts"></a>
-## AR 收款、Lockbox、自动核销与退款
+### AR 收款、Lockbox、自动核销与退款
 
 
 <a id="src-docs-03-ar-receipts--生命周期"></a>
-### 生命周期
+#### 生命周期
 
 ```text
 Receipt Enter/Lockbox → Confirm → Remit → Clear
@@ -1118,7 +789,7 @@ Receipt Enter/Lockbox → Confirm → Remit → Clear
 Receipt Class 定义 Confirmation/Remittance/Clearing 步骤，Receipt Method 关联账户和活动，AutoCash Rule Set 定义自动核销顺序。Receipt History 记录确认、托收、清算和反冲状态；Application 表中同一收款可有 Applied/Unapplied/On-account 等多行历史。
 
 <a id="src-docs-03-ar-receipts--配置"></a>
-### 配置
+#### 配置
 
 - Receipt Class/Method、Remittance Bank Account、Receivables Activities、AutoCash Rule Set。
 - Lockbox、Transmission Format、Data Record Mapping、Receipt Batch Source、AutoAssociate、Post QuickCash。
@@ -1126,7 +797,7 @@ Receipt Class 定义 Confirmation/Remittance/Clearing 步骤，Receipt Method �
 - IBY 退款、CE 银行对账、SLA Cash/Clearing/Remittance 账户。
 
 <a id="src-docs-03-ar-receipts--sql"></a>
-### SQL
+#### SQL
 
 ```sql
 SELECT acr.cash_receipt_id, acr.receipt_number, acr.org_id,
@@ -1155,7 +826,7 @@ SELECT cash_receipt_history_id, status, current_record_flag,
 ```
 
 <a id="src-docs-03-ar-receipts--排查"></a>
-### 排查
+#### 排查
 
 - Lockbox 拒绝：查 Transmission Format/记录类型、金额控制总数、收款方法/银行、Customer/Invoice 引用和重复项。
 - AutoCash 不核销：查 Rule Set 顺序、Customer Profile、折扣/容差、到期余额、参考匹配和币种。
@@ -1163,7 +834,7 @@ SELECT cash_receipt_history_id, status, current_record_flag,
 - 无法 Reverse：检查后续 Refund/Chargeback、已核销交易、关闭期间和反冲日期。
 
 <a id="src-docs-03-ar-receipts--关联"></a>
-### 关联
+#### 关联
 
 - [Cash Management](06-cash-tax.md#src-docs-07-ce-tax-cash-management)
 - [AR 结账](#src-docs-03-ar-accounting-close-reports)
@@ -1171,16 +842,16 @@ SELECT cash_receipt_history_id, status, current_record_flag,
 
 <!-- source: docs/03-ar/tables.md -->
 <a id="src-docs-03-ar-tables"></a>
-## Oracle Receivables 常用表结构
+### Oracle Receivables 常用表结构
 
 
 <a id="src-docs-03-ar-tables--业务说明"></a>
-### 业务说明
+#### 业务说明
 
 AR 由 TCA 客户主数据、交易头/行/会计分配、Payment Schedule 余额、Receipt 状态历史与 Application 历史组成。查当前余额可使用 Payment Schedules；查历史截止日余额必须纳入截止日后核销/反核销/调整，优先使用标准 Aging/Trial Balance。
 
 <a id="src-docs-03-ar-tables--表级速查"></a>
-### 表级速查
+#### 表级速查
 
 | 表 | 中文名 | 粒度/用途 | 关键字段 |
 | --- | --- | --- | --- |
@@ -1200,7 +871,7 @@ AR 由 TCA 客户主数据、交易头/行/会计分配、Payment Schedule 余�
 | `RA_INTERFACE_ERRORS_ALL` | AutoInvoice 错误 | 每个接口错误 | `INTERFACE_LINE_ID`, `MESSAGE_TEXT`, `INVALID_VALUE` |
 
 <a id="src-docs-03-ar-tables--tca-主数据字段"></a>
-### TCA 主数据字段
+#### TCA 主数据字段
 
 | 字段 | 中文名 | 业务说明 |
 | --- | --- | --- |
@@ -1211,7 +882,7 @@ AR 由 TCA 客户主数据、交易头/行/会计分配、Payment Schedule 余�
 | `PRIMARY_FLAG` | 主要用途 | `Y/N`；同一账户/OU/用途的主要地点应受业务约束 |
 
 <a id="src-docs-03-ar-tables--racustomertrxall-交易头"></a>
-### `RA_CUSTOMER_TRX_ALL` — 交易头
+#### `RA_CUSTOMER_TRX_ALL` — 交易头
 
 | 字段 | 中文名 | 业务含义 |
 | --- | --- | --- |
@@ -1227,7 +898,7 @@ AR 由 TCA 客户主数据、交易头/行/会计分配、Payment Schedule 余�
 | `ORG_ID` | OU ID | AR 交易数据边界 |
 
 <a id="src-docs-03-ar-tables--racustomertrxlinesalllinetype"></a>
-### `RA_CUSTOMER_TRX_LINES_ALL.LINE_TYPE`
+#### `RA_CUSTOMER_TRX_LINES_ALL.LINE_TYPE`
 
 | 常见值 | 中文含义 | 关联说明 |
 | --- | --- | --- |
@@ -1237,10 +908,10 @@ AR 由 TCA 客户主数据、交易头/行/会计分配、Payment Schedule 余�
 | `CHARGES` | 其他收费 | 受交易来源/业务规则影响 |
 
 <a id="src-docs-03-ar-tables--payment-schedule-和收款"></a>
-### Payment Schedule 和收款
+#### Payment Schedule 和收款
 
 <a id="src-docs-03-ar-tables--arpaymentschedulesall"></a>
-#### `AR_PAYMENT_SCHEDULES_ALL`
+##### `AR_PAYMENT_SCHEDULES_ALL`
 
 | 字段/值 | 中文含义 | 说明 |
 | --- | --- | --- |
@@ -1253,7 +924,7 @@ AR 由 TCA 客户主数据、交易头/行/会计分配、Payment Schedule 余�
 | `STATUS='CL'` | 关闭 | 当前余额已处理完，不表示历史上从未反核销 |
 
 <a id="src-docs-03-ar-tables--arreceivableapplicationsall"></a>
-#### `AR_RECEIVABLE_APPLICATIONS_ALL`
+##### `AR_RECEIVABLE_APPLICATIONS_ALL`
 
 | 字段 | 中文含义 | 常见含义 |
 | --- | --- | --- |
@@ -1266,7 +937,7 @@ AR 由 TCA 客户主数据、交易头/行/会计分配、Payment Schedule 余�
 `AR_CASH_RECEIPTS_ALL.STATUS` 是头快照；Confirmed/Remitted/Cleared/Reversed 的完整变化应查 `AR_CASH_RECEIPT_HISTORY_ALL`，当前行通常以 `CURRENT_RECORD_FLAG='Y'` 识别。
 
 <a id="src-docs-03-ar-tables--autoinvoice-重要字段"></a>
-### AutoInvoice 重要字段
+#### AutoInvoice 重要字段
 
 | 字段 | 中文名 | 官方规则要点 |
 | --- | --- | --- |
@@ -1277,7 +948,7 @@ AR 由 TCA 客户主数据、交易头/行/会计分配、Payment Schedule 余�
 | `PAYMENT_TRXN_EXTENSION_ID` | IBY 付款扩展 ID | R12 不应继续使用已废弃的客户银行账号接口列 |
 
 <a id="src-docs-03-ar-tables--官方参考"></a>
-### 官方参考
+#### 官方参考
 
 - [Oracle Receivables Reference Guide: AutoInvoice Tables and Columns](https://docs.oracle.com/cd/E26401_01/doc.122/f10312/T447348T383863.htm)
 - [Oracle Receivables Implementation Guide](https://docs.oracle.com/cd/E26401_01/doc.122/f10310/)
@@ -1286,18 +957,18 @@ AR 由 TCA 客户主数据、交易头/行/会计分配、Payment Schedule 余�
 
 <!-- source: docs/03-ar/transactions.md -->
 <a id="src-docs-03-ar-transactions"></a>
-## AR 交易类型、发票、贷项通知单与调整
+### AR 交易类型、发票、贷项通知单与调整
 
 
 <a id="src-docs-03-ar-transactions--原理"></a>
-### 原理
+#### 原理
 
 Transaction Source 控制编号、批次、自动发票和参考字段；Transaction Type 控制类别、Open Receivable、Post to GL、Natural Application、Accounting 和 Credit Memo 关系；AutoAccounting 从 Transaction Type、Memo Line、Salesperson、Standard Line、Tax 等来源派生账户。
 
 发票完成后建立 Payment Schedule。Credit Memo 可对原交易的行/税/运费或余额贷记；Adjustment 直接调整应收、费用、运费或税，需审批限额和 Receivables Activity。
 
 <a id="src-docs-03-ar-transactions--配置"></a>
-### 配置
+#### 配置
 
 1. 定义 Transaction Source/Type、AutoAccounting、Payment Terms、Memo Lines、Salesperson。
 2. 配置 EBTax、Revenue Scheduling/Contingency、Invoicing/Accounting Rules、SLA。
@@ -1305,7 +976,7 @@ Transaction Source 控制编号、批次、自动发票和参考字段；Transac
 4. 对 AutoInvoice 测试唯一性、Grouping Rule、Line Ordering、Reference 和 OM 退货/贷项链路。
 
 <a id="src-docs-03-ar-transactions--sql"></a>
-### SQL
+#### SQL
 
 ```sql
 SELECT rcta.customer_trx_id, rcta.trx_number, rcta.org_id,
@@ -1331,7 +1002,7 @@ SELECT customer_trx_line_id, line_number, line_type,
 ```
 
 <a id="src-docs-03-ar-transactions--排查"></a>
-### 排查
+#### 排查
 
 - AutoAccounting 失败：按 Receivable/Revenue/Tax/Freight/AutoInvoice Clearing 账户类型检查来源、CCID 和必需设置。
 - 不能 Complete：检查行、GL Distribution、Tax、Terms、Salesperson、Exchange Rate 和原交易引用。
@@ -1339,7 +1010,78 @@ SELECT customer_trx_line_id, line_number, line_type,
 - Adjustment 待批准：查 Approval Limit、Adjustment Type/Activity、Reason、Amount 和审批人职责。
 
 <a id="src-docs-03-ar-transactions--关联"></a>
-### 关联
+#### 关联
 
 - [AutoInvoice](#src-docs-03-ar-interfaces-troubleshooting)
 - [AR 会计](#src-docs-03-ar-accounting-close-reports)
+
+<!-- 兼容旧版目录与学习材料的定位锚点；正文已按主题重编。 -->
+<a id="src-docs-04-credit-to-cash-advanced-collections-readme"></a>
+<a id="src-docs-04-credit-to-cash-advanced-collections-readme--业务定位"></a>
+<a id="src-docs-04-credit-to-cash-advanced-collections-readme--关联与官方依据"></a>
+<a id="src-docs-04-credit-to-cash-advanced-collections-readme--实施边界"></a>
+<a id="src-docs-04-credit-to-cash-advanced-collections-readme--常见问题与排查"></a>
+<a id="src-docs-04-credit-to-cash-advanced-collections-readme--数据接口与会计追溯"></a>
+<a id="src-docs-04-credit-to-cash-advanced-collections-readme--设计与配置"></a>
+<a id="src-docs-04-credit-to-cash-credit-management-readme"></a>
+<a id="src-docs-04-credit-to-cash-credit-management-readme--业务定位"></a>
+<a id="src-docs-04-credit-to-cash-credit-management-readme--关联与官方依据"></a>
+<a id="src-docs-04-credit-to-cash-credit-management-readme--实施边界"></a>
+<a id="src-docs-04-credit-to-cash-credit-management-readme--常见问题与排查"></a>
+<a id="src-docs-04-credit-to-cash-credit-management-readme--数据接口与会计追溯"></a>
+<a id="src-docs-04-credit-to-cash-credit-management-readme--设计与配置"></a>
+<a id="src-docs-04-credit-to-cash-credit-to-cash-controls-readme"></a>
+<a id="src-docs-04-credit-to-cash-credit-to-cash-controls-readme--业务定位"></a>
+<a id="src-docs-04-credit-to-cash-credit-to-cash-controls-readme--关联与官方依据"></a>
+<a id="src-docs-04-credit-to-cash-credit-to-cash-controls-readme--实施边界"></a>
+<a id="src-docs-04-credit-to-cash-credit-to-cash-controls-readme--常见问题与排查"></a>
+<a id="src-docs-04-credit-to-cash-credit-to-cash-controls-readme--数据接口与会计追溯"></a>
+<a id="src-docs-04-credit-to-cash-credit-to-cash-controls-readme--设计与配置"></a>
+<a id="src-docs-04-credit-to-cash-deductions-and-disputes-readme"></a>
+<a id="src-docs-04-credit-to-cash-deductions-and-disputes-readme--业务定位"></a>
+<a id="src-docs-04-credit-to-cash-deductions-and-disputes-readme--关联与官方依据"></a>
+<a id="src-docs-04-credit-to-cash-deductions-and-disputes-readme--实施边界"></a>
+<a id="src-docs-04-credit-to-cash-deductions-and-disputes-readme--常见问题与排查"></a>
+<a id="src-docs-04-credit-to-cash-deductions-and-disputes-readme--数据接口与会计追溯"></a>
+<a id="src-docs-04-credit-to-cash-deductions-and-disputes-readme--设计与配置"></a>
+<a id="src-docs-04-credit-to-cash-ireceivables-and-bill-presentment-readme"></a>
+<a id="src-docs-04-credit-to-cash-ireceivables-and-bill-presentment-readme--业务定位"></a>
+<a id="src-docs-04-credit-to-cash-ireceivables-and-bill-presentment-readme--关联与官方依据"></a>
+<a id="src-docs-04-credit-to-cash-ireceivables-and-bill-presentment-readme--实施边界"></a>
+<a id="src-docs-04-credit-to-cash-ireceivables-and-bill-presentment-readme--常见问题与排查"></a>
+<a id="src-docs-04-credit-to-cash-ireceivables-and-bill-presentment-readme--数据接口与会计追溯"></a>
+<a id="src-docs-04-credit-to-cash-ireceivables-and-bill-presentment-readme--设计与配置"></a>
+<a id="src-docs-04-credit-to-cash-loans-readme"></a>
+<a id="src-docs-04-credit-to-cash-loans-readme--业务定位"></a>
+<a id="src-docs-04-credit-to-cash-loans-readme--关联与官方依据"></a>
+<a id="src-docs-04-credit-to-cash-loans-readme--实施边界"></a>
+<a id="src-docs-04-credit-to-cash-loans-readme--常见问题与排查"></a>
+<a id="src-docs-04-credit-to-cash-loans-readme--数据接口与会计追溯"></a>
+<a id="src-docs-04-credit-to-cash-loans-readme--设计与配置"></a>
+<a id="src-docs-04-credit-to-cash-order-shipping-boundary-readme"></a>
+<a id="src-docs-04-credit-to-cash-order-shipping-boundary-readme--业务定位"></a>
+<a id="src-docs-04-credit-to-cash-order-shipping-boundary-readme--关联与官方依据"></a>
+<a id="src-docs-04-credit-to-cash-order-shipping-boundary-readme--实施边界"></a>
+<a id="src-docs-04-credit-to-cash-order-shipping-boundary-readme--常见问题与排查"></a>
+<a id="src-docs-04-credit-to-cash-order-shipping-boundary-readme--数据接口与会计追溯"></a>
+<a id="src-docs-04-credit-to-cash-order-shipping-boundary-readme--设计与配置"></a>
+<a id="src-docs-04-credit-to-cash-readme"></a>
+<a id="src-docs-04-credit-to-cash-readme--与既有知识的关系"></a>
+<a id="src-docs-04-credit-to-cash-readme--官方依据"></a>
+<a id="src-docs-04-credit-to-cash-readme--核心数据对象"></a>
+<a id="src-docs-04-credit-to-cash-readme--范围与目标"></a>
+<a id="src-docs-04-credit-to-cash-readme--运行与实施控制"></a>
+<a id="src-docs-04-credit-to-cash-receivables-readme"></a>
+<a id="src-docs-04-credit-to-cash-receivables-readme--业务定位"></a>
+<a id="src-docs-04-credit-to-cash-receivables-readme--关联与官方依据"></a>
+<a id="src-docs-04-credit-to-cash-receivables-readme--实施边界"></a>
+<a id="src-docs-04-credit-to-cash-receivables-readme--常见问题与排查"></a>
+<a id="src-docs-04-credit-to-cash-receivables-readme--数据接口与会计追溯"></a>
+<a id="src-docs-04-credit-to-cash-receivables-readme--设计与配置"></a>
+<a id="src-docs-04-credit-to-cash-tca-customer-master-readme"></a>
+<a id="src-docs-04-credit-to-cash-tca-customer-master-readme--业务定位"></a>
+<a id="src-docs-04-credit-to-cash-tca-customer-master-readme--关联与官方依据"></a>
+<a id="src-docs-04-credit-to-cash-tca-customer-master-readme--实施边界"></a>
+<a id="src-docs-04-credit-to-cash-tca-customer-master-readme--常见问题与排查"></a>
+<a id="src-docs-04-credit-to-cash-tca-customer-master-readme--数据接口与会计追溯"></a>
+<a id="src-docs-04-credit-to-cash-tca-customer-master-readme--设计与配置"></a>

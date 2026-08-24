@@ -1,523 +1,86 @@
-# 端到端业务流程
+# 端到端业务流程（End-to-End Processes）
 
-> R2R、P2P、O2C、资产、项目、成本、税务、公司间和外部子账流程。本文件由原目录中的 25 份资料合并而成；各章节保留原来源标记，便于审计与后续去重。
+> 端到端视角把跨模块的单据、接口、会计、资金和控制连接起来。学习目标不是记住更多菜单，而是能在任何断点判断当前系统、对象、状态和责任人。
 
-## 本模块章节导航
+## 阅读导航
 
-- [端到端流程（目标目录）](#src-docs-09-end-to-end-readme)（原 `docs/09-end-to-end/README.md`）
-- [端到端流程：acquire-to-retire](#src-docs-09-end-to-end-acquire-to-retire)（原 `docs/09-end-to-end/acquire-to-retire.md`）
-- [端到端流程：bank-statement-to-reconciliation](#src-docs-09-end-to-end-bank-statement-to-reconciliation)（原 `docs/09-end-to-end/bank-statement-to-reconciliation.md`）
-- [端到端流程：budget-to-control](#src-docs-09-end-to-end-budget-to-control)（原 `docs/09-end-to-end/budget-to-control.md`）
-- [端到端流程：close-to-report](#src-docs-09-end-to-end-close-to-report)（原 `docs/09-end-to-end/close-to-report.md`）
-- [端到端流程：credit-to-cash](#src-docs-09-end-to-end-credit-to-cash)（原 `docs/09-end-to-end/credit-to-cash.md`）
-- [端到端流程：expense-to-reimbursement](#src-docs-09-end-to-end-expense-to-reimbursement)（原 `docs/09-end-to-end/expense-to-reimbursement.md`）
-- [端到端流程：external-subledger-to-fah](#src-docs-09-end-to-end-external-subledger-to-fah)（原 `docs/09-end-to-end/external-subledger-to-fah.md`）
-- [端到端流程：intercompany-to-elimination](#src-docs-09-end-to-end-intercompany-to-elimination)（原 `docs/09-end-to-end/intercompany-to-elimination.md`）
-- [端到端流程：inventory-wip-to-gl](#src-docs-09-end-to-end-inventory-wip-to-gl)（原 `docs/09-end-to-end/inventory-wip-to-gl.md`）
-- [端到端流程：order-to-cash](#src-docs-09-end-to-end-order-to-cash)（原 `docs/09-end-to-end/order-to-cash.md`）
-- [端到端流程：payroll-to-gl](#src-docs-09-end-to-end-payroll-to-gl)（原 `docs/09-end-to-end/payroll-to-gl.md`）
-- [端到端流程：procure-to-pay](#src-docs-09-end-to-end-procure-to-pay)（原 `docs/09-end-to-end/procure-to-pay.md`）
-- [端到端流程：project-to-asset](#src-docs-09-end-to-end-project-to-asset)（原 `docs/09-end-to-end/project-to-asset.md`）
-- [端到端流程：project-to-cash](#src-docs-09-end-to-end-project-to-cash)（原 `docs/09-end-to-end/project-to-cash.md`）
-- [端到端流程：record-to-report](#src-docs-09-end-to-end-record-to-report)（原 `docs/09-end-to-end/record-to-report.md`）
-- [端到端流程：tax-determination-to-reporting](#src-docs-09-end-to-end-tax-determination-to-reporting)（原 `docs/09-end-to-end/tax-determination-to-reporting.md`）
-- [端到端财务流程](#src-docs-08-e2e-readme)（原 `docs/08-e2e/README.md`）
-- [Oracle EBS 端到端接口编排案例](#src-docs-08-e2e-interfaces)（原 `docs/08-e2e/interfaces.md`）
-- [库存、WIP、成本与 GL 衔接](#src-docs-08-e2e-inventory-wip-cost-gl)（原 `docs/08-e2e/inventory-wip-cost-gl.md`）
-- [订单到收款（O2C）端到端](#src-docs-08-e2e-order-to-cash)（原 `docs/08-e2e/order-to-cash.md`）
-- [采购到付款（P2P）端到端](#src-docs-08-e2e-procure-to-pay)（原 `docs/08-e2e/procure-to-pay.md`）
-- [项目、费用与资产资本化](#src-docs-08-e2e-projects-assets)（原 `docs/08-e2e/projects-assets.md`）
-- [Record to Report：子账到总账的关账编排](#src-docs-08-e2e-record-to-report-close)（原 `docs/08-e2e/record-to-report-close.md`）
-- [端到端流程常用表与跨模块关联](#src-docs-08-e2e-tables)（原 `docs/08-e2e/tables.md`）
+- [分析框架](#1-通用分析框架) · [流程地图](#2-核心流程地图) · [跨模块主键](#3-跨模块相关键) · [会计追溯](#4-会计追溯标准) · [状态重跑](#5-状态与重跑) · [故障定位](#7-故障定位顺序) · [流程专题](#10-流程专题与实现细节)
 
----
+## 1. 通用分析框架
 
-<!-- source: docs/09-end-to-end/README.md -->
-<a id="src-docs-09-end-to-end-readme"></a>
-## 端到端流程（目标目录）
+对每条流程制作一张“七列流程表”：步骤、责任角色、EBS 产品、业务单据/主键、状态、会计事件、控制证据。跨系统时再加入接口批次、相关号、控制总额和重跑规则。
 
+## 2. 核心流程地图
 
-本目录统一维护跨模块状态、业务键、接口、会计、关账依赖、对账责任与补偿策略。单模块设置和表结构仍以对应产品目录为权威来源。
+| 流程 | 中文说明 | 主要产品 | 最终控制目标 |
+| --- | --- | --- | --- |
+| P2P | 采购到付款 | PO/RCV/AP/IBY/CE/ZX/GL | 合规采购、完整负债、安全付款 |
+| O2C/C2C | 订单/信用到收款 | OM/Shipping/AR/CE/ZX/GL | 完整收入应收、信用与现金回收 |
+| R2R | 记录到报告 | SLA/GL/FAH/AGIS | 会计完整、余额正确、报告可审计 |
+| A2R | 资产取得到退出 | AP/PO/FA/GL | 资产完整、折旧正确、处置受控 |
+| Project to Asset | 项目到资产 | PA/AP/FA/GL | 项目成本与资本化可追溯 |
+| Project to Cash | 项目到现金 | PA/AR/CE/GL | 合同、收入、开票和回款一致 |
+| Inventory/WIP to GL | 库存/在制品到总账 | PO/INV/WIP/CST/SLA/GL | 数量、价值和会计一致 |
+| Bank to Reconciliation | 银行流水到对账 | AP/AR/IBY/CE/GL | 银行事实与账面现金一致 |
 
-<a id="src-docs-09-end-to-end-readme--共同标准"></a>
-### 共同标准
+## 3. 跨模块相关键
 
-每条流程都要定义来源业务键、EBS 主键、接口批次、事件/分录、GL 链、失败重试、补偿、控制总额、对账口径和签字责任。不得将跨系统部分成功视为可用单一数据库回滚解决的问题。
+不要仅靠描述字段关联。优先使用来源系统、业务主键、批次/接口行、Document/Transaction Number（单据号）、Request ID（请求 ID）、Accounting Event ID（会计事件 ID）和 GL Import Reference（总账导入引用）。接口契约应从源系统到 EBS 业务表持续保存相关号。
 
+## 4. 会计追溯标准
 
-<!-- source: docs/09-end-to-end/acquire-to-retire.md -->
-<a id="src-docs-09-end-to-end-acquire-to-retire"></a>
-## 端到端流程：acquire-to-retire
+```text
+业务单据及分配行
+  → Accounting Event
+  → XLA Header/Line + Distribution Link
+  → GL Import Reference
+  → GL Journal Header/Line
+  → GL Balance / Financial Report
+```
 
+正向追溯用于证明完整性，反向追溯用于解释报表数字。每条关键流程都应各验证一次。
 
-<a id="src-docs-09-end-to-end-acquire-to-retire--流程目标"></a>
-### 流程目标
+## 5. 状态与重跑
 
-本流程以业务状态、主键链、会计事件、接口批次和期间控制为主线，确保来源业务可追溯到子账、GL、银行/报表和签字证据。
+状态至少分为来源接收、接口校验、业务导入、业务完成、会计、传 GL、过账和下游确认。批次“成功”只能说明本阶段完成。重跑前回答：是否完全失败、部分成功还是成功但回执丢失？是否存在可识别的业务唯一键？补偿动作是撤销、冲销、重传还是人工处理？
 
-<a id="src-docs-09-end-to-end-acquire-to-retire--设计与控制"></a>
-### 设计与控制
+## 6. 跨期和截止
 
-1. 定义来源系统唯一业务键、EBS 单据主键、批次号和幂等规则。
-2. 记录交易、接口、并发请求、SLA Event/AE Header、GL Journal 和外部回执之间的关联。
-3. 区分可安全重试、需人工补偿、需冲销和已完成不可逆的状态。
-4. 月结前按组织、Ledger、期间和控制总额完成数量与金额对账。
+跨模块最常见差异来自交易日期、会计日期、价值日和 GL 期间不一致。流程设计要定义截止时间、迟到交易、关闭期间、自动顺延、汇率取值和跨期调整。月结时以未完成交易清单和控制总额管理，而不是等待所有系统“看起来没报错”。
 
-<a id="src-docs-09-end-to-end-acquire-to-retire--诊断顺序"></a>
-### 诊断顺序
+## 7. 故障定位顺序
 
-先查来源交易和接口批次，再查业务单据状态、会计事件、传输/导入/过账、银行或报告结果；查询使用业务主键和日期范围，禁止无条件扫描。
+1. 取得业务影响、单据号、批次、时间、组织和用户。
+2. 找一个同类正常样本进行差异比较。
+3. 确认当前状态及最近一次成功步骤。
+4. 检查接口/并发请求、日志和下游回执。
+5. 检查会计事件、XLA、传输、导入和过账。
+6. 量化受影响数量和金额，评估跨期、付款、收入或合规风险。
+7. 选择标准恢复动作，验证幂等和对账后再关闭问题。
 
-<a id="src-docs-09-end-to-end-acquire-to-retire--支持边界"></a>
-### 支持边界
+## 8. 控制与验收矩阵
 
-写入使用标准 Open Interface、公开 API 或受控自定义对象；不直接 DML Oracle EBS 业务/会计表。
+每条流程至少验证：主数据唯一性、审批、金额/数量容差、职责分离、接口控制总额、异常队列、会计完整性、子账-GL 对账、撤销/冲销、跨期、外币、重跑和审计证据。
 
+## 9. 建议练习
 
-<!-- source: docs/09-end-to-end/bank-statement-to-reconciliation.md -->
-<a id="src-docs-09-end-to-end-bank-statement-to-reconciliation"></a>
-## 端到端流程：bank-statement-to-reconciliation
+- 选一笔 P2P 与一笔 O2C 交易，绘制从业务单据到银行和 GL 的状态图。
+- 模拟“接口部分成功”，设计检测、重跑和控制总额。
+- 从 GL 日记账行反向定位到来源单据，并记录每层关联键。
+- 制作跨模块月结依赖图，标注可并行任务和阻塞条件。
 
-
-<a id="src-docs-09-end-to-end-bank-statement-to-reconciliation--流程目标"></a>
-### 流程目标
-
-本流程以业务状态、主键链、会计事件、接口批次和期间控制为主线，确保来源业务可追溯到子账、GL、银行/报表和签字证据。
-
-<a id="src-docs-09-end-to-end-bank-statement-to-reconciliation--设计与控制"></a>
-### 设计与控制
-
-1. 定义来源系统唯一业务键、EBS 单据主键、批次号和幂等规则。
-2. 记录交易、接口、并发请求、SLA Event/AE Header、GL Journal 和外部回执之间的关联。
-3. 区分可安全重试、需人工补偿、需冲销和已完成不可逆的状态。
-4. 月结前按组织、Ledger、期间和控制总额完成数量与金额对账。
-
-<a id="src-docs-09-end-to-end-bank-statement-to-reconciliation--诊断顺序"></a>
-### 诊断顺序
-
-先查来源交易和接口批次，再查业务单据状态、会计事件、传输/导入/过账、银行或报告结果；查询使用业务主键和日期范围，禁止无条件扫描。
-
-<a id="src-docs-09-end-to-end-bank-statement-to-reconciliation--支持边界"></a>
-### 支持边界
-
-写入使用标准 Open Interface、公开 API 或受控自定义对象；不直接 DML Oracle EBS 业务/会计表。
-
-
-<!-- source: docs/09-end-to-end/budget-to-control.md -->
-<a id="src-docs-09-end-to-end-budget-to-control"></a>
-## 端到端流程：budget-to-control
-
-
-<a id="src-docs-09-end-to-end-budget-to-control--流程目标"></a>
-### 流程目标
-
-本流程以业务状态、主键链、会计事件、接口批次和期间控制为主线，确保来源业务可追溯到子账、GL、银行/报表和签字证据。
-
-<a id="src-docs-09-end-to-end-budget-to-control--设计与控制"></a>
-### 设计与控制
-
-1. 定义来源系统唯一业务键、EBS 单据主键、批次号和幂等规则。
-2. 记录交易、接口、并发请求、SLA Event/AE Header、GL Journal 和外部回执之间的关联。
-3. 区分可安全重试、需人工补偿、需冲销和已完成不可逆的状态。
-4. 月结前按组织、Ledger、期间和控制总额完成数量与金额对账。
-
-<a id="src-docs-09-end-to-end-budget-to-control--诊断顺序"></a>
-### 诊断顺序
-
-先查来源交易和接口批次，再查业务单据状态、会计事件、传输/导入/过账、银行或报告结果；查询使用业务主键和日期范围，禁止无条件扫描。
-
-<a id="src-docs-09-end-to-end-budget-to-control--支持边界"></a>
-### 支持边界
-
-写入使用标准 Open Interface、公开 API 或受控自定义对象；不直接 DML Oracle EBS 业务/会计表。
-
-
-<!-- source: docs/09-end-to-end/close-to-report.md -->
-<a id="src-docs-09-end-to-end-close-to-report"></a>
-## 端到端流程：close-to-report
-
-
-<a id="src-docs-09-end-to-end-close-to-report--流程目标"></a>
-### 流程目标
-
-本流程以业务状态、主键链、会计事件、接口批次和期间控制为主线，确保来源业务可追溯到子账、GL、银行/报表和签字证据。
-
-<a id="src-docs-09-end-to-end-close-to-report--设计与控制"></a>
-### 设计与控制
-
-1. 定义来源系统唯一业务键、EBS 单据主键、批次号和幂等规则。
-2. 记录交易、接口、并发请求、SLA Event/AE Header、GL Journal 和外部回执之间的关联。
-3. 区分可安全重试、需人工补偿、需冲销和已完成不可逆的状态。
-4. 月结前按组织、Ledger、期间和控制总额完成数量与金额对账。
-
-<a id="src-docs-09-end-to-end-close-to-report--诊断顺序"></a>
-### 诊断顺序
-
-先查来源交易和接口批次，再查业务单据状态、会计事件、传输/导入/过账、银行或报告结果；查询使用业务主键和日期范围，禁止无条件扫描。
-
-<a id="src-docs-09-end-to-end-close-to-report--支持边界"></a>
-### 支持边界
-
-写入使用标准 Open Interface、公开 API 或受控自定义对象；不直接 DML Oracle EBS 业务/会计表。
-
-
-<!-- source: docs/09-end-to-end/credit-to-cash.md -->
-<a id="src-docs-09-end-to-end-credit-to-cash"></a>
-## 端到端流程：credit-to-cash
-
-
-<a id="src-docs-09-end-to-end-credit-to-cash--流程目标"></a>
-### 流程目标
-
-本流程以业务状态、主键链、会计事件、接口批次和期间控制为主线，确保来源业务可追溯到子账、GL、银行/报表和签字证据。
-
-<a id="src-docs-09-end-to-end-credit-to-cash--设计与控制"></a>
-### 设计与控制
-
-1. 定义来源系统唯一业务键、EBS 单据主键、批次号和幂等规则。
-2. 记录交易、接口、并发请求、SLA Event/AE Header、GL Journal 和外部回执之间的关联。
-3. 区分可安全重试、需人工补偿、需冲销和已完成不可逆的状态。
-4. 月结前按组织、Ledger、期间和控制总额完成数量与金额对账。
-
-<a id="src-docs-09-end-to-end-credit-to-cash--诊断顺序"></a>
-### 诊断顺序
-
-先查来源交易和接口批次，再查业务单据状态、会计事件、传输/导入/过账、银行或报告结果；查询使用业务主键和日期范围，禁止无条件扫描。
-
-<a id="src-docs-09-end-to-end-credit-to-cash--支持边界"></a>
-### 支持边界
-
-写入使用标准 Open Interface、公开 API 或受控自定义对象；不直接 DML Oracle EBS 业务/会计表。
-
-
-<!-- source: docs/09-end-to-end/expense-to-reimbursement.md -->
-<a id="src-docs-09-end-to-end-expense-to-reimbursement"></a>
-## 端到端流程：expense-to-reimbursement
-
-
-<a id="src-docs-09-end-to-end-expense-to-reimbursement--流程目标"></a>
-### 流程目标
-
-本流程以业务状态、主键链、会计事件、接口批次和期间控制为主线，确保来源业务可追溯到子账、GL、银行/报表和签字证据。
-
-<a id="src-docs-09-end-to-end-expense-to-reimbursement--设计与控制"></a>
-### 设计与控制
-
-1. 定义来源系统唯一业务键、EBS 单据主键、批次号和幂等规则。
-2. 记录交易、接口、并发请求、SLA Event/AE Header、GL Journal 和外部回执之间的关联。
-3. 区分可安全重试、需人工补偿、需冲销和已完成不可逆的状态。
-4. 月结前按组织、Ledger、期间和控制总额完成数量与金额对账。
-
-<a id="src-docs-09-end-to-end-expense-to-reimbursement--诊断顺序"></a>
-### 诊断顺序
-
-先查来源交易和接口批次，再查业务单据状态、会计事件、传输/导入/过账、银行或报告结果；查询使用业务主键和日期范围，禁止无条件扫描。
-
-<a id="src-docs-09-end-to-end-expense-to-reimbursement--支持边界"></a>
-### 支持边界
-
-写入使用标准 Open Interface、公开 API 或受控自定义对象；不直接 DML Oracle EBS 业务/会计表。
-
-
-<!-- source: docs/09-end-to-end/external-subledger-to-fah.md -->
-<a id="src-docs-09-end-to-end-external-subledger-to-fah"></a>
-## 端到端流程：external-subledger-to-fah
-
-
-<a id="src-docs-09-end-to-end-external-subledger-to-fah--流程目标"></a>
-### 流程目标
-
-本流程以业务状态、主键链、会计事件、接口批次和期间控制为主线，确保来源业务可追溯到子账、GL、银行/报表和签字证据。
-
-<a id="src-docs-09-end-to-end-external-subledger-to-fah--设计与控制"></a>
-### 设计与控制
-
-1. 定义来源系统唯一业务键、EBS 单据主键、批次号和幂等规则。
-2. 记录交易、接口、并发请求、SLA Event/AE Header、GL Journal 和外部回执之间的关联。
-3. 区分可安全重试、需人工补偿、需冲销和已完成不可逆的状态。
-4. 月结前按组织、Ledger、期间和控制总额完成数量与金额对账。
-
-<a id="src-docs-09-end-to-end-external-subledger-to-fah--诊断顺序"></a>
-### 诊断顺序
-
-先查来源交易和接口批次，再查业务单据状态、会计事件、传输/导入/过账、银行或报告结果；查询使用业务主键和日期范围，禁止无条件扫描。
-
-<a id="src-docs-09-end-to-end-external-subledger-to-fah--支持边界"></a>
-### 支持边界
-
-写入使用标准 Open Interface、公开 API 或受控自定义对象；不直接 DML Oracle EBS 业务/会计表。
-
-
-<!-- source: docs/09-end-to-end/intercompany-to-elimination.md -->
-<a id="src-docs-09-end-to-end-intercompany-to-elimination"></a>
-## 端到端流程：intercompany-to-elimination
-
-
-<a id="src-docs-09-end-to-end-intercompany-to-elimination--流程目标"></a>
-### 流程目标
-
-本流程以业务状态、主键链、会计事件、接口批次和期间控制为主线，确保来源业务可追溯到子账、GL、银行/报表和签字证据。
-
-<a id="src-docs-09-end-to-end-intercompany-to-elimination--设计与控制"></a>
-### 设计与控制
-
-1. 定义来源系统唯一业务键、EBS 单据主键、批次号和幂等规则。
-2. 记录交易、接口、并发请求、SLA Event/AE Header、GL Journal 和外部回执之间的关联。
-3. 区分可安全重试、需人工补偿、需冲销和已完成不可逆的状态。
-4. 月结前按组织、Ledger、期间和控制总额完成数量与金额对账。
-
-<a id="src-docs-09-end-to-end-intercompany-to-elimination--诊断顺序"></a>
-### 诊断顺序
-
-先查来源交易和接口批次，再查业务单据状态、会计事件、传输/导入/过账、银行或报告结果；查询使用业务主键和日期范围，禁止无条件扫描。
-
-<a id="src-docs-09-end-to-end-intercompany-to-elimination--支持边界"></a>
-### 支持边界
-
-写入使用标准 Open Interface、公开 API 或受控自定义对象；不直接 DML Oracle EBS 业务/会计表。
-
-
-<!-- source: docs/09-end-to-end/inventory-wip-to-gl.md -->
-<a id="src-docs-09-end-to-end-inventory-wip-to-gl"></a>
-## 端到端流程：inventory-wip-to-gl
-
-
-<a id="src-docs-09-end-to-end-inventory-wip-to-gl--流程目标"></a>
-### 流程目标
-
-本流程以业务状态、主键链、会计事件、接口批次和期间控制为主线，确保来源业务可追溯到子账、GL、银行/报表和签字证据。
-
-<a id="src-docs-09-end-to-end-inventory-wip-to-gl--设计与控制"></a>
-### 设计与控制
-
-1. 定义来源系统唯一业务键、EBS 单据主键、批次号和幂等规则。
-2. 记录交易、接口、并发请求、SLA Event/AE Header、GL Journal 和外部回执之间的关联。
-3. 区分可安全重试、需人工补偿、需冲销和已完成不可逆的状态。
-4. 月结前按组织、Ledger、期间和控制总额完成数量与金额对账。
-
-<a id="src-docs-09-end-to-end-inventory-wip-to-gl--诊断顺序"></a>
-### 诊断顺序
-
-先查来源交易和接口批次，再查业务单据状态、会计事件、传输/导入/过账、银行或报告结果；查询使用业务主键和日期范围，禁止无条件扫描。
-
-<a id="src-docs-09-end-to-end-inventory-wip-to-gl--支持边界"></a>
-### 支持边界
-
-写入使用标准 Open Interface、公开 API 或受控自定义对象；不直接 DML Oracle EBS 业务/会计表。
-
-
-<!-- source: docs/09-end-to-end/order-to-cash.md -->
-<a id="src-docs-09-end-to-end-order-to-cash"></a>
-## 端到端流程：order-to-cash
-
-
-<a id="src-docs-09-end-to-end-order-to-cash--流程目标"></a>
-### 流程目标
-
-本流程以业务状态、主键链、会计事件、接口批次和期间控制为主线，确保来源业务可追溯到子账、GL、银行/报表和签字证据。
-
-<a id="src-docs-09-end-to-end-order-to-cash--设计与控制"></a>
-### 设计与控制
-
-1. 定义来源系统唯一业务键、EBS 单据主键、批次号和幂等规则。
-2. 记录交易、接口、并发请求、SLA Event/AE Header、GL Journal 和外部回执之间的关联。
-3. 区分可安全重试、需人工补偿、需冲销和已完成不可逆的状态。
-4. 月结前按组织、Ledger、期间和控制总额完成数量与金额对账。
-
-<a id="src-docs-09-end-to-end-order-to-cash--诊断顺序"></a>
-### 诊断顺序
-
-先查来源交易和接口批次，再查业务单据状态、会计事件、传输/导入/过账、银行或报告结果；查询使用业务主键和日期范围，禁止无条件扫描。
-
-<a id="src-docs-09-end-to-end-order-to-cash--支持边界"></a>
-### 支持边界
-
-写入使用标准 Open Interface、公开 API 或受控自定义对象；不直接 DML Oracle EBS 业务/会计表。
-
-
-<!-- source: docs/09-end-to-end/payroll-to-gl.md -->
-<a id="src-docs-09-end-to-end-payroll-to-gl"></a>
-## 端到端流程：payroll-to-gl
-
-
-<a id="src-docs-09-end-to-end-payroll-to-gl--流程目标"></a>
-### 流程目标
-
-本流程以业务状态、主键链、会计事件、接口批次和期间控制为主线，确保来源业务可追溯到子账、GL、银行/报表和签字证据。
-
-<a id="src-docs-09-end-to-end-payroll-to-gl--设计与控制"></a>
-### 设计与控制
-
-1. 定义来源系统唯一业务键、EBS 单据主键、批次号和幂等规则。
-2. 记录交易、接口、并发请求、SLA Event/AE Header、GL Journal 和外部回执之间的关联。
-3. 区分可安全重试、需人工补偿、需冲销和已完成不可逆的状态。
-4. 月结前按组织、Ledger、期间和控制总额完成数量与金额对账。
-
-<a id="src-docs-09-end-to-end-payroll-to-gl--诊断顺序"></a>
-### 诊断顺序
-
-先查来源交易和接口批次，再查业务单据状态、会计事件、传输/导入/过账、银行或报告结果；查询使用业务主键和日期范围，禁止无条件扫描。
-
-<a id="src-docs-09-end-to-end-payroll-to-gl--支持边界"></a>
-### 支持边界
-
-写入使用标准 Open Interface、公开 API 或受控自定义对象；不直接 DML Oracle EBS 业务/会计表。
-
-
-<!-- source: docs/09-end-to-end/procure-to-pay.md -->
-<a id="src-docs-09-end-to-end-procure-to-pay"></a>
-## 端到端流程：procure-to-pay
-
-
-<a id="src-docs-09-end-to-end-procure-to-pay--流程目标"></a>
-### 流程目标
-
-本流程以业务状态、主键链、会计事件、接口批次和期间控制为主线，确保来源业务可追溯到子账、GL、银行/报表和签字证据。
-
-<a id="src-docs-09-end-to-end-procure-to-pay--设计与控制"></a>
-### 设计与控制
-
-1. 定义来源系统唯一业务键、EBS 单据主键、批次号和幂等规则。
-2. 记录交易、接口、并发请求、SLA Event/AE Header、GL Journal 和外部回执之间的关联。
-3. 区分可安全重试、需人工补偿、需冲销和已完成不可逆的状态。
-4. 月结前按组织、Ledger、期间和控制总额完成数量与金额对账。
-
-<a id="src-docs-09-end-to-end-procure-to-pay--诊断顺序"></a>
-### 诊断顺序
-
-先查来源交易和接口批次，再查业务单据状态、会计事件、传输/导入/过账、银行或报告结果；查询使用业务主键和日期范围，禁止无条件扫描。
-
-<a id="src-docs-09-end-to-end-procure-to-pay--支持边界"></a>
-### 支持边界
-
-写入使用标准 Open Interface、公开 API 或受控自定义对象；不直接 DML Oracle EBS 业务/会计表。
-
-
-<!-- source: docs/09-end-to-end/project-to-asset.md -->
-<a id="src-docs-09-end-to-end-project-to-asset"></a>
-## 端到端流程：project-to-asset
-
-
-<a id="src-docs-09-end-to-end-project-to-asset--流程目标"></a>
-### 流程目标
-
-本流程以业务状态、主键链、会计事件、接口批次和期间控制为主线，确保来源业务可追溯到子账、GL、银行/报表和签字证据。
-
-<a id="src-docs-09-end-to-end-project-to-asset--设计与控制"></a>
-### 设计与控制
-
-1. 定义来源系统唯一业务键、EBS 单据主键、批次号和幂等规则。
-2. 记录交易、接口、并发请求、SLA Event/AE Header、GL Journal 和外部回执之间的关联。
-3. 区分可安全重试、需人工补偿、需冲销和已完成不可逆的状态。
-4. 月结前按组织、Ledger、期间和控制总额完成数量与金额对账。
-
-<a id="src-docs-09-end-to-end-project-to-asset--诊断顺序"></a>
-### 诊断顺序
-
-先查来源交易和接口批次，再查业务单据状态、会计事件、传输/导入/过账、银行或报告结果；查询使用业务主键和日期范围，禁止无条件扫描。
-
-<a id="src-docs-09-end-to-end-project-to-asset--支持边界"></a>
-### 支持边界
-
-写入使用标准 Open Interface、公开 API 或受控自定义对象；不直接 DML Oracle EBS 业务/会计表。
-
-
-<!-- source: docs/09-end-to-end/project-to-cash.md -->
-<a id="src-docs-09-end-to-end-project-to-cash"></a>
-## 端到端流程：project-to-cash
-
-
-<a id="src-docs-09-end-to-end-project-to-cash--流程目标"></a>
-### 流程目标
-
-本流程以业务状态、主键链、会计事件、接口批次和期间控制为主线，确保来源业务可追溯到子账、GL、银行/报表和签字证据。
-
-<a id="src-docs-09-end-to-end-project-to-cash--设计与控制"></a>
-### 设计与控制
-
-1. 定义来源系统唯一业务键、EBS 单据主键、批次号和幂等规则。
-2. 记录交易、接口、并发请求、SLA Event/AE Header、GL Journal 和外部回执之间的关联。
-3. 区分可安全重试、需人工补偿、需冲销和已完成不可逆的状态。
-4. 月结前按组织、Ledger、期间和控制总额完成数量与金额对账。
-
-<a id="src-docs-09-end-to-end-project-to-cash--诊断顺序"></a>
-### 诊断顺序
-
-先查来源交易和接口批次，再查业务单据状态、会计事件、传输/导入/过账、银行或报告结果；查询使用业务主键和日期范围，禁止无条件扫描。
-
-<a id="src-docs-09-end-to-end-project-to-cash--支持边界"></a>
-### 支持边界
-
-写入使用标准 Open Interface、公开 API 或受控自定义对象；不直接 DML Oracle EBS 业务/会计表。
-
-
-<!-- source: docs/09-end-to-end/record-to-report.md -->
-<a id="src-docs-09-end-to-end-record-to-report"></a>
-## 端到端流程：record-to-report
-
-
-<a id="src-docs-09-end-to-end-record-to-report--流程目标"></a>
-### 流程目标
-
-本流程以业务状态、主键链、会计事件、接口批次和期间控制为主线，确保来源业务可追溯到子账、GL、银行/报表和签字证据。
-
-<a id="src-docs-09-end-to-end-record-to-report--设计与控制"></a>
-### 设计与控制
-
-1. 定义来源系统唯一业务键、EBS 单据主键、批次号和幂等规则。
-2. 记录交易、接口、并发请求、SLA Event/AE Header、GL Journal 和外部回执之间的关联。
-3. 区分可安全重试、需人工补偿、需冲销和已完成不可逆的状态。
-4. 月结前按组织、Ledger、期间和控制总额完成数量与金额对账。
-
-<a id="src-docs-09-end-to-end-record-to-report--诊断顺序"></a>
-### 诊断顺序
-
-先查来源交易和接口批次，再查业务单据状态、会计事件、传输/导入/过账、银行或报告结果；查询使用业务主键和日期范围，禁止无条件扫描。
-
-<a id="src-docs-09-end-to-end-record-to-report--支持边界"></a>
-### 支持边界
-
-写入使用标准 Open Interface、公开 API 或受控自定义对象；不直接 DML Oracle EBS 业务/会计表。
-
-
-<!-- source: docs/09-end-to-end/tax-determination-to-reporting.md -->
-<a id="src-docs-09-end-to-end-tax-determination-to-reporting"></a>
-## 端到端流程：tax-determination-to-reporting
-
-
-<a id="src-docs-09-end-to-end-tax-determination-to-reporting--流程目标"></a>
-### 流程目标
-
-本流程以业务状态、主键链、会计事件、接口批次和期间控制为主线，确保来源业务可追溯到子账、GL、银行/报表和签字证据。
-
-<a id="src-docs-09-end-to-end-tax-determination-to-reporting--设计与控制"></a>
-### 设计与控制
-
-1. 定义来源系统唯一业务键、EBS 单据主键、批次号和幂等规则。
-2. 记录交易、接口、并发请求、SLA Event/AE Header、GL Journal 和外部回执之间的关联。
-3. 区分可安全重试、需人工补偿、需冲销和已完成不可逆的状态。
-4. 月结前按组织、Ledger、期间和控制总额完成数量与金额对账。
-
-<a id="src-docs-09-end-to-end-tax-determination-to-reporting--诊断顺序"></a>
-### 诊断顺序
-
-先查来源交易和接口批次，再查业务单据状态、会计事件、传输/导入/过账、银行或报告结果；查询使用业务主键和日期范围，禁止无条件扫描。
-
-<a id="src-docs-09-end-to-end-tax-determination-to-reporting--支持边界"></a>
-### 支持边界
-
-写入使用标准 Open Interface、公开 API 或受控自定义对象；不直接 DML Oracle EBS 业务/会计表。
+## 10. 流程专题与实现细节
 
 
 <!-- source: docs/08-e2e/README.md -->
 <a id="src-docs-08-e2e-readme"></a>
-## 端到端财务流程
+### 端到端财务流程
 
 
 本目录不复制各模块的设置或表结构，而是维护跨模块业务状态、业务键、接口点、会计事件、关账依赖和对账责任。每一条 E2E 链必须定义来源系统业务键、EBS 主键、批次号、重试/补偿策略和最终财务签字口径。
 
 <a id="src-docs-08-e2e-readme--专题导航"></a>
-### 专题导航
+#### 专题导航
 
 - [采购到付款（P2P）](#src-docs-08-e2e-procure-to-pay)
 - [订单到收款（O2C）](#src-docs-08-e2e-order-to-cash)
@@ -528,7 +91,7 @@
 - [端到端接口编排案例](#src-docs-08-e2e-interfaces)
 
 <a id="src-docs-08-e2e-readme--标准追溯方法"></a>
-### 标准追溯方法
+#### 标准追溯方法
 
 ```text
 来源业务键 / 外部相关号
@@ -540,14 +103,14 @@
 ```
 
 <a id="src-docs-08-e2e-readme--设计原则"></a>
-### 设计原则
+#### 设计原则
 
 - 采用补偿和状态推进，而非试图跨 EBS、银行和外部系统执行分布式回滚。
 - 以可重放、幂等、可审计的批次为最小运维单元；每次重跑均需先判定原批次的成功/部分成功/失败状态。
 - 月结控制按依赖而非组织习惯排期：业务模块完成、子账会计完成、GL 过账完成后才允许形成最终报表和余额签字。
 
 <a id="src-docs-08-e2e-readme--官方依据"></a>
-### 官方依据
+#### 官方依据
 
 - [Oracle Financials Documentation](https://docs.oracle.com/cd/E26401_01/nav/financials.htm)
 - [Oracle Projects Documentation](https://docs.oracle.com/cd/E26401_01/nav/projects.htm)
@@ -555,11 +118,11 @@
 
 <!-- source: docs/08-e2e/interfaces.md -->
 <a id="src-docs-08-e2e-interfaces"></a>
-## Oracle EBS 端到端接口编排案例
+### Oracle EBS 端到端接口编排案例
 
 
 <a id="src-docs-08-e2e-interfaces--1-业界常用集成蓝图"></a>
-### 1. 业界常用集成蓝图
+#### 1. 业界常用集成蓝图
 
 | 业务链路 | 上游/下游系统 | 推荐实现 |
 | --- | --- | --- |
@@ -572,7 +135,7 @@
 端到端集成不是把多个接口顺序调用完即可；必须统一业务相关号、状态语义、金额/数量控制、回调和补偿策略。
 
 <a id="src-docs-08-e2e-interfaces--2-统一业务相关号映射表"></a>
-### 2. 统一业务相关号映射表
+#### 2. 统一业务相关号映射表
 
 ```sql
 CREATE TABLE xxint_business_links (
@@ -603,7 +166,7 @@ CREATE INDEX xxint_business_links_n1
 例：同一 O2C `CORRELATION_ID` 下可以分别保存 External Order、EBS Order Header、Delivery、AR Customer Trx 和 Receipt ID。业务编号只用于展示，稳定关联使用 ID。
 
 <a id="src-docs-08-e2e-interfaces--3-transactional-outbox-实现"></a>
-### 3. Transactional Outbox 实现
+#### 3. Transactional Outbox 实现
 
 当 EBS 业务完成后需要可靠通知 CRM/WMS/Data Lake，推荐先在同一数据库事务写 Outbox，再由异步 Worker/MQ 发布，避免业务交易等待外部 HTTP。
 
@@ -652,7 +215,7 @@ INSERT INTO xxint_outbox (
 只有在业务 API/Open Interface Import 确认成功、且业务 ID 已取得后才生成“completed”事件。事务回滚时 Outbox 必须同时回滚。
 
 <a id="src-docs-08-e2e-interfaces--4-outbox-worker-与安全重试"></a>
-### 4. Outbox Worker 与安全重试
+#### 4. Outbox Worker 与安全重试
 
 ```sql
 DECLARE
@@ -703,7 +266,7 @@ END;
 `XXINT_EVENT_ADAPTER` 是企业适配层扩展点，可实现为 AQ、Workflow Business Event、ISG Service Invocation Framework 或中间件代理。消费者必须以 `EVENT_NAME + EVENT_KEY` 去重，因为“至少一次”投递可能重复。
 
 <a id="src-docs-08-e2e-interfaces--5-o2c电商订单到发票回传"></a>
-### 5. O2C：电商订单到发票回传
+#### 5. O2C：电商订单到发票回传
 
 ```text
 E-commerce Order
@@ -717,7 +280,7 @@ E-commerce Order
 ```
 
 <a id="src-docs-08-e2e-interfaces--51-跨模块追踪-sql"></a>
-#### 5.1 跨模块追踪 SQL
+##### 5.1 跨模块追踪 SQL
 
 ```sql
 SELECT ooha.header_id,
@@ -750,7 +313,7 @@ SELECT ooha.header_id,
 Transaction Flexfield 属性位置由 OM/AR 标准配置决定，必须在目标实例核对。订单“已发运”但未开票时，应定位 Workflow、Interface Trip Stop、AutoInvoice 三个断点，不能立即重建订单或发票。
 
 <a id="src-docs-08-e2e-interfaces--6-p2pocr-发票到付款"></a>
-### 6. P2P：OCR 发票到付款
+#### 6. P2P：OCR 发票到付款
 
 ```text
 OCR/Portal Invoice
@@ -764,7 +327,7 @@ OCR/Portal Invoice
 ```
 
 <a id="src-docs-08-e2e-interfaces--61-端到端状态查询"></a>
-#### 6.1 端到端状态查询
+##### 6.1 端到端状态查询
 
 ```sql
 SELECT aia.invoice_id,
@@ -791,7 +354,7 @@ SELECT aia.invoice_id,
 接口 ACK 应分别报告 Imported、Validated、Accounted、Approved、Paid、Cleared，而不是用一个“SUCCESS”掩盖后续业务状态。Invoice 已导入但被 Hold 属于业务待办，不是技术重试。
 
 <a id="src-docs-08-e2e-interfaces--7-projects-到-assets-资本化"></a>
-### 7. Projects 到 Assets 资本化
+#### 7. Projects 到 Assets 资本化
 
 关键追溯链：Project/Task/Expenditure Item → Cost Distribution → Asset Line → Mass Addition → Asset ID → FA Accounting。
 
@@ -820,7 +383,7 @@ SELECT ppa.segment1 project_number,
 列名/关联键会受 Projects/Assets 补丁和功能影响，目标实例需用 eTRM 校准。资本化失败时分别检查可资本化成本、Asset Line、Interface Assets、Mass Additions 和 Post Mass Additions。
 
 <a id="src-docs-08-e2e-interfaces--8-批次控制与对账签字"></a>
-### 8. 批次控制与对账签字
+#### 8. 批次控制与对账签字
 
 每个批次至少保存以下控制数据：
 
@@ -845,7 +408,7 @@ SELECT business_flow,
 ```
 
 <a id="src-docs-08-e2e-interfaces--9-补偿而非回滚所有系统"></a>
-### 9. 补偿而非回滚所有系统
+#### 9. 补偿而非回滚所有系统
 
 - AP 发票已验证：使用标准 Cancel/Debit Memo 流程，不删除发票。
 - AR 发票已完成：使用 Credit Memo/Cancel（按 Transaction Type 规则），不删 AR 基表。
@@ -854,7 +417,7 @@ SELECT business_flow,
 - 付款已发送银行：先查询银行状态；必要时按银行和 IBY 标准 Stop/Void 流程。
 
 <a id="src-docs-08-e2e-interfaces--10-关联文档"></a>
-### 10. 关联文档
+#### 10. 关联文档
 
 - [P2P](#src-docs-08-e2e-procure-to-pay)
 - [O2C](#src-docs-08-e2e-order-to-cash)
@@ -863,7 +426,7 @@ SELECT business_flow,
 - [技术接口实现](10-technical.md#src-docs-09-technical-interfaces)
 
 <a id="src-docs-08-e2e-interfaces--11-官方参考"></a>
-### 11. 官方参考
+#### 11. 官方参考
 
 - [Oracle E-Business Suite Integrated SOA Gateway Developer's Guide](https://docs.oracle.com/cd/E26401_01/doc.122/e20927/)
 - [Oracle E-Business Suite Concepts: Integration Repository](https://docs.oracle.com/cd/E26401_01/doc.122/e22949/T120505T120507.htm)
@@ -872,11 +435,11 @@ SELECT business_flow,
 
 <!-- source: docs/08-e2e/inventory-wip-cost-gl.md -->
 <a id="src-docs-08-e2e-inventory-wip-cost-gl"></a>
-## 库存、WIP、成本与 GL 衔接
+### 库存、WIP、成本与 GL 衔接
 
 
 <a id="src-docs-08-e2e-inventory-wip-cost-gl--主键与断点"></a>
-### 主键与断点
+#### 主键与断点
 
 ```text
 Inventory/WIP Source Transaction
@@ -890,7 +453,7 @@ Inventory/WIP Source Transaction
 Inventory Transaction ID 是物料交易与成本分录的主线；WIP Entity ID + Transaction ID 追踪工单发料、资源、完工和差异。需区分业务交易已处理、Costed、Accounted、Transferred、Imported、Posted 六个状态。
 
 <a id="src-docs-08-e2e-inventory-wip-cost-gl--sql"></a>
-### SQL
+#### SQL
 
 ```sql
 SELECT mmt.transaction_id, mmt.organization_id,
@@ -915,7 +478,7 @@ SELECT wta.wip_entity_id, wta.transaction_id,
 ```
 
 <a id="src-docs-08-e2e-inventory-wip-cost-gl--对账框架"></a>
-### 对账框架
+#### 对账框架
 
 - Quantity：On-hand = 期初 + Receipts + Completions + Transfers In - Issues - Sales - Transfers Out ± Adjustments。
 - Value：按 Organization/Cost Group/Subinventory/Item 比较估值报表与成本分录。
@@ -923,7 +486,7 @@ SELECT wta.wip_entity_id, wta.transaction_id,
 - GL：成本子账 + SLA 未转 + GL 未过账 + GL 手工调整 = GL 相关账户余额。
 
 <a id="src-docs-08-e2e-inventory-wip-cost-gl--排错"></a>
-### 排错
+#### 排错
 
 - 有数量无价值：查 Item Cost、Costed Flag、Cost Manager、Transaction Date/Period、负库存。
 - WIP 账户不平：查工单状态、发退料/完工/退库、Resource、Scrap、Close/Variance 是否在同一期。
@@ -931,7 +494,7 @@ SELECT wta.wip_entity_id, wta.transaction_id,
 - 性能：对 MMT/MTA 查询必须限定 Organization+Date/Transaction ID，避免生产全表汇总。
 
 <a id="src-docs-08-e2e-inventory-wip-cost-gl--关联"></a>
-### 关联
+#### 关联
 
 - [Cost Methods](07-cost-accounting.md#src-docs-06-cost-costing-methods)
 - [Cost Close](07-cost-accounting.md#src-docs-06-cost-period-close-reports)
@@ -939,11 +502,11 @@ SELECT wta.wip_entity_id, wta.transaction_id,
 
 <!-- source: docs/08-e2e/order-to-cash.md -->
 <a id="src-docs-08-e2e-order-to-cash"></a>
-## 订单到收款（O2C）端到端
+### 订单到收款（O2C）端到端
 
 
 <a id="src-docs-08-e2e-order-to-cash--业务与数据链"></a>
-### 业务与数据链
+#### 业务与数据链
 
 ```text
 Customer/TCA → OE_ORDER_HEADERS/LINES
@@ -957,7 +520,7 @@ Customer/TCA → OE_ORDER_HEADERS/LINES
 OM Line Workflow 控制 Book、Schedule、Pick、Ship、Invoice Interface、Close。Shipping 生成 Inventory Sales Order Issue；Invoice Interface 将 OM 行推到 AutoInvoice；AR 发票/收款进入 SLA。R12 COGS 可先记录 Deferred COGS，再按 AR Revenue Recognition 比例转为 COGS。
 
 <a id="src-docs-08-e2e-order-to-cash--sql"></a>
-### SQL
+#### SQL
 
 ```sql
 SELECT ooh.order_number, ool.line_id, ool.line_number,
@@ -988,7 +551,7 @@ SELECT ooh.order_number, ool.line_id, ool.line_number,
 > `ORDER ENTRY` 上下文的 Attribute 映射可受实施/补丁影响，先查实际 AutoInvoice Line 的 Context/Attributes 再固化查询。
 
 <a id="src-docs-08-e2e-order-to-cash--排错"></a>
-### 排错
+#### 排错
 
 - Order Line 卡住：查 `FLOW_STATUS_CODE`、Workflow Status Monitor、Holds、Credit Check、Scheduling/ATP、Inventory Reservation。
 - Pick/Ship 失败：查 Release Status、On-hand/Reservation、Subinventory/Locator、Lot/Serial、Shipping Parameters 和 Delivery Assignment。
@@ -997,7 +560,7 @@ SELECT ooh.order_number, ool.line_id, ool.line_number,
 - 收入已确认但 COGS 未转：跟踪 OM Line、Material Transaction、AR Revenue Schedule、COGS Recognition 请求与 SLA。
 
 <a id="src-docs-08-e2e-order-to-cash--关联"></a>
-### 关联
+#### 关联
 
 - [AR Process](04-credit-to-cash.md#src-docs-03-ar-process)
 - [Cost Accounting](07-cost-accounting.md#src-docs-06-cost-accounting-flow)
@@ -1005,11 +568,11 @@ SELECT ooh.order_number, ool.line_id, ool.line_number,
 
 <!-- source: docs/08-e2e/procure-to-pay.md -->
 <a id="src-docs-08-e2e-procure-to-pay"></a>
-## 采购到付款（P2P）端到端
+### 采购到付款（P2P）端到端
 
 
 <a id="src-docs-08-e2e-procure-to-pay--业务与数据链"></a>
-### 业务与数据链
+#### 业务与数据链
 
 ```text
 Requisition
@@ -1021,7 +584,7 @@ Requisition
 ```
 
 <a id="src-docs-08-e2e-procure-to-pay--关键关联"></a>
-#### 关键关联
+##### 关键关联
 
 - Requisition Distribution → PO Distribution：自动创建采购单时保留来源分配。
 - PO Distribution → Receipt：`RCV_TRANSACTIONS.PO_DISTRIBUTION_ID`。
@@ -1030,7 +593,7 @@ Requisition
 - Subledger → GL：XLA Entity/Event/AE Header/Line → `GL_IMPORT_REFERENCES.GL_SL_LINK_ID/TABLE`。
 
 <a id="src-docs-08-e2e-procure-to-pay--典型会计"></a>
-### 典型会计
+#### 典型会计
 
 ```text
 Receipt:       Dr Receiving Inspection   Cr AP Accrual
@@ -1042,7 +605,7 @@ Payment:      Dr Liability              Cr Cash/Clearing
 Expense Destination 可在 Receipt/Period End 应计；Inventory Destination 通常在收货交付时进入库存会计。具体分录以 Accrual Option、Destination、SLA 和税设置为准。
 
 <a id="src-docs-08-e2e-procure-to-pay--跟踪-sql"></a>
-### 跟踪 SQL
+#### 跟踪 SQL
 
 ```sql
 SELECT pha.segment1 po_number, pla.line_num, plla.shipment_num,
@@ -1068,7 +631,7 @@ SELECT pha.segment1 po_number, pla.line_num, plla.shipment_num,
 ```
 
 <a id="src-docs-08-e2e-procure-to-pay--排错与对账"></a>
-### 排错与对账
+#### 排错与对账
 
 - **PO/Receipt**：查 Approval/Authorization Status、Shipment/Distribution Open Quantity、Receiving Control/Tolerance、Return/Correction 链。
 - **Receipt/AP**：对比 Ordered/Received/Delivered/Billed 数量，注意 UOM Conversion、Price Correction、Exchange Rate 和税。
@@ -1077,7 +640,7 @@ SELECT pha.segment1 po_number, pla.line_num, plla.shipment_num,
 - 排错时优先使用 `PO_DISTRIBUTION_ID` 和 `RCV_TRANSACTION_ID`，不仅用单据号做字符串关联。
 
 <a id="src-docs-08-e2e-procure-to-pay--关联"></a>
-### 关联
+#### 关联
 
 - [端到端常用表与跨模块关联](#src-docs-08-e2e-tables)
 - [AP Process](03-procure-to-pay.md#src-docs-02-ap-process)
@@ -1086,11 +649,11 @@ SELECT pha.segment1 po_number, pla.line_num, plla.shipment_num,
 
 <!-- source: docs/08-e2e/projects-assets.md -->
 <a id="src-docs-08-e2e-projects-assets"></a>
-## 项目、费用与资产资本化
+### 项目、费用与资产资本化
 
 
 <a id="src-docs-08-e2e-projects-assets--流程"></a>
-### 流程
+#### 流程
 
 ```text
 Project/Task + Expenditure Items
@@ -1105,7 +668,7 @@ Project/Task + Expenditure Items
 项目资本化将符合条件的 Expenditure Item 汇集为 Project Asset Line，按 Asset Assignment/Grouping 传至 FA。需明确 Project/Task Capitalizable Flag、Asset Category/Book、CIP Cost Account、Date Placed in Service、Common/Specific Cost Allocation 和冲销规则。
 
 <a id="src-docs-08-e2e-projects-assets--sql"></a>
-### SQL
+#### SQL
 
 ```sql
 SELECT ppa.project_id, ppa.segment1 project_number,
@@ -1133,7 +696,7 @@ SELECT mass_addition_id, feeder_system_name, description,
 ```
 
 <a id="src-docs-08-e2e-projects-assets--排错"></a>
-### 排错
+#### 排错
 
 - Cost 未分配：查 Expenditure Type/Organization、Cost Rate、Burden Schedule、Period、Account Generation 和 Distribution 日志。
 - 未生成 Asset Line：查 Project/Task Capitalizable、Expenditure Item 可资本化、已分配成本、Asset Assignment、Cutoff Date。
@@ -1142,7 +705,7 @@ SELECT mass_addition_id, feeder_system_name, description,
 - 调整已资本化成本：使用 PA/FA 标准冲销、调整和追加流程，不直接更新资产成本。
 
 <a id="src-docs-08-e2e-projects-assets--关联"></a>
-### 关联
+#### 关联
 
 - [FA Process](05-assets-projects.md#src-docs-05-fa-process)
 - [FA Interface/Close](05-assets-projects.md#src-docs-05-fa-close-reports-interfaces)
@@ -1150,16 +713,16 @@ SELECT mass_addition_id, feeder_system_name, description,
 
 <!-- source: docs/08-e2e/record-to-report-close.md -->
 <a id="src-docs-08-e2e-record-to-report-close"></a>
-## Record to Report：子账到总账的关账编排
+### Record to Report：子账到总账的关账编排
 
 
 <a id="src-docs-08-e2e-record-to-report-close--关账不是单一模块动作"></a>
-### 关账不是单一模块动作
+#### 关账不是单一模块动作
 
 月结需要把业务截止、接口处理、子账会计、GL 导入/过账、重估/折算/合并、报表、对账和签字作为有依赖的受控流程。各组织、Ledger、币种和产品可有不同日历；应以关账日历和责任矩阵明确顺序。
 
 <a id="src-docs-08-e2e-record-to-report-close--推荐依赖图"></a>
-### 推荐依赖图
+#### 推荐依赖图
 
 ```text
 业务交易截止与接口冻结
@@ -1172,7 +735,7 @@ SELECT mass_addition_id, feeder_system_name, description,
 ```
 
 <a id="src-docs-08-e2e-record-to-report-close--控制矩阵"></a>
-### 控制矩阵
+#### 控制矩阵
 
 | 控制 | 责任方 | 合格证据 | 失败处理 |
 | --- | --- | --- | --- |
@@ -1183,7 +746,7 @@ SELECT mass_addition_id, feeder_system_name, description,
 | 签字与锁期 | 财务负责人 | 关账包、例外批准、报表版本 | 禁止绕过流程直接开关已签字期间 |
 
 <a id="src-docs-08-e2e-record-to-report-close--跨模块诊断-sql"></a>
-### 跨模块诊断 SQL
+#### 跨模块诊断 SQL
 
 ```sql
 -- GL 未过账批次应按 Ledger/期间审查，避免扫描全部历史数据。
@@ -1202,12 +765,12 @@ select gjh.je_header_id,
 ```
 
 <a id="src-docs-08-e2e-record-to-report-close--排错原则"></a>
-### 排错原则
+#### 排错原则
 
 先确认差异属于业务、会计、传输、导入、过账、汇率/折算还是报告口径；再按交易主键、`EVENT_ID`、`AE_HEADER_ID`、`GL_SL_LINK_ID` 和 `JE_HEADER_ID` 分层定位。禁止用总账手工分录长期遮蔽子账问题。
 
 <a id="src-docs-08-e2e-record-to-report-close--官方参考"></a>
-### 官方参考
+#### 官方参考
 
 - [Oracle Financials Concepts Guide](https://docs.oracle.com/cd/E26401_01/doc.122/e48836/toc.htm)
 - [Oracle Financials Implementation Guide](https://docs.oracle.com/cd/E26401_01/doc.122/e48783/toc.htm)
@@ -1215,16 +778,16 @@ select gjh.je_header_id,
 
 <!-- source: docs/08-e2e/tables.md -->
 <a id="src-docs-08-e2e-tables"></a>
-## 端到端流程常用表与跨模块关联
+### 端到端流程常用表与跨模块关联
 
 
 <a id="src-docs-08-e2e-tables--业务说明"></a>
-### 业务说明
+#### 业务说明
 
 端到端排查不应只靠单据号。同一业务单据可拆成多个 Line、Shipment、Distribution、Receipt Transaction、Invoice Distribution、SLA Event 和 GL Line。应使用每个模块保留的源 ID，同时检查 OU/Inventory Organization/Ledger 边界。
 
 <a id="src-docs-08-e2e-tables--p2p-表链"></a>
-### P2P 表链
+#### P2P 表链
 
 | 表 | 中文名 | 关键关联/业务粒度 |
 | --- | --- | --- |
@@ -1242,7 +805,7 @@ select gjh.je_header_id,
 | `AP_INVOICE_PAYMENTS_ALL` | AP 发票付款核销 | `INVOICE_ID`, `CHECK_ID`, `AMOUNT` |
 
 <a id="src-docs-08-e2e-tables--po-常用状态"></a>
-#### PO 常用状态
+##### PO 常用状态
 
 `PO_HEADERS_ALL.AUTHORIZATION_STATUS` 常见业务含义包括 Incomplete、In Process、Pre-Approved、Approved、Rejected、Requires Reapproval。同时检查 `CANCEL_FLAG`、`CLOSED_CODE`、`FROZEN_FLAG`、`USER_HOLD_FLAG`：
 
@@ -1257,7 +820,7 @@ select gjh.je_header_id,
 `RCV_TRANSACTIONS.TRANSACTION_TYPE` 常见 `RECEIVE`、`DELIVER`、`ACCEPT`、`REJECT`、`RETURN TO RECEIVING`、`RETURN TO VENDOR`、`CORRECT`。收货是事件链，应通过 `PARENT_TRANSACTION_ID` 跟踪原收货、交付、更正与退货，不只汇总所有正数行。
 
 <a id="src-docs-08-e2e-tables--o2c-表链"></a>
-### O2C 表链
+#### O2C 表链
 
 | 表 | 中文名 | 关键关联/业务粒度 |
 | --- | --- | --- |
@@ -1273,14 +836,14 @@ select gjh.je_header_id,
 | `AR_RECEIVABLE_APPLICATIONS_ALL` | AR 收款核销 | Receipt 到 Invoice/Payment Schedule 关联 |
 
 <a id="src-docs-08-e2e-tables--omshipping-常用状态"></a>
-#### OM/Shipping 常用状态
+##### OM/Shipping 常用状态
 
 - `OE_ORDER_HEADERS_ALL.FLOW_STATUS_CODE` 常见 Entered、Booked、Closed、Cancelled 等头状态。
 - `OE_ORDER_LINES_ALL.FLOW_STATUS_CODE` 更细，可包括 Entered、Awaiting Shipping、Picked、Shipped、Interfaced、Closed、Cancelled。实际 Workflow Activity Status 应在 Workflow Status Monitor/WF 表中验证。
 - `WSH_DELIVERY_DETAILS.RELEASED_STATUS` 是单字母 Shipping Lookup，常见业务含义有 Ready to Release、Released to Warehouse、Staged/Pick Confirmed、Shipped、Backordered、Cancelled。必须关联 Shipping Lookup，不建议在定制中只写不完整 `DECODE`。
 
 <a id="src-docs-08-e2e-tables--projects-assets-表链"></a>
-### Projects → Assets 表链
+#### Projects → Assets 表链
 
 | 表 | 中文名 | 关键关联 |
 | --- | --- | --- |
@@ -1292,7 +855,7 @@ select gjh.je_header_id,
 | `FA_MASS_ADDITIONS` | FA 批量增加 | `PROJECT_ID`, `TASK_ID`, `POSTING_STATUS` |
 
 <a id="src-docs-08-e2e-tables--跨模块跟踪原则"></a>
-### 跨模块跟踪原则
+#### 跨模块跟踪原则
 
 1. 首先记录源单据的内部 ID 和组织，再查下游外键/接口 Attribute。
 2. 一对多链路应分层汇总，避免把 PO→Receipt→Invoice 直接多对多 Join 后重复计数/金额。
@@ -1300,7 +863,91 @@ select gjh.je_header_id,
 4. 业务完成、子账会计、SLA Final、Transfer GL、Journal Import、Post 是独立状态。
 
 <a id="src-docs-08-e2e-tables--官方参考"></a>
-### 官方参考
+#### 官方参考
 
 - [Oracle E-Business Suite R12.2 Documentation Library](https://docs.oracle.com/cd/E26401_01/index.htm)
 - [Oracle E-Business Suite eTRM User's Guide](https://docs.oracle.com/cd/E26401_01/doc.122/f53031/)
+
+<!-- 兼容旧版目录与学习材料的定位锚点；正文已按主题重编。 -->
+<a id="src-docs-09-end-to-end-acquire-to-retire"></a>
+<a id="src-docs-09-end-to-end-acquire-to-retire--支持边界"></a>
+<a id="src-docs-09-end-to-end-acquire-to-retire--流程目标"></a>
+<a id="src-docs-09-end-to-end-acquire-to-retire--设计与控制"></a>
+<a id="src-docs-09-end-to-end-acquire-to-retire--诊断顺序"></a>
+<a id="src-docs-09-end-to-end-bank-statement-to-reconciliation"></a>
+<a id="src-docs-09-end-to-end-bank-statement-to-reconciliation--支持边界"></a>
+<a id="src-docs-09-end-to-end-bank-statement-to-reconciliation--流程目标"></a>
+<a id="src-docs-09-end-to-end-bank-statement-to-reconciliation--设计与控制"></a>
+<a id="src-docs-09-end-to-end-bank-statement-to-reconciliation--诊断顺序"></a>
+<a id="src-docs-09-end-to-end-budget-to-control"></a>
+<a id="src-docs-09-end-to-end-budget-to-control--支持边界"></a>
+<a id="src-docs-09-end-to-end-budget-to-control--流程目标"></a>
+<a id="src-docs-09-end-to-end-budget-to-control--设计与控制"></a>
+<a id="src-docs-09-end-to-end-budget-to-control--诊断顺序"></a>
+<a id="src-docs-09-end-to-end-close-to-report"></a>
+<a id="src-docs-09-end-to-end-close-to-report--支持边界"></a>
+<a id="src-docs-09-end-to-end-close-to-report--流程目标"></a>
+<a id="src-docs-09-end-to-end-close-to-report--设计与控制"></a>
+<a id="src-docs-09-end-to-end-close-to-report--诊断顺序"></a>
+<a id="src-docs-09-end-to-end-credit-to-cash"></a>
+<a id="src-docs-09-end-to-end-credit-to-cash--支持边界"></a>
+<a id="src-docs-09-end-to-end-credit-to-cash--流程目标"></a>
+<a id="src-docs-09-end-to-end-credit-to-cash--设计与控制"></a>
+<a id="src-docs-09-end-to-end-credit-to-cash--诊断顺序"></a>
+<a id="src-docs-09-end-to-end-expense-to-reimbursement"></a>
+<a id="src-docs-09-end-to-end-expense-to-reimbursement--支持边界"></a>
+<a id="src-docs-09-end-to-end-expense-to-reimbursement--流程目标"></a>
+<a id="src-docs-09-end-to-end-expense-to-reimbursement--设计与控制"></a>
+<a id="src-docs-09-end-to-end-expense-to-reimbursement--诊断顺序"></a>
+<a id="src-docs-09-end-to-end-external-subledger-to-fah"></a>
+<a id="src-docs-09-end-to-end-external-subledger-to-fah--支持边界"></a>
+<a id="src-docs-09-end-to-end-external-subledger-to-fah--流程目标"></a>
+<a id="src-docs-09-end-to-end-external-subledger-to-fah--设计与控制"></a>
+<a id="src-docs-09-end-to-end-external-subledger-to-fah--诊断顺序"></a>
+<a id="src-docs-09-end-to-end-intercompany-to-elimination"></a>
+<a id="src-docs-09-end-to-end-intercompany-to-elimination--支持边界"></a>
+<a id="src-docs-09-end-to-end-intercompany-to-elimination--流程目标"></a>
+<a id="src-docs-09-end-to-end-intercompany-to-elimination--设计与控制"></a>
+<a id="src-docs-09-end-to-end-intercompany-to-elimination--诊断顺序"></a>
+<a id="src-docs-09-end-to-end-inventory-wip-to-gl"></a>
+<a id="src-docs-09-end-to-end-inventory-wip-to-gl--支持边界"></a>
+<a id="src-docs-09-end-to-end-inventory-wip-to-gl--流程目标"></a>
+<a id="src-docs-09-end-to-end-inventory-wip-to-gl--设计与控制"></a>
+<a id="src-docs-09-end-to-end-inventory-wip-to-gl--诊断顺序"></a>
+<a id="src-docs-09-end-to-end-order-to-cash"></a>
+<a id="src-docs-09-end-to-end-order-to-cash--支持边界"></a>
+<a id="src-docs-09-end-to-end-order-to-cash--流程目标"></a>
+<a id="src-docs-09-end-to-end-order-to-cash--设计与控制"></a>
+<a id="src-docs-09-end-to-end-order-to-cash--诊断顺序"></a>
+<a id="src-docs-09-end-to-end-payroll-to-gl"></a>
+<a id="src-docs-09-end-to-end-payroll-to-gl--支持边界"></a>
+<a id="src-docs-09-end-to-end-payroll-to-gl--流程目标"></a>
+<a id="src-docs-09-end-to-end-payroll-to-gl--设计与控制"></a>
+<a id="src-docs-09-end-to-end-payroll-to-gl--诊断顺序"></a>
+<a id="src-docs-09-end-to-end-procure-to-pay"></a>
+<a id="src-docs-09-end-to-end-procure-to-pay--支持边界"></a>
+<a id="src-docs-09-end-to-end-procure-to-pay--流程目标"></a>
+<a id="src-docs-09-end-to-end-procure-to-pay--设计与控制"></a>
+<a id="src-docs-09-end-to-end-procure-to-pay--诊断顺序"></a>
+<a id="src-docs-09-end-to-end-project-to-asset"></a>
+<a id="src-docs-09-end-to-end-project-to-asset--支持边界"></a>
+<a id="src-docs-09-end-to-end-project-to-asset--流程目标"></a>
+<a id="src-docs-09-end-to-end-project-to-asset--设计与控制"></a>
+<a id="src-docs-09-end-to-end-project-to-asset--诊断顺序"></a>
+<a id="src-docs-09-end-to-end-project-to-cash"></a>
+<a id="src-docs-09-end-to-end-project-to-cash--支持边界"></a>
+<a id="src-docs-09-end-to-end-project-to-cash--流程目标"></a>
+<a id="src-docs-09-end-to-end-project-to-cash--设计与控制"></a>
+<a id="src-docs-09-end-to-end-project-to-cash--诊断顺序"></a>
+<a id="src-docs-09-end-to-end-readme"></a>
+<a id="src-docs-09-end-to-end-readme--共同标准"></a>
+<a id="src-docs-09-end-to-end-record-to-report"></a>
+<a id="src-docs-09-end-to-end-record-to-report--支持边界"></a>
+<a id="src-docs-09-end-to-end-record-to-report--流程目标"></a>
+<a id="src-docs-09-end-to-end-record-to-report--设计与控制"></a>
+<a id="src-docs-09-end-to-end-record-to-report--诊断顺序"></a>
+<a id="src-docs-09-end-to-end-tax-determination-to-reporting"></a>
+<a id="src-docs-09-end-to-end-tax-determination-to-reporting--支持边界"></a>
+<a id="src-docs-09-end-to-end-tax-determination-to-reporting--流程目标"></a>
+<a id="src-docs-09-end-to-end-tax-determination-to-reporting--设计与控制"></a>
+<a id="src-docs-09-end-to-end-tax-determination-to-reporting--诊断顺序"></a>

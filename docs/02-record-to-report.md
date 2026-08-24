@@ -1,378 +1,102 @@
-# 记录到报告（R2R）
+# 记录到报告（Record to Report，R2R）
 
-> 总账、子账会计、FAH、AGIS、预算、重估、合并、报表与关账。本文件由原目录中的 19 份资料合并而成；各章节保留原来源标记，便于审计与后续去重。
+> R2R 把各子账和外部来源的业务事件转换为可审计总账、余额和财务报告。核心不是“把分录传入 GL”，而是保证来源、会计、过账、余额和报告全链路一致。
 
-## 本模块章节导航
+## 阅读导航
 
-- [Record to Report](#src-docs-02-record-to-report-readme)（原 `docs/02-record-to-report/README.md`）
-- [Record to Report： agis-intercompany](#src-docs-02-record-to-report-agis-intercompany-readme)（原 `docs/02-record-to-report/agis-intercompany/README.md`）
-- [Record to Report： budgetary-control](#src-docs-02-record-to-report-budgetary-control-readme)（原 `docs/02-record-to-report/budgetary-control/README.md`）
-- [Record to Report： consolidation-and-elimination](#src-docs-02-record-to-report-consolidation-and-elimination-readme)（原 `docs/02-record-to-report/consolidation-and-elimination/README.md`）
-- [Record to Report： financials-accounting-hub](#src-docs-02-record-to-report-financials-accounting-hub-readme)（原 `docs/02-record-to-report/financials-accounting-hub/README.md`）
-- [Record to Report： general-ledger](#src-docs-02-record-to-report-general-ledger-readme)（原 `docs/02-record-to-report/general-ledger/README.md`）
-- [Record to Report： record-to-report-close](#src-docs-02-record-to-report-record-to-report-close-readme)（原 `docs/02-record-to-report/record-to-report-close/README.md`）
-- [Record to Report： secondary-ledger-reporting-currency](#src-docs-02-record-to-report-secondary-ledger-reporting-currency-readme)（原 `docs/02-record-to-report/secondary-ledger-reporting-currency/README.md`）
-- [Record to Report： subledger-accounting](#src-docs-02-record-to-report-subledger-accounting-readme)（原 `docs/02-record-to-report/subledger-accounting/README.md`）
-- [Oracle General Ledger（GL / Record to Report）](#src-docs-04-gl-readme)（原 `docs/04-gl/README.md`）
-- [预算、预算控制与资金可用性](#src-docs-04-gl-budgetary-control)（原 `docs/04-gl/budgetary-control.md`）
-- [GL 期间开关、月结、年结与报表](#src-docs-04-gl-close-reports)（原 `docs/04-gl/close-reports.md`）
-- [合并、重估、折算与重复日记账](#src-docs-04-gl-consolidation-revaluation)（原 `docs/04-gl/consolidation-revaluation.md`）
-- [Oracle General Ledger 接口实现案例](#src-docs-04-gl-interfaces)（原 `docs/04-gl/interfaces.md`）
-- [GL 日记账来源、类别、审批与自动过账](#src-docs-04-gl-journals)（原 `docs/04-gl/journals.md`）
-- [General Ledger 账簿、日记账与过账流程](#src-docs-04-gl-process)（原 `docs/04-gl/process.md`）
-- [FSG、Smart View、Web ADI 与日记账导入](#src-docs-04-gl-reporting-interfaces)（原 `docs/04-gl/reporting-interfaces.md`）
-- [SLA、Financials Accounting Hub 与 AGIS](#src-docs-04-gl-sla-fah-agis)（原 `docs/04-gl/sla-fah-agis.md`）
-- [Oracle General Ledger 常用表结构](#src-docs-04-gl-tables)（原 `docs/04-gl/tables.md`）
+- [会计链](#2-端到端会计链) · [总账设计](#3-总账核心设计) · [月结](#4-月结控制顺序) · [功能视角](#5-功能顾问检查点) · [技术视角](#6-技术顾问检查点) · [差异诊断](#7-高频差异诊断) · [专题详解](#9-专题详解)
 
----
+## 1. 学习目标与边界
 
-<!-- source: docs/02-record-to-report/README.md -->
-<a id="src-docs-02-record-to-report-readme"></a>
-## Record to Report
+应能完成 Ledger 与日记账控制设计，理解 SLA、Financials Accounting Hub（财务会计中心，FAH）、Advanced Global Intercompany System（高级全球公司间系统，AGIS）、预算控制、重估、折算、合并和关账，并能从 GL 反向追溯到来源交易。
 
+## 2. 端到端会计链
 
-<a id="src-docs-02-record-to-report-readme--范围与目标"></a>
-### 范围与目标
-覆盖总账、SLA、FAH、AGIS、预算、合并、二级账簿和月结，目标是使每个业务事件可从来源交易追溯至已过账日记账和报告。
-
-<a id="src-docs-02-record-to-report-readme--运行与实施控制"></a>
-### 运行与实施控制
-先确认 Ledger、期间、Data Access、会计方法和来源系统；再验证事件、分录、传输、Journal Import、Posting、重估/折算/合并和报告。
-
-<a id="src-docs-02-record-to-report-readme--核心数据对象"></a>
-### 核心数据对象
-GL_LEDGERS、GL_JE_BATCHES、GL_JE_HEADERS、GL_JE_LINES、GL_BALANCES、XLA_TRANSACTION_ENTITIES、XLA_EVENTS、XLA_AE_HEADERS、XLA_AE_LINES。对象、列、状态和 API 签名须在目标实例 eTRM、Integration Repository 与数据字典复核。
-
-<a id="src-docs-02-record-to-report-readme--与既有知识的关系"></a>
-### 与既有知识的关系
-本目标目录新增详细入口；已有专题保留在 [04-gl/README](#src-docs-04-gl-readme) 并逐步迁移链接，不复制历史内容。
-
-<a id="src-docs-02-record-to-report-readme--官方依据"></a>
-### 官方依据
-[Oracle Financials Documentation](https://docs.oracle.com/cd/E26401_01/nav/financials.htm)
-
-
-<!-- source: docs/02-record-to-report/agis-intercompany/README.md -->
-<a id="src-docs-02-record-to-report-agis-intercompany-readme"></a>
-## Record to Report： agis-intercompany
-
-
-<a id="src-docs-02-record-to-report-agis-intercompany-readme--业务定位"></a>
-### 业务定位
-本专题是 Record to Report 中的 agis-intercompany 子域。覆盖总账、SLA、FAH、AGIS、预算、合并、二级账簿和月结，目标是使每个业务事件可从来源交易追溯至已过账日记账和报告。
-
-<a id="src-docs-02-record-to-report-agis-intercompany-readme--设计与配置"></a>
-### 设计与配置
-先确认 Ledger、期间、Data Access、会计方法和来源系统；再验证事件、分录、传输、Journal Import、Posting、重估/折算/合并和报告。
-上线前以正常、跨期、外币/多组织（如适用）、拒绝、冲销/撤回、重跑和月结场景完成验证。
-
-<a id="src-docs-02-record-to-report-agis-intercompany-readme--数据接口与会计追溯"></a>
-### 数据、接口与会计追溯
-GL_LEDGERS、GL_JE_BATCHES、GL_JE_HEADERS、GL_JE_LINES、GL_BALANCES、XLA_TRANSACTION_ENTITIES、XLA_EVENTS、XLA_AE_HEADERS、XLA_AE_LINES。接口必须维护来源业务键、批次号、行号、状态、错误码和可重放策略；会计追溯按交易主键、事件、分录和 GL 链分层进行。
-
-```sql
-select owner, table_name, column_name, data_type
-  from all_tab_columns
- where owner = upper(:p_owner)
-   and table_name = upper(:p_table_name)
- order by column_id;
+```text
+来源交易/外部子账
+  → Accounting Event（会计事件）
+  → Create Accounting（创建会计）
+  → XLA 会计分录
+  → Transfer to GL（传送总账）
+  → Journal Import（日记账导入）
+  → Journal/Post（日记账/过账）
+  → GL Balances（总账余额）
+  → Revaluation/Translation/Consolidation（重估/折算/合并）
+  → Financial Reporting（财务报告）
 ```
 
-<a id="src-docs-02-record-to-report-agis-intercompany-readme--常见问题与排查"></a>
-### 常见问题与排查
-子账差异被手工 GL 分录掩盖；未区分 Create Accounting、Transfer、Import 与 Posting 断点；跨 Ledger 汇率/转换规则未对账。 先确认产品是否已安装、职责和组织/账簿上下文是否正确，再检查业务状态、接口批次、并发日志、SLA 和报告。
+诊断时必须指出断点在事件生成、创建会计、传输、导入、过账还是余额/reporting；“未进总账”不是足够的问题描述。
 
-<a id="src-docs-02-record-to-report-agis-intercompany-readme--实施边界"></a>
-### 实施边界
-不直接 DML Oracle EBS 业务表。写入使用标准页面、公开 API、Open Interface 或受控自定义对象；可选产品需确认许可证、安装和补丁范围。
+## 3. 总账核心设计
 
-<a id="src-docs-02-record-to-report-agis-intercompany-readme--关联与官方依据"></a>
-### 关联与官方依据
-[本知识域入口](#src-docs-02-record-to-report-readme)｜[Oracle Financials Documentation](https://docs.oracle.com/cd/E26401_01/nav/financials.htm)
+### 3.1 日记账治理
 
+Journal Source（日记账来源）标识系统来源，Journal Category（日记账类别）标识业务性质。为每类来源定义是否允许手工录入、是否需要审批、是否自动过账、冲销规则和对账责任。手工日记账不得作为修复子账的默认方法。
 
-<!-- source: docs/02-record-to-report/budgetary-control/README.md -->
-<a id="src-docs-02-record-to-report-budgetary-control-readme"></a>
-## Record to Report： budgetary-control
+### 3.2 多币种处理
 
+- **Conversion（换算）**：交易币种按汇率换为账簿币种。
+- **Revaluation（重估）**：期末重估外币货币性余额，通常产生未实现汇兑损益。
+- **Translation（折算）**：把账簿余额折算为报告币种。
 
-<a id="src-docs-02-record-to-report-budgetary-control-readme--业务定位"></a>
-### 业务定位
-本专题是 Record to Report 中的 budgetary-control 子域。覆盖总账、SLA、FAH、AGIS、预算、合并、二级账簿和月结，目标是使每个业务事件可从来源交易追溯至已过账日记账和报告。
+三者对象、时点和会计结果不同。功能方案必须定义汇率类型、日期、科目范围、累计折算差额和冲销策略。
 
-<a id="src-docs-02-record-to-report-budgetary-control-readme--设计与配置"></a>
-### 设计与配置
-先确认 Ledger、期间、Data Access、会计方法和来源系统；再验证事件、分录、传输、Journal Import、Posting、重估/折算/合并和报告。
-上线前以正常、跨期、外币/多组织（如适用）、拒绝、冲销/撤回、重跑和月结场景完成验证。
+### 3.3 二级账簿和报告币种
 
-<a id="src-docs-02-record-to-report-budgetary-control-readme--数据接口与会计追溯"></a>
-### 数据、接口与会计追溯
-GL_LEDGERS、GL_JE_BATCHES、GL_JE_HEADERS、GL_JE_LINES、GL_BALANCES、XLA_TRANSACTION_ENTITIES、XLA_EVENTS、XLA_AE_HEADERS、XLA_AE_LINES。接口必须维护来源业务键、批次号、行号、状态、错误码和可重放策略；会计追溯按交易主键、事件、分录和 GL 链分层进行。
+差异来自会计准则、COA、日历或核算级别时评估 Secondary Ledger；主要是币种报告时评估 Reporting Currency。必须明确转换级别（余额、日记账或子账）、延迟容忍度和对账方式。
 
-```sql
-select owner, table_name, column_name, data_type
-  from all_tab_columns
- where owner = upper(:p_owner)
-   and table_name = upper(:p_table_name)
- order by column_id;
-```
+## 4. 月结控制顺序
 
-<a id="src-docs-02-record-to-report-budgetary-control-readme--常见问题与排查"></a>
-### 常见问题与排查
-子账差异被手工 GL 分录掩盖；未区分 Create Accounting、Transfer、Import 与 Posting 断点；跨 Ledger 汇率/转换规则未对账。 先确认产品是否已安装、职责和组织/账簿上下文是否正确，再检查业务状态、接口批次、并发日志、SLA 和报告。
+1. 冻结接口批次并确认所有来源系统完成交付。
+2. 完成各子账验证、会计、传输和子账对账。
+3. 清理 GL Interface 和未过账/错误日记账。
+4. 完成跨公司、分摊、重估、折算和必要的合并抵销。
+5. 对账子账余额、GL 账户、银行/库存/资产等控制账户。
+6. 审阅试算平衡、异常波动和手工分录。
+7. 关闭子账期间后关闭 GL；保留签核和例外批准证据。
 
-<a id="src-docs-02-record-to-report-budgetary-control-readme--实施边界"></a>
-### 实施边界
-不直接 DML Oracle EBS 业务表。写入使用标准页面、公开 API、Open Interface 或受控自定义对象；可选产品需确认许可证、安装和补丁范围。
+## 5. 功能顾问检查点
 
-<a id="src-docs-02-record-to-report-budgetary-control-readme--关联与官方依据"></a>
-### 关联与官方依据
-[本知识域入口](#src-docs-02-record-to-report-readme)｜[Oracle Financials Documentation](https://docs.oracle.com/cd/E26401_01/nav/financials.htm)
+- Ledger、期间状态、Journal Source/Category、序列和审批。
+- Accounting Method、Application Accounting Definition 和账户派生规则。
+- 自动过账、经常性日记账、分摊、预算控制和余额控制。
+- 重估、折算、合并、AGIS 与 FAH 的适用边界。
+- 关账日历、责任矩阵、关键报表和差异阈值。
 
+## 6. 技术顾问检查点
 
-<!-- source: docs/02-record-to-report/consolidation-and-elimination/README.md -->
-<a id="src-docs-02-record-to-report-consolidation-and-elimination-readme"></a>
-## Record to Report： consolidation-and-elimination
+关键对象通常包括 `GL_JE_BATCHES`、`GL_JE_HEADERS`、`GL_JE_LINES`、`GL_IMPORT_REFERENCES`、`GL_BALANCES`、`XLA_TRANSACTION_ENTITIES`、`XLA_EVENTS`、`XLA_AE_HEADERS` 和 `XLA_AE_LINES`。先用实例数据字典确认列和关联，再以 Ledger、期间、来源、业务键和请求 ID 限定查询。
 
+接口设计至少保存：来源系统、业务唯一键、批次/行号、Ledger、会计日期、币种、借贷控制总额、状态、错误信息和重跑标识。Journal Import 成功不等于 Posting 成功，也不等于来源系统完成对账。
 
-<a id="src-docs-02-record-to-report-consolidation-and-elimination-readme--业务定位"></a>
-### 业务定位
-本专题是 Record to Report 中的 consolidation-and-elimination 子域。覆盖总账、SLA、FAH、AGIS、预算、合并、二级账簿和月结，目标是使每个业务事件可从来源交易追溯至已过账日记账和报告。
+## 7. 高频差异诊断
 
-<a id="src-docs-02-record-to-report-consolidation-and-elimination-readme--设计与配置"></a>
-### 设计与配置
-先确认 Ledger、期间、Data Access、会计方法和来源系统；再验证事件、分录、传输、Journal Import、Posting、重估/折算/合并和报告。
-上线前以正常、跨期、外币/多组织（如适用）、拒绝、冲销/撤回、重跑和月结场景完成验证。
+| 现象 | 优先检查 | 不应采用的处理 |
+| --- | --- | --- |
+| 子账有交易、XLA 无分录 | 事件状态、会计日期、Create Accounting 日志 | 直接补 GL 分录 |
+| XLA 已完成、GL 无日记账 | 传输标志、GL Interface、Journal Import 请求 | 反复无条件重跑 |
+| 日记账已过账、余额不符 | Ledger/期间/币种、实际与统计余额、账户组合 | 修改历史基表 |
+| 重估差异 | 账户范围、汇率、余额币种、冲销 | 把折算和重估混为一谈 |
+| 合并不平 | 映射、转换、抵销、期间和公司间差异 | 仅看合并后净额 |
 
-<a id="src-docs-02-record-to-report-consolidation-and-elimination-readme--数据接口与会计追溯"></a>
-### 数据、接口与会计追溯
-GL_LEDGERS、GL_JE_BATCHES、GL_JE_HEADERS、GL_JE_LINES、GL_BALANCES、XLA_TRANSACTION_ENTITIES、XLA_EVENTS、XLA_AE_HEADERS、XLA_AE_LINES。接口必须维护来源业务键、批次号、行号、状态、错误码和可重放策略；会计追溯按交易主键、事件、分录和 GL 链分层进行。
+## 8. 建议练习
 
-```sql
-select owner, table_name, column_name, data_type
-  from all_tab_columns
- where owner = upper(:p_owner)
-   and table_name = upper(:p_table_name)
- order by column_id;
-```
+- 从一笔 AP 发票双向追溯到 GL，并识别所有状态断点。
+- 为外币应收设计交易换算、期末重估和报告折算案例。
+- 制作一个包含子账完成、接口清理、重估、合并和签核的月结运行表。
 
-<a id="src-docs-02-record-to-report-consolidation-and-elimination-readme--常见问题与排查"></a>
-### 常见问题与排查
-子账差异被手工 GL 分录掩盖；未区分 Create Accounting、Transfer、Import 与 Posting 断点；跨 Ledger 汇率/转换规则未对账。 先确认产品是否已安装、职责和组织/账簿上下文是否正确，再检查业务状态、接口批次、并发日志、SLA 和报告。
-
-<a id="src-docs-02-record-to-report-consolidation-and-elimination-readme--实施边界"></a>
-### 实施边界
-不直接 DML Oracle EBS 业务表。写入使用标准页面、公开 API、Open Interface 或受控自定义对象；可选产品需确认许可证、安装和补丁范围。
-
-<a id="src-docs-02-record-to-report-consolidation-and-elimination-readme--关联与官方依据"></a>
-### 关联与官方依据
-[本知识域入口](#src-docs-02-record-to-report-readme)｜[Oracle Financials Documentation](https://docs.oracle.com/cd/E26401_01/nav/financials.htm)
-
-
-<!-- source: docs/02-record-to-report/financials-accounting-hub/README.md -->
-<a id="src-docs-02-record-to-report-financials-accounting-hub-readme"></a>
-## Record to Report： financials-accounting-hub
-
-
-<a id="src-docs-02-record-to-report-financials-accounting-hub-readme--业务定位"></a>
-### 业务定位
-本专题是 Record to Report 中的 financials-accounting-hub 子域。覆盖总账、SLA、FAH、AGIS、预算、合并、二级账簿和月结，目标是使每个业务事件可从来源交易追溯至已过账日记账和报告。
-
-<a id="src-docs-02-record-to-report-financials-accounting-hub-readme--设计与配置"></a>
-### 设计与配置
-先确认 Ledger、期间、Data Access、会计方法和来源系统；再验证事件、分录、传输、Journal Import、Posting、重估/折算/合并和报告。
-上线前以正常、跨期、外币/多组织（如适用）、拒绝、冲销/撤回、重跑和月结场景完成验证。
-
-<a id="src-docs-02-record-to-report-financials-accounting-hub-readme--数据接口与会计追溯"></a>
-### 数据、接口与会计追溯
-GL_LEDGERS、GL_JE_BATCHES、GL_JE_HEADERS、GL_JE_LINES、GL_BALANCES、XLA_TRANSACTION_ENTITIES、XLA_EVENTS、XLA_AE_HEADERS、XLA_AE_LINES。接口必须维护来源业务键、批次号、行号、状态、错误码和可重放策略；会计追溯按交易主键、事件、分录和 GL 链分层进行。
-
-```sql
-select owner, table_name, column_name, data_type
-  from all_tab_columns
- where owner = upper(:p_owner)
-   and table_name = upper(:p_table_name)
- order by column_id;
-```
-
-<a id="src-docs-02-record-to-report-financials-accounting-hub-readme--常见问题与排查"></a>
-### 常见问题与排查
-子账差异被手工 GL 分录掩盖；未区分 Create Accounting、Transfer、Import 与 Posting 断点；跨 Ledger 汇率/转换规则未对账。 先确认产品是否已安装、职责和组织/账簿上下文是否正确，再检查业务状态、接口批次、并发日志、SLA 和报告。
-
-<a id="src-docs-02-record-to-report-financials-accounting-hub-readme--实施边界"></a>
-### 实施边界
-不直接 DML Oracle EBS 业务表。写入使用标准页面、公开 API、Open Interface 或受控自定义对象；可选产品需确认许可证、安装和补丁范围。
-
-<a id="src-docs-02-record-to-report-financials-accounting-hub-readme--关联与官方依据"></a>
-### 关联与官方依据
-[本知识域入口](#src-docs-02-record-to-report-readme)｜[Oracle Financials Documentation](https://docs.oracle.com/cd/E26401_01/nav/financials.htm)
-
-
-<!-- source: docs/02-record-to-report/general-ledger/README.md -->
-<a id="src-docs-02-record-to-report-general-ledger-readme"></a>
-## Record to Report： general-ledger
-
-
-<a id="src-docs-02-record-to-report-general-ledger-readme--业务定位"></a>
-### 业务定位
-本专题是 Record to Report 中的 general-ledger 子域。覆盖总账、SLA、FAH、AGIS、预算、合并、二级账簿和月结，目标是使每个业务事件可从来源交易追溯至已过账日记账和报告。
-
-<a id="src-docs-02-record-to-report-general-ledger-readme--设计与配置"></a>
-### 设计与配置
-先确认 Ledger、期间、Data Access、会计方法和来源系统；再验证事件、分录、传输、Journal Import、Posting、重估/折算/合并和报告。
-上线前以正常、跨期、外币/多组织（如适用）、拒绝、冲销/撤回、重跑和月结场景完成验证。
-
-<a id="src-docs-02-record-to-report-general-ledger-readme--数据接口与会计追溯"></a>
-### 数据、接口与会计追溯
-GL_LEDGERS、GL_JE_BATCHES、GL_JE_HEADERS、GL_JE_LINES、GL_BALANCES、XLA_TRANSACTION_ENTITIES、XLA_EVENTS、XLA_AE_HEADERS、XLA_AE_LINES。接口必须维护来源业务键、批次号、行号、状态、错误码和可重放策略；会计追溯按交易主键、事件、分录和 GL 链分层进行。
-
-```sql
-select owner, table_name, column_name, data_type
-  from all_tab_columns
- where owner = upper(:p_owner)
-   and table_name = upper(:p_table_name)
- order by column_id;
-```
-
-<a id="src-docs-02-record-to-report-general-ledger-readme--常见问题与排查"></a>
-### 常见问题与排查
-子账差异被手工 GL 分录掩盖；未区分 Create Accounting、Transfer、Import 与 Posting 断点；跨 Ledger 汇率/转换规则未对账。 先确认产品是否已安装、职责和组织/账簿上下文是否正确，再检查业务状态、接口批次、并发日志、SLA 和报告。
-
-<a id="src-docs-02-record-to-report-general-ledger-readme--实施边界"></a>
-### 实施边界
-不直接 DML Oracle EBS 业务表。写入使用标准页面、公开 API、Open Interface 或受控自定义对象；可选产品需确认许可证、安装和补丁范围。
-
-<a id="src-docs-02-record-to-report-general-ledger-readme--关联与官方依据"></a>
-### 关联与官方依据
-[本知识域入口](#src-docs-02-record-to-report-readme)｜[Oracle Financials Documentation](https://docs.oracle.com/cd/E26401_01/nav/financials.htm)
-
-
-<!-- source: docs/02-record-to-report/record-to-report-close/README.md -->
-<a id="src-docs-02-record-to-report-record-to-report-close-readme"></a>
-## Record to Report： record-to-report-close
-
-
-<a id="src-docs-02-record-to-report-record-to-report-close-readme--业务定位"></a>
-### 业务定位
-本专题是 Record to Report 中的 record-to-report-close 子域。覆盖总账、SLA、FAH、AGIS、预算、合并、二级账簿和月结，目标是使每个业务事件可从来源交易追溯至已过账日记账和报告。
-
-<a id="src-docs-02-record-to-report-record-to-report-close-readme--设计与配置"></a>
-### 设计与配置
-先确认 Ledger、期间、Data Access、会计方法和来源系统；再验证事件、分录、传输、Journal Import、Posting、重估/折算/合并和报告。
-上线前以正常、跨期、外币/多组织（如适用）、拒绝、冲销/撤回、重跑和月结场景完成验证。
-
-<a id="src-docs-02-record-to-report-record-to-report-close-readme--数据接口与会计追溯"></a>
-### 数据、接口与会计追溯
-GL_LEDGERS、GL_JE_BATCHES、GL_JE_HEADERS、GL_JE_LINES、GL_BALANCES、XLA_TRANSACTION_ENTITIES、XLA_EVENTS、XLA_AE_HEADERS、XLA_AE_LINES。接口必须维护来源业务键、批次号、行号、状态、错误码和可重放策略；会计追溯按交易主键、事件、分录和 GL 链分层进行。
-
-```sql
-select owner, table_name, column_name, data_type
-  from all_tab_columns
- where owner = upper(:p_owner)
-   and table_name = upper(:p_table_name)
- order by column_id;
-```
-
-<a id="src-docs-02-record-to-report-record-to-report-close-readme--常见问题与排查"></a>
-### 常见问题与排查
-子账差异被手工 GL 分录掩盖；未区分 Create Accounting、Transfer、Import 与 Posting 断点；跨 Ledger 汇率/转换规则未对账。 先确认产品是否已安装、职责和组织/账簿上下文是否正确，再检查业务状态、接口批次、并发日志、SLA 和报告。
-
-<a id="src-docs-02-record-to-report-record-to-report-close-readme--实施边界"></a>
-### 实施边界
-不直接 DML Oracle EBS 业务表。写入使用标准页面、公开 API、Open Interface 或受控自定义对象；可选产品需确认许可证、安装和补丁范围。
-
-<a id="src-docs-02-record-to-report-record-to-report-close-readme--关联与官方依据"></a>
-### 关联与官方依据
-[本知识域入口](#src-docs-02-record-to-report-readme)｜[Oracle Financials Documentation](https://docs.oracle.com/cd/E26401_01/nav/financials.htm)
-
-
-<!-- source: docs/02-record-to-report/secondary-ledger-reporting-currency/README.md -->
-<a id="src-docs-02-record-to-report-secondary-ledger-reporting-currency-readme"></a>
-## Record to Report： secondary-ledger-reporting-currency
-
-
-<a id="src-docs-02-record-to-report-secondary-ledger-reporting-currency-readme--业务定位"></a>
-### 业务定位
-本专题是 Record to Report 中的 secondary-ledger-reporting-currency 子域。覆盖总账、SLA、FAH、AGIS、预算、合并、二级账簿和月结，目标是使每个业务事件可从来源交易追溯至已过账日记账和报告。
-
-<a id="src-docs-02-record-to-report-secondary-ledger-reporting-currency-readme--设计与配置"></a>
-### 设计与配置
-先确认 Ledger、期间、Data Access、会计方法和来源系统；再验证事件、分录、传输、Journal Import、Posting、重估/折算/合并和报告。
-上线前以正常、跨期、外币/多组织（如适用）、拒绝、冲销/撤回、重跑和月结场景完成验证。
-
-<a id="src-docs-02-record-to-report-secondary-ledger-reporting-currency-readme--数据接口与会计追溯"></a>
-### 数据、接口与会计追溯
-GL_LEDGERS、GL_JE_BATCHES、GL_JE_HEADERS、GL_JE_LINES、GL_BALANCES、XLA_TRANSACTION_ENTITIES、XLA_EVENTS、XLA_AE_HEADERS、XLA_AE_LINES。接口必须维护来源业务键、批次号、行号、状态、错误码和可重放策略；会计追溯按交易主键、事件、分录和 GL 链分层进行。
-
-```sql
-select owner, table_name, column_name, data_type
-  from all_tab_columns
- where owner = upper(:p_owner)
-   and table_name = upper(:p_table_name)
- order by column_id;
-```
-
-<a id="src-docs-02-record-to-report-secondary-ledger-reporting-currency-readme--常见问题与排查"></a>
-### 常见问题与排查
-子账差异被手工 GL 分录掩盖；未区分 Create Accounting、Transfer、Import 与 Posting 断点；跨 Ledger 汇率/转换规则未对账。 先确认产品是否已安装、职责和组织/账簿上下文是否正确，再检查业务状态、接口批次、并发日志、SLA 和报告。
-
-<a id="src-docs-02-record-to-report-secondary-ledger-reporting-currency-readme--实施边界"></a>
-### 实施边界
-不直接 DML Oracle EBS 业务表。写入使用标准页面、公开 API、Open Interface 或受控自定义对象；可选产品需确认许可证、安装和补丁范围。
-
-<a id="src-docs-02-record-to-report-secondary-ledger-reporting-currency-readme--关联与官方依据"></a>
-### 关联与官方依据
-[本知识域入口](#src-docs-02-record-to-report-readme)｜[Oracle Financials Documentation](https://docs.oracle.com/cd/E26401_01/nav/financials.htm)
-
-
-<!-- source: docs/02-record-to-report/subledger-accounting/README.md -->
-<a id="src-docs-02-record-to-report-subledger-accounting-readme"></a>
-## Record to Report： subledger-accounting
-
-
-<a id="src-docs-02-record-to-report-subledger-accounting-readme--业务定位"></a>
-### 业务定位
-本专题是 Record to Report 中的 subledger-accounting 子域。覆盖总账、SLA、FAH、AGIS、预算、合并、二级账簿和月结，目标是使每个业务事件可从来源交易追溯至已过账日记账和报告。
-
-<a id="src-docs-02-record-to-report-subledger-accounting-readme--设计与配置"></a>
-### 设计与配置
-先确认 Ledger、期间、Data Access、会计方法和来源系统；再验证事件、分录、传输、Journal Import、Posting、重估/折算/合并和报告。
-上线前以正常、跨期、外币/多组织（如适用）、拒绝、冲销/撤回、重跑和月结场景完成验证。
-
-<a id="src-docs-02-record-to-report-subledger-accounting-readme--数据接口与会计追溯"></a>
-### 数据、接口与会计追溯
-GL_LEDGERS、GL_JE_BATCHES、GL_JE_HEADERS、GL_JE_LINES、GL_BALANCES、XLA_TRANSACTION_ENTITIES、XLA_EVENTS、XLA_AE_HEADERS、XLA_AE_LINES。接口必须维护来源业务键、批次号、行号、状态、错误码和可重放策略；会计追溯按交易主键、事件、分录和 GL 链分层进行。
-
-```sql
-select owner, table_name, column_name, data_type
-  from all_tab_columns
- where owner = upper(:p_owner)
-   and table_name = upper(:p_table_name)
- order by column_id;
-```
-
-<a id="src-docs-02-record-to-report-subledger-accounting-readme--常见问题与排查"></a>
-### 常见问题与排查
-子账差异被手工 GL 分录掩盖；未区分 Create Accounting、Transfer、Import 与 Posting 断点；跨 Ledger 汇率/转换规则未对账。 先确认产品是否已安装、职责和组织/账簿上下文是否正确，再检查业务状态、接口批次、并发日志、SLA 和报告。
-
-<a id="src-docs-02-record-to-report-subledger-accounting-readme--实施边界"></a>
-### 实施边界
-不直接 DML Oracle EBS 业务表。写入使用标准页面、公开 API、Open Interface 或受控自定义对象；可选产品需确认许可证、安装和补丁范围。
-
-<a id="src-docs-02-record-to-report-subledger-accounting-readme--关联与官方依据"></a>
-### 关联与官方依据
-[本知识域入口](#src-docs-02-record-to-report-readme)｜[Oracle Financials Documentation](https://docs.oracle.com/cd/E26401_01/nav/financials.htm)
+## 9. 专题详解
 
 
 <!-- source: docs/04-gl/README.md -->
 <a id="src-docs-04-gl-readme"></a>
-## Oracle General Ledger（GL / Record to Report）
+### Oracle General Ledger（GL / Record to Report）
 
 
 GL 是法人/账簿层面的最终会计记录与报告层。本目录覆盖日记账、预算控制、重估/折算/合并、报表、Journal Import 及期间关闭；SLA 规则的权威正文见 `01-common/sla.md`。
 
 <a id="src-docs-04-gl-readme--专题导航"></a>
-### 专题导航
+#### 专题导航
 
 - [账簿、日记账与过账流程](#src-docs-04-gl-process)
 - [日记账来源、类别、审批与自动过账](#src-docs-04-gl-journals)
@@ -385,7 +109,7 @@ GL 是法人/账簿层面的最终会计记录与报告层。本目录覆盖日�
 - [`GL_INTERFACE` 实现](#src-docs-04-gl-interfaces)
 
 <a id="src-docs-04-gl-readme--设计与关账原则"></a>
-### 设计与关账原则
+#### 设计与关账原则
 
 1. 先锁定 COA、日历、币种、会计方法和 Ledger，再配置 Ledger Set、Data Access Set、二级账簿及 Reporting Currency。
 2. 任何子账余额差异先在子账/SLA 排除，确认已生成、传输和导入后再检查 GL；不要以手工总账分录掩盖子账差异。
@@ -393,7 +117,7 @@ GL 是法人/账簿层面的最终会计记录与报告层。本目录覆盖日�
 4. 预算控制、自动平衡、悬挂账户、公司间与 Journal Approval 的例外须进入持续监控和审批流程。
 
 <a id="src-docs-04-gl-readme--官方依据"></a>
-### 官方依据
+#### 官方依据
 
 - [Oracle General Ledger Documentation](https://docs.oracle.com/cd/E26401_01/nav/financials.htm)
 - [Oracle Financials Implementation Guide](https://docs.oracle.com/cd/E26401_01/doc.122/e48783/toc.htm)
@@ -401,11 +125,11 @@ GL 是法人/账簿层面的最终会计记录与报告层。本目录覆盖日�
 
 <!-- source: docs/04-gl/budgetary-control.md -->
 <a id="src-docs-04-gl-budgetary-control"></a>
-## 预算、预算控制与资金可用性
+### 预算、预算控制与资金可用性
 
 
 <a id="src-docs-04-gl-budgetary-control--概念"></a>
-### 概念
+#### 概念
 
 GL Budget 保存预算余额；Encumbrance 表示承诺/义务；Budgetary Control/Funds Check 按预算组织、账户范围、期间和边界判断可用资金。在不同实施中，可能使用传统 GL Encumbrance/Budgetary Control 或公共部门相关功能，须以已安装产品为准。
 
@@ -414,7 +138,7 @@ Budget - Actual - Encumbrance = Funds Available
 ```
 
 <a id="src-docs-04-gl-budgetary-control--配置"></a>
-### 配置
+#### 配置
 
 1. 定义 Budget、Budget Organization、Account Ranges、Calendar/Periods。
 2. 定义 Encumbrance Types 和采购阶段（Requisition/PO/Invoice）会计。
@@ -422,7 +146,7 @@ Budget - Actual - Encumbrance = Funds Available
 4. 加载/过账预算，测试预算转移、补充、采购取消/反冲和期末结转。
 
 <a id="src-docs-04-gl-budgetary-control--sql"></a>
-### SQL
+#### SQL
 
 ```sql
 SELECT gb.budget_name, gb.status, gb.first_valid_period_name,
@@ -442,7 +166,7 @@ SELECT gb.ledger_id, gb.code_combination_id, gb.currency_code,
 ```
 
 <a id="src-docs-04-gl-budgetary-control--排查"></a>
-### 排查
+#### 排查
 
 - Funds Check 失败：检查预算组织账户范围、Budget Period/Amount、Actual/Encumbrance、Boundary、Currency 和控制级别。
 - 可用金额不对：区分 Requisition/PO/Invoice 保留、未过账 Journal、取消/退货释放和期间跨度。
@@ -450,7 +174,7 @@ SELECT gb.ledger_id, gb.code_combination_id, gb.currency_code,
 - 预算导入错：检查 Budget Name、Ledger/CCID、Currency、Period、Debit/Credit 方向和接口错误代码。
 
 <a id="src-docs-04-gl-budgetary-control--关联"></a>
-### 关联
+#### 关联
 
 - [COA](01-foundation.md#src-docs-01-common-coa)
 - [P2P](09-end-to-end.md#src-docs-08-e2e-procure-to-pay)
@@ -458,11 +182,11 @@ SELECT gb.ledger_id, gb.code_combination_id, gb.currency_code,
 
 <!-- source: docs/04-gl/close-reports.md -->
 <a id="src-docs-04-gl-close-reports"></a>
-## GL 期间开关、月结、年结与报表
+### GL 期间开关、月结、年结与报表
 
 
 <a id="src-docs-04-gl-close-reports--关账依赖"></a>
-### 关账依赖
+#### 关账依赖
 
 ```text
 Operational Freeze
@@ -474,7 +198,7 @@ Operational Freeze
 ```
 
 <a id="src-docs-04-gl-close-reports--月结清单"></a>
-### 月结清单
+#### 月结清单
 
 1. 发布结账日历和截止时间，确认本期/下期输入规则。
 2. 所有子账完成业务处理、库存/接口、会计、转 GL 和对账。
@@ -484,14 +208,14 @@ Operational Freeze
 6. 关闭 GL 期间。需重开时走授权与审计流程。
 
 <a id="src-docs-04-gl-close-reports--年结"></a>
-### 年结
+#### 年结
 
 - 确认 Natural Account Type，收入/费用结转 Retained Earnings，资产/负债/权益结转期初。
 - 完成最终重估/折算、法人税务调整、抵销与审计分录。
 - 开放新年期间前验证 Calendar 和期间，保存年末 Trial Balance/财务报表快照。
 
 <a id="src-docs-04-gl-close-reports--sql"></a>
-### SQL
+#### SQL
 
 ```sql
 SELECT fa.application_short_name, gps.period_name,
@@ -517,7 +241,7 @@ SELECT status, user_je_source_name, COUNT(*) row_count
 ```
 
 <a id="src-docs-04-gl-close-reports--排查"></a>
-### 排查
+#### 排查
 
 - 无法关期：读取关期页面/报表指出的未完成项，定位子账、SLA、Interface 或 Journal 断点。
 - Trial Balance 不平：分析 Ledger/Currency/Actual Flag/Translated Flag，检查 Suspense、Intercompany、异常 Journal 和数据完整性。
@@ -525,7 +249,7 @@ SELECT status, user_je_source_name, COUNT(*) row_count
 - 期间误关：不更新 Period Status；评估报表/披露影响后使用标准 Reopen。
 
 <a id="src-docs-04-gl-close-reports--关联"></a>
-### 关联
+#### 关联
 
 - [Calendar/Period](01-foundation.md#src-docs-01-common-calendar-currency-period)
 - [AP Close](03-procure-to-pay.md#src-docs-02-ap-accounting-close-reports)
@@ -534,11 +258,11 @@ SELECT status, user_je_source_name, COUNT(*) row_count
 
 <!-- source: docs/04-gl/consolidation-revaluation.md -->
 <a id="src-docs-04-gl-consolidation-revaluation"></a>
-## 合并、重估、折算与重复日记账
+### 合并、重估、折算与重复日记账
 
 
 <a id="src-docs-04-gl-consolidation-revaluation--原理"></a>
-### 原理
+#### 原理
 
 - **Revaluation**：将外币账户余额按期末汇率重新计量，差额进入未实现损益。
 - **Translation**：将 Ledger 余额从本位币折算为报告币种，资产负债/损益通常使用不同汇率规则。
@@ -546,7 +270,7 @@ SELECT status, user_je_source_name, COUNT(*) row_count
 - **Recurring Journal/MassAllocation**：定期生成固定、公式或分配分录，生成后仍需审批与过账。
 
 <a id="src-docs-04-gl-consolidation-revaluation--配置与执行"></a>
-### 配置与执行
+#### 配置与执行
 
 1. 定义 Period/Balance 汇率，定义 Revaluation 账户范围、Rate Type、Unrealized Gain/Loss。
 2. 为 Translation 配置 Cumulative Translation Adjustment 账户和历史汇率。
@@ -554,7 +278,7 @@ SELECT status, user_je_source_name, COUNT(*) row_count
 4. 对 Recurring/Allocation 使用独立 Source/Category，审查公式、统计量、分配基础和反冲。
 
 <a id="src-docs-04-gl-consolidation-revaluation--sql"></a>
-### SQL
+#### SQL
 
 ```sql
 -- 某期外币余额
@@ -583,7 +307,7 @@ SELECT from_currency, to_currency, conversion_date,
 > 日汇率只是重估输入之一；实际执行还受 Revaluation Definition 的账户范围、币种、汇率类型和损益账户影响。生产重估以标准程序日志和报表输出为准。
 
 <a id="src-docs-04-gl-consolidation-revaluation--排查"></a>
-### 排查
+#### 排查
 
 - Revaluation 遗漏账户：查账户范围、Currency、Balance、Period Rate 和余额是否已为零。
 - Translation 不平：查 Historical/Average/Period-end Rate、CTA Account、期间顺序和当期日记账是否全部过账。
@@ -591,7 +315,7 @@ SELECT from_currency, to_currency, conversion_date,
 - Allocation 异常：保存生成批次，输出分配基础与公式中间值，不直接修改已过账行。
 
 <a id="src-docs-04-gl-consolidation-revaluation--关联"></a>
-### 关联
+#### 关联
 
 - [Currency/Rate](01-foundation.md#src-docs-01-common-calendar-currency-period)
 - [GL 结账](#src-docs-04-gl-close-reports)
@@ -599,11 +323,11 @@ SELECT from_currency, to_currency, conversion_date,
 
 <!-- source: docs/04-gl/interfaces.md -->
 <a id="src-docs-04-gl-interfaces"></a>
-## Oracle General Ledger 接口实现案例
+### Oracle General Ledger 接口实现案例
 
 
 <a id="src-docs-04-gl-interfaces--1-业界常用场景"></a>
-### 1. 业界常用场景
+#### 1. 业界常用场景
 
 | 场景 | 推荐接口 | 实施要点 |
 | --- | --- | --- |
@@ -614,7 +338,7 @@ SELECT from_currency, to_currency, conversion_date,
 | 外部系统实时记账 | ISG 暴露受控并发程序或自定义服务 | 接口服务只入暂存/接口表，后台异步 Journal Import |
 
 <a id="src-docs-04-gl-interfaces--2-导入前主数据与期间校验"></a>
-### 2. 导入前主数据与期间校验
+#### 2. 导入前主数据与期间校验
 
 ```sql
 SELECT gl.ledger_id,
@@ -642,10 +366,10 @@ SELECT gcc.code_combination_id,
 `CLOSING_STATUS='O'` 通常表示 Open；实际允许状态还应结合 Open Future Enterable Periods、Data Access Set 和账户有效期判断。
 
 <a id="src-docs-04-gl-interfaces--3-glinterface-具体实现"></a>
-### 3. `GL_INTERFACE` 具体实现
+#### 3. `GL_INTERFACE` 具体实现
 
 <a id="src-docs-04-gl-interfaces--31-生成批次号并写入借贷行"></a>
-#### 3.1 生成批次号并写入借贷行
+##### 3.1 生成批次号并写入借贷行
 
 ```sql
 DECLARE
@@ -735,7 +459,7 @@ END;
 生产实现应先在自定义暂存表保存原始消息和幂等键，再由单一工作进程写 `GL_INTERFACE`。不要直接写 `GL_JE_HEADERS`、`GL_JE_LINES` 或 `GL_BALANCES`。
 
 <a id="src-docs-04-gl-interfaces--32-外币分录"></a>
-#### 3.2 外币分录
+##### 3.2 外币分录
 
 外币日记账必须按实例规则提供 `CURRENCY_CONVERSION_TYPE`、`CURRENCY_CONVERSION_DATE` 和汇率，或者确保 GL Daily Rates 能派生汇率：
 
@@ -752,7 +476,7 @@ UPDATE gl_interface
 该更新只能作为同一接口工作单元在 Journal Import 前执行，不应在 Import 已运行后修补数据。
 
 <a id="src-docs-04-gl-interfaces--4-批次控制与幂等校验"></a>
-### 4. 批次控制与幂等校验
+#### 4. 批次控制与幂等校验
 
 ```sql
 -- 每个 Ledger、Currency、Group 必须借贷平衡
@@ -778,7 +502,7 @@ SELECT COUNT(*) duplicate_count
 只查 `GL_INTERFACE` 不能覆盖已导入数据。可靠幂等应以自定义消息表唯一约束为主，并在成功表中保存 `JE_BATCH_ID/JE_HEADER_ID`。
 
 <a id="src-docs-04-gl-interfaces--5-提交-journal-import"></a>
-### 5. 提交 Journal Import
+#### 5. 提交 Journal Import
 
 先在目标实例确认并发程序 `GLLEZL` 的参数顺序；补丁、Ledger/Data Access Set 设置可能使参数定义不同。
 
@@ -831,7 +555,7 @@ END;
 上例是常见参数骨架，不是可跳过目标实例核对的固定签名。若实例要求 `GL_INTERFACE_CONTROL`，应通过标准 Journal Import 提交流程创建 Interface Run，而不是猜测参数或自行更新控制状态。
 
 <a id="src-docs-04-gl-interfaces--6-错误排查与成功对账"></a>
-### 6. 错误排查与成功对账
+#### 6. 错误排查与成功对账
 
 ```sql
 -- 接口状态及错误代码分布
@@ -868,7 +592,7 @@ SELECT gjb.je_batch_id,
 Journal Import Execution Report 是错误代码的首要解释来源。常见问题包括期间未开、Source/Category 未定义、CCID 无效、外币汇率缺失、借贷不平和 Data Access Set 无权限。
 
 <a id="src-docs-04-gl-interfaces--7-实施控制清单"></a>
-### 7. 实施控制清单
+#### 7. 实施控制清单
 
 - 为外部来源建立独立 Journal Source/Category，并明确是否允许冻结、审批和保留 Import Reference。
 - 每个消息保存 `CORRELATION_ID`、源单号、`GROUP_ID`、Request ID、Journal ID 和批次控制总额。
@@ -877,7 +601,7 @@ Journal Import Execution Report 是错误代码的首要解释来源。常见问
 - 日记账成功导入后仍需根据公司政策执行审批、过账和反冲。
 
 <a id="src-docs-04-gl-interfaces--8-关联文档"></a>
-### 8. 关联文档
+#### 8. 关联文档
 
 - [GL 日记账、审批与过账](#src-docs-04-gl-journals)
 - [GL 业务流程](#src-docs-04-gl-process)
@@ -886,7 +610,7 @@ Journal Import Execution Report 是错误代码的首要解释来源。常见问
 - [通用接口治理](01-foundation.md#src-docs-01-common-interfaces)
 
 <a id="src-docs-04-gl-interfaces--9-官方参考"></a>
-### 9. 官方参考
+#### 9. 官方参考
 
 - [Oracle General Ledger Implementation Guide R12.2](https://docs.oracle.com/cd/E26401_01/doc.122/e48747/)
 - [Oracle E-Business Suite Integrated SOA Gateway Implementation Guide](https://docs.oracle.com/cd/E26401_01/doc.122/e20925/)
@@ -895,11 +619,11 @@ Journal Import Execution Report 是错误代码的首要解释来源。常见问
 
 <!-- source: docs/04-gl/journals.md -->
 <a id="src-docs-04-gl-journals"></a>
-## GL 日记账来源、类别、审批与自动过账
+### GL 日记账来源、类别、审批与自动过账
 
 
 <a id="src-docs-04-gl-journals--原理与控制"></a>
-### 原理与控制
+#### 原理与控制
 
 Journal Source 标识产生系统，控制 Import、Freeze Source、Journal References 等；Category 标识业务性质。Batch 是审批/过账单位，Header 定义 Ledger/Period/Currency/Source/Category，Line 保存账户和借贷。
 
@@ -909,7 +633,7 @@ Journal Source 标识产生系统，控制 Import、Freeze Source、Journal Refe
 - Source Freeze 可防止在 GL 修改来自子账的日记账，保持审计链。
 
 <a id="src-docs-04-gl-journals--sql"></a>
-### SQL
+#### SQL
 
 ```sql
 SELECT gjh.je_header_id, gjh.je_batch_id, gjh.name,
@@ -935,7 +659,7 @@ SELECT je_source_name, user_je_source_name,
 ```
 
 <a id="src-docs-04-gl-journals--排查"></a>
-### 排查
+#### 排查
 
 - 审批人找不到：查员工/用户关联、职位/审批限额、Workflow/AME 规则和通知状态。
 - AutoPost 没选中：比较 Criteria Set 与 Batch 的 Ledger/Source/Category/Balance Type/Period/Status。
@@ -943,7 +667,7 @@ SELECT je_source_name, user_je_source_name,
 - 子账 Journal 被修改：检查 Source Freeze、职责和审计数据；应在子账反冲并重建会计。
 
 <a id="src-docs-04-gl-journals--关联"></a>
-### 关联
+#### 关联
 
 - [GL 主流程](#src-docs-04-gl-process)
 - [Web ADI/Import](#src-docs-04-gl-reporting-interfaces)
@@ -951,11 +675,11 @@ SELECT je_source_name, user_je_source_name,
 
 <!-- source: docs/04-gl/process.md -->
 <a id="src-docs-04-gl-process"></a>
-## General Ledger 账簿、日记账与过账流程
+### General Ledger 账簿、日记账与过账流程
 
 
 <a id="src-docs-04-gl-process--架构"></a>
-### 架构
+#### 架构
 
 ```text
 Subledger/SLA → GL_INTERFACE → Journal Import
@@ -966,7 +690,7 @@ Manual/Web ADI/Recurring → Journal Batch/Header/Lines
 Ledger 由 COA、Currency、Calendar 和 SLA Method 组成。Primary/Secondary Ledger 表示不同会计表述，Reporting Currency 表示币种表述，Ledger Set 用于对多账簿统一开关期和报表。Data Access Set 决定职责对 Ledger/平衡段的读写权限。
 
 <a id="src-docs-04-gl-process--配置"></a>
-### 配置
+#### 配置
 
 1. 定义 COA、Calendar、Currency/Rate，在 Accounting Setup Manager 建立 Ledger。
 2. 配置 Legal Entity/Balancing Segment、Secondary Ledger/Reporting Currency、SLA、Intercompany/Intracompany。
@@ -974,7 +698,7 @@ Ledger 由 COA、Currency、Calendar 和 SLA Method 组成。Primary/Secondary L
 4. 定义 Data Access Set、Ledger Set、账户安全与 FSG/BI 报表。
 
 <a id="src-docs-04-gl-process--sql"></a>
-### SQL
+#### SQL
 
 ```sql
 SELECT gjb.je_batch_id, gjb.name batch_name, gjb.status batch_status,
@@ -995,7 +719,7 @@ SELECT gjl.je_line_num, gjl.code_combination_id,
 ```
 
 <a id="src-docs-04-gl-process--排查"></a>
-### 排查
+#### 排查
 
 - Import 失败：查 `GL_INTERFACE.STATUS/STATUS_DESCRIPTION`、Ledger/Period/Currency/CCID、Source/Group ID。
 - Journal 不平：分别检查 Entered/Accounted 借贷、Currency/Rate、Suspense/Rounding 设置和平衡段。
@@ -1003,7 +727,7 @@ SELECT gjl.je_line_num, gjl.code_combination_id,
 - 余额不更新：查 Posting 请求日志、Journal Status、Actual Flag、Currency 和查询的 Balance Type。
 
 <a id="src-docs-04-gl-process--关联"></a>
-### 关联
+#### 关联
 
 - [GL 常用表结构与字段含义](#src-docs-04-gl-tables)
 - [Journal 控制](#src-docs-04-gl-journals)
@@ -1013,13 +737,13 @@ SELECT gjl.je_line_num, gjl.code_combination_id,
 
 <!-- source: docs/04-gl/reporting-interfaces.md -->
 <a id="src-docs-04-gl-reporting-interfaces"></a>
-## FSG、Smart View、Web ADI 与日记账导入
+### FSG、Smart View、Web ADI 与日记账导入
 
 
 > `GL_INTERFACE`、批次平衡、Journal Import 提交和结果对账代码见 [GL 接口实现案例](#src-docs-04-gl-interfaces)。
 
 <a id="src-docs-04-gl-reporting-interfaces--报表与接口"></a>
-### 报表与接口
+#### 报表与接口
 
 - **FSG**：Row Set 定义账户/计算行，Column Set 定义期间/金额/计算列，Content Set 按段拆分，Row Order 定义排序，Display Set 控制显示。
 - **Smart View**：通过已配置数据源在 Excel 查询/钻取 GL 余额，权限仍受 EBS/GL 数据访问控制。
@@ -1027,7 +751,7 @@ SELECT gjl.je_line_num, gjl.code_combination_id,
 - **Journal Import**：按 Source/Group ID 从 `GL_INTERFACE` 生成 Batch/Header/Lines，错误行留在接口表并带 Status。
 
 <a id="src-docs-04-gl-reporting-interfaces--sql"></a>
-### SQL
+#### SQL
 
 ```sql
 SELECT status, ledger_id, user_je_source_name,
@@ -1052,7 +776,7 @@ SELECT row_set_id, name, description
 ```
 
 <a id="src-docs-04-gl-reporting-interfaces--排查"></a>
-### 排查
+#### 排查
 
 - FSG 金额不对：检查 Ledger/Currency/Amount Type、Period Offset、Row Account Assignment、Summary/Detail、Sign 和报表显示舍入。
 - FSG 空白：查 Data Access Set、行列显示条件、Zero Suppression、Content Set 和账户范围。
@@ -1061,30 +785,30 @@ SELECT row_set_id, name, description
 - 子账 Drilldown 丢失：检查 Journal Source Import References 选项和 `GL_IMPORT_REFERENCES`/SLA Link。
 
 <a id="src-docs-04-gl-reporting-interfaces--关联"></a>
-### 关联
+#### 关联
 
 - [GL Process](#src-docs-04-gl-process)
 - [COA](01-foundation.md#src-docs-01-common-coa)
 - [Integration](10-technical.md#src-docs-09-technical-integration)
 
 <a id="src-docs-04-gl-reporting-interfaces--官方参考"></a>
-### 官方参考
+#### 官方参考
 
 - [Oracle General Ledger Implementation Guide R12.2](https://docs.oracle.com/cd/E26401_01/doc.122/e48747/toc.htm)
 
 
 <!-- source: docs/04-gl/sla-fah-agis.md -->
 <a id="src-docs-04-gl-sla-fah-agis"></a>
-## SLA、Financials Accounting Hub 与 AGIS
+### SLA、Financials Accounting Hub 与 AGIS
 
 
 <a id="src-docs-04-gl-sla-fah-agis--适用范围"></a>
-### 适用范围
+#### 适用范围
 
 SLA 是 EBS 子账会计的通用引擎；GL 接收其传输的日记账。Financials Accounting Hub（FAH）用于将外部业务系统的事件转换为受控的子账会计；Advanced Global Intercompany System（AGIS）处理跨法人/跨组织内部交易。两者均为独立可选产品/功能边界，须确认许可证、安装和实施范围。
 
 <a id="src-docs-04-gl-sla-fah-agis--会计链路"></a>
-### 会计链路
+#### 会计链路
 
 ```text
 业务交易
@@ -1096,7 +820,7 @@ SLA 是 EBS 子账会计的通用引擎；GL 接收其传输的日记账。Finan
 ```
 
 <a id="src-docs-04-gl-sla-fah-agis--设计要点"></a>
-### 设计要点
+#### 设计要点
 
 | 主题 | 实施决定 | 控制要求 |
 | --- | --- | --- |
@@ -1106,7 +830,7 @@ SLA 是 EBS 子账会计的通用引擎；GL 接收其传输的日记账。Finan
 | Balancing | Intercompany/Intracompany 规则、舍入、悬挂账户 | 配置变化先在隔离 Ledger/测试数据验证分录平衡 |
 
 <a id="src-docs-04-gl-sla-fah-agis--只读诊断-sql"></a>
-### 只读诊断 SQL
+#### 只读诊断 SQL
 
 ```sql
 -- 从会计事件追踪已生成的子账分录；按事件或实体键收缩范围。
@@ -1138,14 +862,14 @@ select xal.ae_header_id,
 ```
 
 <a id="src-docs-04-gl-sla-fah-agis--排错顺序"></a>
-### 排错顺序
+#### 排错顺序
 
 1. 确认源交易、会计事件及其状态，再检查会计定义是否对该事件类型生效。
 2. 区分“未创建会计”“Draft/Final 状态”“未传输 GL”“Journal Import/过账失败”四个断点。
 3. 对 FAH/AGIS 先检查来源业务键、批次控制和接收方状态；不要把跨系统部分成功当作单一数据库事务回滚。
 
 <a id="src-docs-04-gl-sla-fah-agis--官方参考"></a>
-### 官方参考
+#### 官方参考
 
 - [Oracle Subledger Accounting Implementation Guide](https://docs.oracle.com/cd/E26401_01/doc.122/e48771/title.htm)
 - [Oracle Financials Accounting Hub Documentation](https://docs.oracle.com/cd/E26401_01/nav/financials.htm)
@@ -1154,16 +878,16 @@ select xal.ae_header_id,
 
 <!-- source: docs/04-gl/tables.md -->
 <a id="src-docs-04-gl-tables"></a>
-## Oracle General Ledger 常用表结构
+### Oracle General Ledger 常用表结构
 
 
 <a id="src-docs-04-gl-tables--业务说明"></a>
-### 业务说明
+#### 业务说明
 
 GL 的业务层级是 Ledger → Batch → Journal Header → Journal Line → Balance。子账数据经 SLA 进入 `GL_INTERFACE`，Journal Import 生成日记账，Posting 更新 `GL_BALANCES`。日记账行是交易流量，Balance 是 Ledger+CCID+Currency+Period+Balance Type 的累计/期间快照。
 
 <a id="src-docs-04-gl-tables--表级速查"></a>
-### 表级速查
+#### 表级速查
 
 | 表 | 中文名 | 业务粒度 | 关键字段 |
 | --- | --- | --- | --- |
@@ -1181,7 +905,7 @@ GL 的业务层级是 Ledger → Batch → Journal Header → Journal Line → B
 | `GL_DAILY_RATES` | 日汇率 | 币种对+日期+类型 | `CONVERSION_DATE`, `CONVERSION_TYPE`, `CONVERSION_RATE` |
 
 <a id="src-docs-04-gl-tables--gljebatches-日记账批"></a>
-### `GL_JE_BATCHES` — 日记账批
+#### `GL_JE_BATCHES` — 日记账批
 
 | 字段 | 中文名 | 业务含义 |
 | --- | --- | --- |
@@ -1193,7 +917,7 @@ GL 的业务层级是 Ledger → Batch → Journal Header → Journal Line → B
 | `POSTING_RUN_ID` | 过账运行 ID | 跟踪 Posting 程序批次 |
 
 <a id="src-docs-04-gl-tables--gljeheaders-日记账头"></a>
-### `GL_JE_HEADERS` — 日记账头
+#### `GL_JE_HEADERS` — 日记账头
 
 | 字段 | 中文名 | 业务含义/值 |
 | --- | --- | --- |
@@ -1208,7 +932,7 @@ GL 的业务层级是 Ledger → Batch → Journal Header → Journal Line → B
 | `REVERSED_JE_HEADER_ID` | 被反冲 Journal | 用于反冲链跟踪，同时查 Reversal Period/Method |
 
 <a id="src-docs-04-gl-tables--gljelines-日记账行"></a>
-### `GL_JE_LINES` — 日记账行
+#### `GL_JE_LINES` — 日记账行
 
 | 字段 | 中文名 | 说明 |
 | --- | --- | --- |
@@ -1219,7 +943,7 @@ GL 的业务层级是 Ledger → Batch → Journal Header → Journal Line → B
 | `REFERENCE_1..10` | 导入参考 | 含义由 Source/Interface 决定，不应跨 Source 固定解读 |
 
 <a id="src-docs-04-gl-tables--glbalances-余额"></a>
-### `GL_BALANCES` — 余额
+#### `GL_BALANCES` — 余额
 
 | 字段 | 中文名 | 说明 |
 | --- | --- | --- |
@@ -1231,7 +955,7 @@ GL 的业务层级是 Ledger → Batch → Journal Header → Journal Line → B
 | `*_BEQ` | 本位币等值 | 外币余额的 Ledger Currency Equivalent |
 
 <a id="src-docs-04-gl-tables--glinterface-常见状态原则"></a>
-### `GL_INTERFACE` 常见状态原则
+#### `GL_INTERFACE` 常见状态原则
 
 - `STATUS='NEW'` 通常表示等待 Journal Import。
 - Import 失败后 `STATUS` 可变为具体错误代码，应用 Journal Import Execution Report/GL Lookup 解码，不建立不完整的自制代码表。
@@ -1239,7 +963,71 @@ GL 的业务层级是 Ledger → Batch → Journal Header → Journal Line → B
 - 已成功 Import 的数据不再以 `GL_INTERFACE` 为完整审计源，应跟踪 Journal 和 `GL_IMPORT_REFERENCES`。
 
 <a id="src-docs-04-gl-tables--官方参考"></a>
-### 官方参考
+#### 官方参考
 
 - [Oracle General Ledger Implementation Guide R12.2](https://docs.oracle.com/cd/E26401_01/doc.122/e48747/)
 - [Oracle E-Business Suite eTRM User's Guide](https://docs.oracle.com/cd/E26401_01/doc.122/f53031/)
+
+<!-- 兼容旧版目录与学习材料的定位锚点；正文已按主题重编。 -->
+<a id="src-docs-02-record-to-report-agis-intercompany-readme"></a>
+<a id="src-docs-02-record-to-report-agis-intercompany-readme--业务定位"></a>
+<a id="src-docs-02-record-to-report-agis-intercompany-readme--关联与官方依据"></a>
+<a id="src-docs-02-record-to-report-agis-intercompany-readme--实施边界"></a>
+<a id="src-docs-02-record-to-report-agis-intercompany-readme--常见问题与排查"></a>
+<a id="src-docs-02-record-to-report-agis-intercompany-readme--数据接口与会计追溯"></a>
+<a id="src-docs-02-record-to-report-agis-intercompany-readme--设计与配置"></a>
+<a id="src-docs-02-record-to-report-budgetary-control-readme"></a>
+<a id="src-docs-02-record-to-report-budgetary-control-readme--业务定位"></a>
+<a id="src-docs-02-record-to-report-budgetary-control-readme--关联与官方依据"></a>
+<a id="src-docs-02-record-to-report-budgetary-control-readme--实施边界"></a>
+<a id="src-docs-02-record-to-report-budgetary-control-readme--常见问题与排查"></a>
+<a id="src-docs-02-record-to-report-budgetary-control-readme--数据接口与会计追溯"></a>
+<a id="src-docs-02-record-to-report-budgetary-control-readme--设计与配置"></a>
+<a id="src-docs-02-record-to-report-consolidation-and-elimination-readme"></a>
+<a id="src-docs-02-record-to-report-consolidation-and-elimination-readme--业务定位"></a>
+<a id="src-docs-02-record-to-report-consolidation-and-elimination-readme--关联与官方依据"></a>
+<a id="src-docs-02-record-to-report-consolidation-and-elimination-readme--实施边界"></a>
+<a id="src-docs-02-record-to-report-consolidation-and-elimination-readme--常见问题与排查"></a>
+<a id="src-docs-02-record-to-report-consolidation-and-elimination-readme--数据接口与会计追溯"></a>
+<a id="src-docs-02-record-to-report-consolidation-and-elimination-readme--设计与配置"></a>
+<a id="src-docs-02-record-to-report-financials-accounting-hub-readme"></a>
+<a id="src-docs-02-record-to-report-financials-accounting-hub-readme--业务定位"></a>
+<a id="src-docs-02-record-to-report-financials-accounting-hub-readme--关联与官方依据"></a>
+<a id="src-docs-02-record-to-report-financials-accounting-hub-readme--实施边界"></a>
+<a id="src-docs-02-record-to-report-financials-accounting-hub-readme--常见问题与排查"></a>
+<a id="src-docs-02-record-to-report-financials-accounting-hub-readme--数据接口与会计追溯"></a>
+<a id="src-docs-02-record-to-report-financials-accounting-hub-readme--设计与配置"></a>
+<a id="src-docs-02-record-to-report-general-ledger-readme"></a>
+<a id="src-docs-02-record-to-report-general-ledger-readme--业务定位"></a>
+<a id="src-docs-02-record-to-report-general-ledger-readme--关联与官方依据"></a>
+<a id="src-docs-02-record-to-report-general-ledger-readme--实施边界"></a>
+<a id="src-docs-02-record-to-report-general-ledger-readme--常见问题与排查"></a>
+<a id="src-docs-02-record-to-report-general-ledger-readme--数据接口与会计追溯"></a>
+<a id="src-docs-02-record-to-report-general-ledger-readme--设计与配置"></a>
+<a id="src-docs-02-record-to-report-readme"></a>
+<a id="src-docs-02-record-to-report-readme--与既有知识的关系"></a>
+<a id="src-docs-02-record-to-report-readme--官方依据"></a>
+<a id="src-docs-02-record-to-report-readme--核心数据对象"></a>
+<a id="src-docs-02-record-to-report-readme--范围与目标"></a>
+<a id="src-docs-02-record-to-report-readme--运行与实施控制"></a>
+<a id="src-docs-02-record-to-report-record-to-report-close-readme"></a>
+<a id="src-docs-02-record-to-report-record-to-report-close-readme--业务定位"></a>
+<a id="src-docs-02-record-to-report-record-to-report-close-readme--关联与官方依据"></a>
+<a id="src-docs-02-record-to-report-record-to-report-close-readme--实施边界"></a>
+<a id="src-docs-02-record-to-report-record-to-report-close-readme--常见问题与排查"></a>
+<a id="src-docs-02-record-to-report-record-to-report-close-readme--数据接口与会计追溯"></a>
+<a id="src-docs-02-record-to-report-record-to-report-close-readme--设计与配置"></a>
+<a id="src-docs-02-record-to-report-secondary-ledger-reporting-currency-readme"></a>
+<a id="src-docs-02-record-to-report-secondary-ledger-reporting-currency-readme--业务定位"></a>
+<a id="src-docs-02-record-to-report-secondary-ledger-reporting-currency-readme--关联与官方依据"></a>
+<a id="src-docs-02-record-to-report-secondary-ledger-reporting-currency-readme--实施边界"></a>
+<a id="src-docs-02-record-to-report-secondary-ledger-reporting-currency-readme--常见问题与排查"></a>
+<a id="src-docs-02-record-to-report-secondary-ledger-reporting-currency-readme--数据接口与会计追溯"></a>
+<a id="src-docs-02-record-to-report-secondary-ledger-reporting-currency-readme--设计与配置"></a>
+<a id="src-docs-02-record-to-report-subledger-accounting-readme"></a>
+<a id="src-docs-02-record-to-report-subledger-accounting-readme--业务定位"></a>
+<a id="src-docs-02-record-to-report-subledger-accounting-readme--关联与官方依据"></a>
+<a id="src-docs-02-record-to-report-subledger-accounting-readme--实施边界"></a>
+<a id="src-docs-02-record-to-report-subledger-accounting-readme--常见问题与排查"></a>
+<a id="src-docs-02-record-to-report-subledger-accounting-readme--数据接口与会计追溯"></a>
+<a id="src-docs-02-record-to-report-subledger-accounting-readme--设计与配置"></a>

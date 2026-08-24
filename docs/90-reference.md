@@ -1,150 +1,95 @@
-# 统一参考资料
+# 统一参考资料（Reference）
 
-> 术语、产品前缀、表、接口、并发程序、Profile、Lookup、报表与错误索引。本文件由原目录中的 17 份资料合并而成；各章节保留原来源标记，便于审计与后续去重。
+> 本页用于快速定位产品前缀、关键对象、程序、状态和中英文术语。表与列、API 签名、菜单和程序名称可能随产品、版本和补丁变化，必须在目标实例复核。
 
-## 本模块章节导航
+## 阅读导航
 
-- [统一参考索引](#src-docs-90-reference-readme)（原 `docs/90-reference/README.md`）
-- [参考索引：accounting-event-index](#src-docs-90-reference-accounting-event-index)（原 `docs/90-reference/accounting-event-index.md`）
-- [参考索引：concurrent-program-index](#src-docs-90-reference-concurrent-program-index)（原 `docs/90-reference/concurrent-program-index.md`）
-- [参考索引：data-dictionary-index](#src-docs-90-reference-data-dictionary-index)（原 `docs/90-reference/data-dictionary-index.md`）
-- [参考索引：error-message-index](#src-docs-90-reference-error-message-index)（原 `docs/90-reference/error-message-index.md`）
-- [Oracle EBS R12.2.x 中英文术语与缩略语](#src-docs-90-reference-glossary-and-acronyms)（原 `docs/90-reference/glossary-and-acronyms.md`）
-- [参考索引：interface-api-index](#src-docs-90-reference-interface-api-index)（原 `docs/90-reference/interface-api-index.md`）
-- [参考索引：lookup-index](#src-docs-90-reference-lookup-index)（原 `docs/90-reference/lookup-index.md`）
-- [参考索引：menu-responsibility-index](#src-docs-90-reference-menu-responsibility-index)（原 `docs/90-reference/menu-responsibility-index.md`）
-- [参考索引：mos-note-index](#src-docs-90-reference-mos-note-index)（原 `docs/90-reference/mos-note-index.md`）
-- [参考索引：official-document-index](#src-docs-90-reference-official-document-index)（原 `docs/90-reference/official-document-index.md`）
-- [参考索引：patch-version-matrix](#src-docs-90-reference-patch-version-matrix)（原 `docs/90-reference/patch-version-matrix.md`）
-- [参考索引：product-prefix-index](#src-docs-90-reference-product-prefix-index)（原 `docs/90-reference/product-prefix-index.md`）
-- [参考索引：profile-option-index](#src-docs-90-reference-profile-option-index)（原 `docs/90-reference/profile-option-index.md`）
-- [参考索引：report-index](#src-docs-90-reference-report-index)（原 `docs/90-reference/report-index.md`）
-- [参考索引：sql-index](#src-docs-90-reference-sql-index)（原 `docs/90-reference/sql-index.md`）
-- [参考索引：table-status-index](#src-docs-90-reference-table-status-index)（原 `docs/90-reference/table-status-index.md`）
+- [产品前缀](#1-产品前缀速查) · [会计对象](#2-会计追溯对象) · [并发程序](#3-常用并发程序概念索引) · [接口 API](#4-接口与-api-选型检查) · [状态](#5-状态解释原则) · [官方资料](#6-官方资料定位) · [中英文术语](#8-中英文术语与缩略语)
 
----
+## 1. 产品前缀速查
 
-<!-- source: docs/90-reference/README.md -->
-<a id="src-docs-90-reference-readme"></a>
-## 统一参考索引
+| 前缀 | 英文名称 | 中文说明 |
+| --- | --- | --- |
+| GL | General Ledger | 总账 |
+| XLA | Subledger Accounting | 子账会计 |
+| AP | Payables | 应付管理 |
+| AR/RA | Receivables | 应收管理 |
+| PO | Purchasing | 采购管理 |
+| RCV | Receiving | 接收/收货 |
+| FA | Fixed Assets | 固定资产 |
+| PA | Projects | 项目管理 |
+| CE | Cash Management | 现金管理 |
+| IBY | Payments | 支付管理 |
+| ZX | E-Business Tax | 电子商务税务 |
+| HZ | Trading Community Architecture | 交易社区架构/客户参与方 |
+| MTL/INV | Inventory | 库存管理 |
+| WIP | Work in Process | 在制品管理 |
+| CST | Cost Management | 成本管理 |
+| FND | Application Object Library | 应用对象库/基础技术对象 |
+| WF | Workflow | 工作流 |
 
+## 2. 会计追溯对象
 
-本目录是索引层，不复制模块正文。每个索引项必须链接权威专题、标注产品/版本/补丁适用范围，并避免将诊断查询误作数据修复脚本。
+| 层次 | 常见对象 | 用途 |
+| --- | --- | --- |
+| 业务交易 | 各产品 header/line/distribution 表 | 单据、行和分配 |
+| 交易实体/事件 | `XLA_TRANSACTION_ENTITIES`、`XLA_EVENTS` | 来源实体和会计事件 |
+| SLA 分录 | `XLA_AE_HEADERS`、`XLA_AE_LINES`、分配链接 | 会计分录和来源分配 |
+| GL 导入 | `GL_INTERFACE`、`GL_IMPORT_REFERENCES` | 导入暂存和来源引用 |
+| GL 日记账 | `GL_JE_BATCHES/HEADERS/LINES` | 日记账批、头、行 |
+| GL 余额 | `GL_BALANCES` | 科目、期间、币种余额 |
 
-使用顺序：先从业务模块确认语义，再通过本目录定位表、状态、接口、并发程序、Profile、Lookup、会计事件、报表、职责、错误和官方资料。
+查询时先确认 Ledger、OU、期间和业务键；不要根据本表直接在生产编写无界全表查询。
 
-优先入口：[中英文术语与缩略语](#src-docs-90-reference-glossary-and-acronyms)。其他索引页当前主要定义维护规则，只有经过版本和实例验证的记录才应登记为可操作入口。
+## 3. 常用并发程序（概念索引）
 
+| 程序/程序族 | 中文说明 | 关键验证 |
+| --- | --- | --- |
+| Create Accounting | 创建会计 | 事件、模式、错误、传 GL 选项 |
+| Transfer Journal Entries to GL | 传送日记账到总账 | 传输状态、批次、请求 ID |
+| Journal Import | 日记账导入 | Source、Group ID、错误行 |
+| Posting | 过账 | 批状态、期间、账户、审批 |
+| Payables Open Interface Import | 应付开放接口导入 | 批次、来源、拒绝与业务发票 |
+| AutoInvoice | 自动开票 | 来源、分组规则、拒绝、交易号 |
+| AutoLockbox | 自动收款箱 | 文件、客户识别、核销与异常 |
+| Depreciation | 折旧 | 资产账簿、期间、异常资产 |
+| Material Transaction Manager | 物料事务处理管理器 | 接口状态、错误、交易 ID |
 
-<!-- source: docs/90-reference/accounting-event-index.md -->
-<a id="src-docs-90-reference-accounting-event-index"></a>
-## 参考索引：accounting-event-index
+## 4. 接口与 API 选型检查
 
+优先顺序：标准页面/批量工具 → Open Interface → Public API → Integration Repository 服务 → 受控自定义。评审字段语义、必填、业务唯一键、批次、控制总额、幂等、部分成功、错误回放、安全、监控和对账。任何写入方案都不得直接 DML EBS 业务基表。
 
-<a id="src-docs-90-reference-accounting-event-index--用途"></a>
-### 用途
-本索引用于汇总 accounting-event-index 的权威入口、适用产品、对象/字段/状态、版本差异和验证记录；不以复制内容替代模块专题。
+## 5. 状态解释原则
 
-<a id="src-docs-90-reference-accounting-event-index--维护规则"></a>
-### 维护规则
+- `NEW`、`PENDING`、`PROCESSED`、`ERROR` 等值在不同产品含义不同，必须结合表、程序和版本解释。
+- 并发请求 Phase/Status 与业务单据状态是两套状态。
+- 接口处理成功、业务导入成功、创建会计成功、传 GL 成功和过账成功是五个独立结论。
+- 状态码查询应同时输出可读含义、更新时间、请求 ID 和错误信息。
 
-每一条记录至少包含：业务中文名、技术名、所属产品、权威文档链接、适用 R12.2 补丁范围、来源/更新时间、验证环境和限制条件。
+## 6. 官方资料定位
 
-<a id="src-docs-90-reference-accounting-event-index--安全与质量"></a>
-### 安全与质量
+- Oracle E-Business Suite Documentation Web Library：按目标 R12.2 版本查 Implementation、User、Technical 和 Upgrade Guides。
+- eTRM：核实表、视图、列和对象关系。
+- Integration Repository：核实公开 API、接口和服务签名。
+- My Oracle Support（MOS）：核实补丁、已知问题和诊断脚本；记录文档编号、版本和访问日期。
+- 目标实例数据字典与日志：对实例行为具有最终验证意义。
 
-表和 SQL 索引只能提供只读、绑定变量、范围受限的诊断入口；API/接口索引必须注明公开性、事务、幂等、错误处理和支持边界。MOS 资料仅登记客户授权范围，不复制受限内容。
+## 7. 参考项维护模板
 
-<a id="src-docs-90-reference-accounting-event-index--验证"></a>
-### 验证
+新增表、程序、API、错误或 MOS 文档时，记录：产品/版本、英文名、中文说明、用途、输入/主键、关键状态、输出、权限/安全、验证环境、官方来源和最后复核日期。没有实例或官方依据的内容标注“待验证”，不要包装成确定事实。
 
-对象及字段以目标实例 eTRM、Integration Repository、ALL_OBJECTS 和 ALL_TAB_COLUMNS 为准；状态/报表/并发程序以已安装产品和责任权限验证。
-
-
-<!-- source: docs/90-reference/concurrent-program-index.md -->
-<a id="src-docs-90-reference-concurrent-program-index"></a>
-## 参考索引：concurrent-program-index
-
-
-<a id="src-docs-90-reference-concurrent-program-index--用途"></a>
-### 用途
-本索引用于汇总 concurrent-program-index 的权威入口、适用产品、对象/字段/状态、版本差异和验证记录；不以复制内容替代模块专题。
-
-<a id="src-docs-90-reference-concurrent-program-index--维护规则"></a>
-### 维护规则
-
-每一条记录至少包含：业务中文名、技术名、所属产品、权威文档链接、适用 R12.2 补丁范围、来源/更新时间、验证环境和限制条件。
-
-<a id="src-docs-90-reference-concurrent-program-index--安全与质量"></a>
-### 安全与质量
-
-表和 SQL 索引只能提供只读、绑定变量、范围受限的诊断入口；API/接口索引必须注明公开性、事务、幂等、错误处理和支持边界。MOS 资料仅登记客户授权范围，不复制受限内容。
-
-<a id="src-docs-90-reference-concurrent-program-index--验证"></a>
-### 验证
-
-对象及字段以目标实例 eTRM、Integration Repository、ALL_OBJECTS 和 ALL_TAB_COLUMNS 为准；状态/报表/并发程序以已安装产品和责任权限验证。
-
-
-<!-- source: docs/90-reference/data-dictionary-index.md -->
-<a id="src-docs-90-reference-data-dictionary-index"></a>
-## 参考索引：data-dictionary-index
-
-
-<a id="src-docs-90-reference-data-dictionary-index--用途"></a>
-### 用途
-本索引用于汇总 data-dictionary-index 的权威入口、适用产品、对象/字段/状态、版本差异和验证记录；不以复制内容替代模块专题。
-
-<a id="src-docs-90-reference-data-dictionary-index--维护规则"></a>
-### 维护规则
-
-每一条记录至少包含：业务中文名、技术名、所属产品、权威文档链接、适用 R12.2 补丁范围、来源/更新时间、验证环境和限制条件。
-
-<a id="src-docs-90-reference-data-dictionary-index--安全与质量"></a>
-### 安全与质量
-
-表和 SQL 索引只能提供只读、绑定变量、范围受限的诊断入口；API/接口索引必须注明公开性、事务、幂等、错误处理和支持边界。MOS 资料仅登记客户授权范围，不复制受限内容。
-
-<a id="src-docs-90-reference-data-dictionary-index--验证"></a>
-### 验证
-
-对象及字段以目标实例 eTRM、Integration Repository、ALL_OBJECTS 和 ALL_TAB_COLUMNS 为准；状态/报表/并发程序以已安装产品和责任权限验证。
-
-
-<!-- source: docs/90-reference/error-message-index.md -->
-<a id="src-docs-90-reference-error-message-index"></a>
-## 参考索引：error-message-index
-
-
-<a id="src-docs-90-reference-error-message-index--用途"></a>
-### 用途
-本索引用于汇总 error-message-index 的权威入口、适用产品、对象/字段/状态、版本差异和验证记录；不以复制内容替代模块专题。
-
-<a id="src-docs-90-reference-error-message-index--维护规则"></a>
-### 维护规则
-
-每一条记录至少包含：业务中文名、技术名、所属产品、权威文档链接、适用 R12.2 补丁范围、来源/更新时间、验证环境和限制条件。
-
-<a id="src-docs-90-reference-error-message-index--安全与质量"></a>
-### 安全与质量
-
-表和 SQL 索引只能提供只读、绑定变量、范围受限的诊断入口；API/接口索引必须注明公开性、事务、幂等、错误处理和支持边界。MOS 资料仅登记客户授权范围，不复制受限内容。
-
-<a id="src-docs-90-reference-error-message-index--验证"></a>
-### 验证
-
-对象及字段以目标实例 eTRM、Integration Repository、ALL_OBJECTS 和 ALL_TAB_COLUMNS 为准；状态/报表/并发程序以已安装产品和责任权限验证。
+## 8. 中英文术语与缩略语
 
 
 <!-- source: docs/90-reference/glossary-and-acronyms.md -->
 <a id="src-docs-90-reference-glossary-and-acronyms"></a>
-## Oracle EBS R12.2.x 中英文术语与缩略语
+### Oracle EBS R12.2.x 中英文术语与缩略语
 
 
 同一缩略语在不同上下文可能有不同含义。例如 SLA 在本知识库通常表示 Subledger Accounting（子账会计），在运维合同中也可能表示 Service Level Agreement（服务级别协议）。使用时应先确认产品和语境。
 
 <a id="src-docs-90-reference-glossary-and-acronyms--产品与核心财务"></a>
-### 产品与核心财务
+#### 产品与核心财务
 
 | 缩写/术语 | 英文全称 | 中文名称 | 简要说明 |
 | --- | --- | --- | --- |
@@ -182,7 +127,7 @@
 | ECC | Enterprise Command Center | 企业指挥中心 | 可选运营看板和数据发现能力，需确认产品版本与安装 |
 
 <a id="src-docs-90-reference-glossary-and-acronyms--企业结构核算与权限"></a>
-### 企业结构、核算与权限
+#### 企业结构、核算与权限
 
 | 缩写/术语 | 英文全称 | 中文名称 | 简要说明 |
 | --- | --- | --- | --- |
@@ -221,7 +166,7 @@
 | SoD | Segregation of Duties | 职责分离 | 防止单一人员同时拥有不相容业务权限的控制 |
 
 <a id="src-docs-90-reference-glossary-and-acronyms--会计交易与关账"></a>
-### 会计、交易与关账
+#### 会计、交易与关账
 
 | 缩写/术语 | 英文全称 | 中文名称 | 简要说明 |
 | --- | --- | --- | --- |
@@ -267,7 +212,7 @@
 | COGS | Cost of Goods Sold | 销售成本 | 与销售收入对应确认的存货成本 |
 
 <a id="src-docs-90-reference-glossary-and-acronyms--端到端流程"></a>
-### 端到端流程
+#### 端到端流程
 
 | 缩写 | 英文全称 | 中文名称 | 范围 |
 | --- | --- | --- | --- |
@@ -281,7 +226,7 @@
 | E2R | Expense to Reimbursement | 费用到报销 | 费用报告、审批、AP、付款和银行对账 |
 
 <a id="src-docs-90-reference-glossary-and-acronyms--采购应付与支付"></a>
-### 采购、应付与支付
+#### 采购、应付与支付
 
 | 术语 | 英文全称 | 中文名称 | 简要说明 |
 | --- | --- | --- | --- |
@@ -304,7 +249,7 @@
 | ERS | Evaluated Receipt Settlement | 收货结算/自开票 | 按收货和采购条件自动形成结算/发票的机制 |
 
 <a id="src-docs-90-reference-glossary-and-acronyms--应收收款与信用"></a>
-### 应收、收款与信用
+#### 应收、收款与信用
 
 | 术语 | 英文全称 | 中文名称 | 简要说明 |
 | --- | --- | --- | --- |
@@ -325,7 +270,7 @@
 | Dunning | Dunning | 催款 | 对逾期客户发出催款通知的流程 |
 
 <a id="src-docs-90-reference-glossary-and-acronyms--资产项目库存与成本"></a>
-### 资产、项目、库存与成本
+#### 资产、项目、库存与成本
 
 | 术语 | 英文全称 | 中文名称 | 简要说明 |
 | --- | --- | --- | --- |
@@ -353,7 +298,7 @@
 | WIP Variance | WIP Variance | 在制品差异 | 工单关闭时实际成本与标准/吸收等之间的差额 |
 
 <a id="src-docs-90-reference-glossary-and-acronyms--技术架构与开发"></a>
-### 技术架构与开发
+#### 技术架构与开发
 
 | 缩写/术语 | 英文全称 | 中文名称 | 简要说明 |
 | --- | --- | --- | --- |
@@ -409,7 +354,7 @@
 | XDOLoader | XML Publisher Loader | XML Publisher 加载工具 | 迁移 BI Publisher 数据定义、模板等对象 |
 
 <a id="src-docs-90-reference-glossary-and-acronyms--r122-运维发布与数据库"></a>
-### R12.2 运维、发布与数据库
+#### R12.2 运维、发布与数据库
 
 | 缩写/术语 | 英文全称 | 中文名称 | 简要说明 |
 | --- | --- | --- | --- |
@@ -448,7 +393,7 @@
 | TXK | Applications Technology Stack | 应用技术栈组件 | EBS 技术栈配置、WebLogic、AutoConfig 等相关代码线 |
 
 <a id="src-docs-90-reference-glossary-and-acronyms--实施测试与支持"></a>
-### 实施、测试与支持
+#### 实施、测试与支持
 
 | 缩写/术语 | 英文全称 | 中文名称 | 简要说明 |
 | --- | --- | --- | --- |
@@ -478,7 +423,7 @@
 | SR | Service Request | 服务请求 | 向 Oracle Support 提交并跟踪产品问题的工单 |
 
 <a id="src-docs-90-reference-glossary-and-acronyms--维护与验证规则"></a>
-### 维护与验证规则
+#### 维护与验证规则
 
 - 术语的产品含义以 [Oracle EBS R12.2 文档库](https://docs.oracle.com/cd/E26401_01/index.htm) 和目标实例为准。
 - 表、列、状态和对象关系以目标实例 eTRM、`ALL_OBJECTS`、`ALL_TAB_COLUMNS`、Package Specification 和实际数据验证。
@@ -486,277 +431,80 @@
 - 可选产品、国家本地化、AWR/ASH/SQL Monitor 等能力需分别确认许可证和安装范围。
 - 本表用于解释术语，不替代模块专题的配置、会计、接口和排错正文。
 
-
-<!-- source: docs/90-reference/interface-api-index.md -->
+<!-- 兼容旧版目录与学习材料的定位锚点；正文已按主题重编。 -->
+<a id="src-docs-90-reference-accounting-event-index"></a>
+<a id="src-docs-90-reference-accounting-event-index--安全与质量"></a>
+<a id="src-docs-90-reference-accounting-event-index--用途"></a>
+<a id="src-docs-90-reference-accounting-event-index--维护规则"></a>
+<a id="src-docs-90-reference-accounting-event-index--验证"></a>
+<a id="src-docs-90-reference-concurrent-program-index"></a>
+<a id="src-docs-90-reference-concurrent-program-index--安全与质量"></a>
+<a id="src-docs-90-reference-concurrent-program-index--用途"></a>
+<a id="src-docs-90-reference-concurrent-program-index--维护规则"></a>
+<a id="src-docs-90-reference-concurrent-program-index--验证"></a>
+<a id="src-docs-90-reference-data-dictionary-index"></a>
+<a id="src-docs-90-reference-data-dictionary-index--安全与质量"></a>
+<a id="src-docs-90-reference-data-dictionary-index--用途"></a>
+<a id="src-docs-90-reference-data-dictionary-index--维护规则"></a>
+<a id="src-docs-90-reference-data-dictionary-index--验证"></a>
+<a id="src-docs-90-reference-error-message-index"></a>
+<a id="src-docs-90-reference-error-message-index--安全与质量"></a>
+<a id="src-docs-90-reference-error-message-index--用途"></a>
+<a id="src-docs-90-reference-error-message-index--维护规则"></a>
+<a id="src-docs-90-reference-error-message-index--验证"></a>
 <a id="src-docs-90-reference-interface-api-index"></a>
-## 参考索引：interface-api-index
-
-
-<a id="src-docs-90-reference-interface-api-index--用途"></a>
-### 用途
-本索引用于汇总 interface-api-index 的权威入口、适用产品、对象/字段/状态、版本差异和验证记录；不以复制内容替代模块专题。
-
-<a id="src-docs-90-reference-interface-api-index--维护规则"></a>
-### 维护规则
-
-每一条记录至少包含：业务中文名、技术名、所属产品、权威文档链接、适用 R12.2 补丁范围、来源/更新时间、验证环境和限制条件。
-
 <a id="src-docs-90-reference-interface-api-index--安全与质量"></a>
-### 安全与质量
-
-表和 SQL 索引只能提供只读、绑定变量、范围受限的诊断入口；API/接口索引必须注明公开性、事务、幂等、错误处理和支持边界。MOS 资料仅登记客户授权范围，不复制受限内容。
-
+<a id="src-docs-90-reference-interface-api-index--用途"></a>
+<a id="src-docs-90-reference-interface-api-index--维护规则"></a>
 <a id="src-docs-90-reference-interface-api-index--验证"></a>
-### 验证
-
-对象及字段以目标实例 eTRM、Integration Repository、ALL_OBJECTS 和 ALL_TAB_COLUMNS 为准；状态/报表/并发程序以已安装产品和责任权限验证。
-
-
-<!-- source: docs/90-reference/lookup-index.md -->
 <a id="src-docs-90-reference-lookup-index"></a>
-## 参考索引：lookup-index
-
-
-<a id="src-docs-90-reference-lookup-index--用途"></a>
-### 用途
-本索引用于汇总 lookup-index 的权威入口、适用产品、对象/字段/状态、版本差异和验证记录；不以复制内容替代模块专题。
-
-<a id="src-docs-90-reference-lookup-index--维护规则"></a>
-### 维护规则
-
-每一条记录至少包含：业务中文名、技术名、所属产品、权威文档链接、适用 R12.2 补丁范围、来源/更新时间、验证环境和限制条件。
-
 <a id="src-docs-90-reference-lookup-index--安全与质量"></a>
-### 安全与质量
-
-表和 SQL 索引只能提供只读、绑定变量、范围受限的诊断入口；API/接口索引必须注明公开性、事务、幂等、错误处理和支持边界。MOS 资料仅登记客户授权范围，不复制受限内容。
-
+<a id="src-docs-90-reference-lookup-index--用途"></a>
+<a id="src-docs-90-reference-lookup-index--维护规则"></a>
 <a id="src-docs-90-reference-lookup-index--验证"></a>
-### 验证
-
-对象及字段以目标实例 eTRM、Integration Repository、ALL_OBJECTS 和 ALL_TAB_COLUMNS 为准；状态/报表/并发程序以已安装产品和责任权限验证。
-
-
-<!-- source: docs/90-reference/menu-responsibility-index.md -->
 <a id="src-docs-90-reference-menu-responsibility-index"></a>
-## 参考索引：menu-responsibility-index
-
-
-<a id="src-docs-90-reference-menu-responsibility-index--用途"></a>
-### 用途
-本索引用于汇总 menu-responsibility-index 的权威入口、适用产品、对象/字段/状态、版本差异和验证记录；不以复制内容替代模块专题。
-
-<a id="src-docs-90-reference-menu-responsibility-index--维护规则"></a>
-### 维护规则
-
-每一条记录至少包含：业务中文名、技术名、所属产品、权威文档链接、适用 R12.2 补丁范围、来源/更新时间、验证环境和限制条件。
-
 <a id="src-docs-90-reference-menu-responsibility-index--安全与质量"></a>
-### 安全与质量
-
-表和 SQL 索引只能提供只读、绑定变量、范围受限的诊断入口；API/接口索引必须注明公开性、事务、幂等、错误处理和支持边界。MOS 资料仅登记客户授权范围，不复制受限内容。
-
+<a id="src-docs-90-reference-menu-responsibility-index--用途"></a>
+<a id="src-docs-90-reference-menu-responsibility-index--维护规则"></a>
 <a id="src-docs-90-reference-menu-responsibility-index--验证"></a>
-### 验证
-
-对象及字段以目标实例 eTRM、Integration Repository、ALL_OBJECTS 和 ALL_TAB_COLUMNS 为准；状态/报表/并发程序以已安装产品和责任权限验证。
-
-
-<!-- source: docs/90-reference/mos-note-index.md -->
 <a id="src-docs-90-reference-mos-note-index"></a>
-## 参考索引：mos-note-index
-
-
-<a id="src-docs-90-reference-mos-note-index--用途"></a>
-### 用途
-本索引用于汇总 mos-note-index 的权威入口、适用产品、对象/字段/状态、版本差异和验证记录；不以复制内容替代模块专题。
-
-<a id="src-docs-90-reference-mos-note-index--维护规则"></a>
-### 维护规则
-
-每一条记录至少包含：业务中文名、技术名、所属产品、权威文档链接、适用 R12.2 补丁范围、来源/更新时间、验证环境和限制条件。
-
 <a id="src-docs-90-reference-mos-note-index--安全与质量"></a>
-### 安全与质量
-
-表和 SQL 索引只能提供只读、绑定变量、范围受限的诊断入口；API/接口索引必须注明公开性、事务、幂等、错误处理和支持边界。MOS 资料仅登记客户授权范围，不复制受限内容。
-
+<a id="src-docs-90-reference-mos-note-index--用途"></a>
+<a id="src-docs-90-reference-mos-note-index--维护规则"></a>
 <a id="src-docs-90-reference-mos-note-index--验证"></a>
-### 验证
-
-对象及字段以目标实例 eTRM、Integration Repository、ALL_OBJECTS 和 ALL_TAB_COLUMNS 为准；状态/报表/并发程序以已安装产品和责任权限验证。
-
-
-<!-- source: docs/90-reference/official-document-index.md -->
 <a id="src-docs-90-reference-official-document-index"></a>
-## 参考索引：official-document-index
-
-
-<a id="src-docs-90-reference-official-document-index--用途"></a>
-### 用途
-本索引用于汇总 official-document-index 的权威入口、适用产品、对象/字段/状态、版本差异和验证记录；不以复制内容替代模块专题。
-
-<a id="src-docs-90-reference-official-document-index--维护规则"></a>
-### 维护规则
-
-每一条记录至少包含：业务中文名、技术名、所属产品、权威文档链接、适用 R12.2 补丁范围、来源/更新时间、验证环境和限制条件。
-
 <a id="src-docs-90-reference-official-document-index--安全与质量"></a>
-### 安全与质量
-
-表和 SQL 索引只能提供只读、绑定变量、范围受限的诊断入口；API/接口索引必须注明公开性、事务、幂等、错误处理和支持边界。MOS 资料仅登记客户授权范围，不复制受限内容。
-
+<a id="src-docs-90-reference-official-document-index--用途"></a>
+<a id="src-docs-90-reference-official-document-index--维护规则"></a>
 <a id="src-docs-90-reference-official-document-index--验证"></a>
-### 验证
-
-对象及字段以目标实例 eTRM、Integration Repository、ALL_OBJECTS 和 ALL_TAB_COLUMNS 为准；状态/报表/并发程序以已安装产品和责任权限验证。
-
-
-<!-- source: docs/90-reference/patch-version-matrix.md -->
 <a id="src-docs-90-reference-patch-version-matrix"></a>
-## 参考索引：patch-version-matrix
-
-
-<a id="src-docs-90-reference-patch-version-matrix--用途"></a>
-### 用途
-本索引用于汇总 patch-version-matrix 的权威入口、适用产品、对象/字段/状态、版本差异和验证记录；不以复制内容替代模块专题。
-
-<a id="src-docs-90-reference-patch-version-matrix--维护规则"></a>
-### 维护规则
-
-每一条记录至少包含：业务中文名、技术名、所属产品、权威文档链接、适用 R12.2 补丁范围、来源/更新时间、验证环境和限制条件。
-
 <a id="src-docs-90-reference-patch-version-matrix--安全与质量"></a>
-### 安全与质量
-
-表和 SQL 索引只能提供只读、绑定变量、范围受限的诊断入口；API/接口索引必须注明公开性、事务、幂等、错误处理和支持边界。MOS 资料仅登记客户授权范围，不复制受限内容。
-
+<a id="src-docs-90-reference-patch-version-matrix--用途"></a>
+<a id="src-docs-90-reference-patch-version-matrix--维护规则"></a>
 <a id="src-docs-90-reference-patch-version-matrix--验证"></a>
-### 验证
-
-对象及字段以目标实例 eTRM、Integration Repository、ALL_OBJECTS 和 ALL_TAB_COLUMNS 为准；状态/报表/并发程序以已安装产品和责任权限验证。
-
-
-<!-- source: docs/90-reference/product-prefix-index.md -->
 <a id="src-docs-90-reference-product-prefix-index"></a>
-## 参考索引：product-prefix-index
-
-
-<a id="src-docs-90-reference-product-prefix-index--用途"></a>
-### 用途
-本索引用于汇总 product-prefix-index 的权威入口、适用产品、对象/字段/状态、版本差异和验证记录；不以复制内容替代模块专题。
-
-<a id="src-docs-90-reference-product-prefix-index--维护规则"></a>
-### 维护规则
-
-每一条记录至少包含：业务中文名、技术名、所属产品、权威文档链接、适用 R12.2 补丁范围、来源/更新时间、验证环境和限制条件。
-
 <a id="src-docs-90-reference-product-prefix-index--安全与质量"></a>
-### 安全与质量
-
-表和 SQL 索引只能提供只读、绑定变量、范围受限的诊断入口；API/接口索引必须注明公开性、事务、幂等、错误处理和支持边界。MOS 资料仅登记客户授权范围，不复制受限内容。
-
+<a id="src-docs-90-reference-product-prefix-index--用途"></a>
+<a id="src-docs-90-reference-product-prefix-index--维护规则"></a>
 <a id="src-docs-90-reference-product-prefix-index--验证"></a>
-### 验证
-
-对象及字段以目标实例 eTRM、Integration Repository、ALL_OBJECTS 和 ALL_TAB_COLUMNS 为准；状态/报表/并发程序以已安装产品和责任权限验证。
-
-
-<!-- source: docs/90-reference/profile-option-index.md -->
 <a id="src-docs-90-reference-profile-option-index"></a>
-## 参考索引：profile-option-index
-
-
-<a id="src-docs-90-reference-profile-option-index--用途"></a>
-### 用途
-本索引用于汇总 profile-option-index 的权威入口、适用产品、对象/字段/状态、版本差异和验证记录；不以复制内容替代模块专题。
-
-<a id="src-docs-90-reference-profile-option-index--维护规则"></a>
-### 维护规则
-
-每一条记录至少包含：业务中文名、技术名、所属产品、权威文档链接、适用 R12.2 补丁范围、来源/更新时间、验证环境和限制条件。
-
 <a id="src-docs-90-reference-profile-option-index--安全与质量"></a>
-### 安全与质量
-
-表和 SQL 索引只能提供只读、绑定变量、范围受限的诊断入口；API/接口索引必须注明公开性、事务、幂等、错误处理和支持边界。MOS 资料仅登记客户授权范围，不复制受限内容。
-
+<a id="src-docs-90-reference-profile-option-index--用途"></a>
+<a id="src-docs-90-reference-profile-option-index--维护规则"></a>
 <a id="src-docs-90-reference-profile-option-index--验证"></a>
-### 验证
-
-对象及字段以目标实例 eTRM、Integration Repository、ALL_OBJECTS 和 ALL_TAB_COLUMNS 为准；状态/报表/并发程序以已安装产品和责任权限验证。
-
-
-<!-- source: docs/90-reference/report-index.md -->
+<a id="src-docs-90-reference-readme"></a>
 <a id="src-docs-90-reference-report-index"></a>
-## 参考索引：report-index
-
-
-<a id="src-docs-90-reference-report-index--用途"></a>
-### 用途
-本索引用于汇总 report-index 的权威入口、适用产品、对象/字段/状态、版本差异和验证记录；不以复制内容替代模块专题。
-
-<a id="src-docs-90-reference-report-index--维护规则"></a>
-### 维护规则
-
-每一条记录至少包含：业务中文名、技术名、所属产品、权威文档链接、适用 R12.2 补丁范围、来源/更新时间、验证环境和限制条件。
-
 <a id="src-docs-90-reference-report-index--安全与质量"></a>
-### 安全与质量
-
-表和 SQL 索引只能提供只读、绑定变量、范围受限的诊断入口；API/接口索引必须注明公开性、事务、幂等、错误处理和支持边界。MOS 资料仅登记客户授权范围，不复制受限内容。
-
+<a id="src-docs-90-reference-report-index--用途"></a>
+<a id="src-docs-90-reference-report-index--维护规则"></a>
 <a id="src-docs-90-reference-report-index--验证"></a>
-### 验证
-
-对象及字段以目标实例 eTRM、Integration Repository、ALL_OBJECTS 和 ALL_TAB_COLUMNS 为准；状态/报表/并发程序以已安装产品和责任权限验证。
-
-
-<!-- source: docs/90-reference/sql-index.md -->
 <a id="src-docs-90-reference-sql-index"></a>
-## 参考索引：sql-index
-
-
-<a id="src-docs-90-reference-sql-index--用途"></a>
-### 用途
-本索引用于汇总 sql-index 的权威入口、适用产品、对象/字段/状态、版本差异和验证记录；不以复制内容替代模块专题。
-
-<a id="src-docs-90-reference-sql-index--维护规则"></a>
-### 维护规则
-
-每一条记录至少包含：业务中文名、技术名、所属产品、权威文档链接、适用 R12.2 补丁范围、来源/更新时间、验证环境和限制条件。
-
 <a id="src-docs-90-reference-sql-index--安全与质量"></a>
-### 安全与质量
-
-表和 SQL 索引只能提供只读、绑定变量、范围受限的诊断入口；API/接口索引必须注明公开性、事务、幂等、错误处理和支持边界。MOS 资料仅登记客户授权范围，不复制受限内容。
-
+<a id="src-docs-90-reference-sql-index--用途"></a>
+<a id="src-docs-90-reference-sql-index--维护规则"></a>
 <a id="src-docs-90-reference-sql-index--验证"></a>
-### 验证
-
-对象及字段以目标实例 eTRM、Integration Repository、ALL_OBJECTS 和 ALL_TAB_COLUMNS 为准；状态/报表/并发程序以已安装产品和责任权限验证。
-
-
-<!-- source: docs/90-reference/table-status-index.md -->
 <a id="src-docs-90-reference-table-status-index"></a>
-## 参考索引：table-status-index
-
-
-<a id="src-docs-90-reference-table-status-index--用途"></a>
-### 用途
-本索引用于汇总 table-status-index 的权威入口、适用产品、对象/字段/状态、版本差异和验证记录；不以复制内容替代模块专题。
-
-<a id="src-docs-90-reference-table-status-index--维护规则"></a>
-### 维护规则
-
-每一条记录至少包含：业务中文名、技术名、所属产品、权威文档链接、适用 R12.2 补丁范围、来源/更新时间、验证环境和限制条件。
-
 <a id="src-docs-90-reference-table-status-index--安全与质量"></a>
-### 安全与质量
-
-表和 SQL 索引只能提供只读、绑定变量、范围受限的诊断入口；API/接口索引必须注明公开性、事务、幂等、错误处理和支持边界。MOS 资料仅登记客户授权范围，不复制受限内容。
-
+<a id="src-docs-90-reference-table-status-index--用途"></a>
+<a id="src-docs-90-reference-table-status-index--维护规则"></a>
 <a id="src-docs-90-reference-table-status-index--验证"></a>
-### 验证
-
-对象及字段以目标实例 eTRM、Integration Repository、ALL_OBJECTS 和 ALL_TAB_COLUMNS 为准；状态/报表/并发程序以已安装产品和责任权限验证。

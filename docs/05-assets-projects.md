@@ -1,537 +1,84 @@
-# 资产、项目与资本化
+# 资产与项目（Assets and Projects）
 
-> 固定资产、项目成本/开票、项目转资产及相关扩展产品。本文件由原目录中的 22 份资料合并而成；各章节保留原来源标记，便于审计与后续去重。
+> 本模块连接项目支出、资本化、固定资产全生命周期、项目收入与跨模块会计。Fixed Assets（固定资产，FA）与 Projects（项目，PA）既可独立运行，也可通过 Project to Asset（项目转资产）形成资本化闭环。
 
-## 本模块章节导航
+## 阅读导航
 
-- [Assets and Projects](#src-docs-05-assets-projects-readme)（原 `docs/05-assets-projects/README.md`）
-- [Assets and Projects： asset-tracking-and-eam](#src-docs-05-assets-projects-asset-tracking-and-eam-readme)（原 `docs/05-assets-projects/asset-tracking-and-eam/README.md`）
-- [Assets and Projects： fixed-assets](#src-docs-05-assets-projects-fixed-assets-readme)（原 `docs/05-assets-projects/fixed-assets/README.md`）
-- [Assets and Projects： grants-accounting](#src-docs-05-assets-projects-grants-accounting-readme)（原 `docs/05-assets-projects/grants-accounting/README.md`）
-- [Assets and Projects： iassets](#src-docs-05-assets-projects-iassets-readme)（原 `docs/05-assets-projects/iassets/README.md`）
-- [Assets and Projects： lease-and-finance-management](#src-docs-05-assets-projects-lease-and-finance-management-readme)（原 `docs/05-assets-projects/lease-and-finance-management/README.md`）
-- [Assets and Projects： project-billing](#src-docs-05-assets-projects-project-billing-readme)（原 `docs/05-assets-projects/project-billing/README.md`）
-- [Assets and Projects： project-contracts](#src-docs-05-assets-projects-project-contracts-readme)（原 `docs/05-assets-projects/project-contracts/README.md`）
-- [Assets and Projects： project-costing](#src-docs-05-assets-projects-project-costing-readme)（原 `docs/05-assets-projects/project-costing/README.md`）
-- [Assets and Projects： project-planning-control](#src-docs-05-assets-projects-project-planning-control-readme)（原 `docs/05-assets-projects/project-planning-control/README.md`）
-- [Assets and Projects： project-to-asset](#src-docs-05-assets-projects-project-to-asset-readme)（原 `docs/05-assets-projects/project-to-asset/README.md`）
-- [Assets and Projects： projects-foundation](#src-docs-05-assets-projects-projects-foundation-readme)（原 `docs/05-assets-projects/projects-foundation/README.md`）
-- [Assets and Projects： property-manager](#src-docs-05-assets-projects-property-manager-readme)（原 `docs/05-assets-projects/property-manager/README.md`）
-- [Oracle Assets（FA / Acquire to Retire）](#src-docs-05-fa-readme)（原 `docs/05-fa/README.md`）
-- [FA 资产增加、调整、转移、重分类与盘点](#src-docs-05-fa-asset-transactions)（原 `docs/05-fa/asset-transactions.md`）
-- [FA 月结、报表、Mass Additions 与排错](#src-docs-05-fa-close-reports-interfaces)（原 `docs/05-fa/close-reports-interfaces.md`）
-- [FA 折旧、税务折旧、资产处置与会计](#src-docs-05-fa-depreciation-accounting)（原 `docs/05-fa/depreciation-accounting.md`）
-- [Oracle Assets 接口实现案例](#src-docs-05-fa-interfaces)（原 `docs/05-fa/interfaces.md`）
-- [Oracle Assets 资产全生命周期](#src-docs-05-fa-process)（原 `docs/05-fa/process.md`）
-- [Projects 到 Assets：CIP 与资本化](#src-docs-05-fa-projects-capitalization)（原 `docs/05-fa/projects-capitalization.md`）
-- [FA 资产账簿、类别、位置与关键配置](#src-docs-05-fa-setup)（原 `docs/05-fa/setup.md`）
-- [Oracle Assets 常用表结构](#src-docs-05-fa-tables)（原 `docs/05-fa/tables.md`）
+- [范围](#1-学习目标与边界) · [核心链路](#2-两条核心链路) · [固定资产](#3-fixed-assets-设计重点) · [项目](#4-projects-设计重点) · [会计对账](#5-会计和对账) · [技术排错](#6-技术视角) · [专题详解](#9-专题详解)
 
----
+## 1. 学习目标与边界
 
-<!-- source: docs/05-assets-projects/README.md -->
-<a id="src-docs-05-assets-projects-readme"></a>
-## Assets and Projects
+应能解释 Asset Book（资产账簿）、类别、折旧、资产交易和 FA-GL 对账；理解 Projects Foundation、Project Costing（项目成本）、Project Billing（项目开票）和资本化；区分 Property Manager、iAssets、EAM、Grants 等可选产品。
 
+## 2. 两条核心链路
 
-<a id="src-docs-05-assets-projects-readme--范围与目标"></a>
-### 范围与目标
-覆盖固定资产、iAssets、eAM、Projects、项目成本/开票/计划/合同/Grants、项目转资产、物业与租赁。
+### 2.1 资产取得到退出（Acquire to Retire，A2R）
 
-<a id="src-docs-05-assets-projects-readme--运行与实施控制"></a>
-### 运行与实施控制
-明确可资本化政策、项目/任务/资产类别/账簿、成本归集、资产行、Mass Additions、折旧和处置；项目成本、CIP、FA 和 GL 分别对账。
-
-<a id="src-docs-05-assets-projects-readme--核心数据对象"></a>
-### 核心数据对象
-FA_ADDITIONS_B、FA_BOOKS、FA_DISTRIBUTION_HISTORY、FA_DEPRN_SUMMARY、FA_MASS_ADDITIONS、PA_PROJECTS_ALL、PA_TASKS、PA_EXPENDITURE_ITEMS_ALL。对象、列、状态和 API 签名须在目标实例 eTRM、Integration Repository 与数据字典复核。
-
-<a id="src-docs-05-assets-projects-readme--与既有知识的关系"></a>
-### 与既有知识的关系
-本目标目录新增详细入口；已有专题保留在 [05-fa/README](#src-docs-05-fa-readme) 并逐步迁移链接，不复制历史内容。
-
-<a id="src-docs-05-assets-projects-readme--官方依据"></a>
-### 官方依据
-[Oracle Financials Documentation](https://docs.oracle.com/cd/E26401_01/nav/financials.htm)
-
-
-<!-- source: docs/05-assets-projects/asset-tracking-and-eam/README.md -->
-<a id="src-docs-05-assets-projects-asset-tracking-and-eam-readme"></a>
-## Assets and Projects： asset-tracking-and-eam
-
-
-<a id="src-docs-05-assets-projects-asset-tracking-and-eam-readme--业务定位"></a>
-### 业务定位
-本专题是 Assets and Projects 中的 asset-tracking-and-eam 子域。覆盖固定资产、iAssets、eAM、Projects、项目成本/开票/计划/合同/Grants、项目转资产、物业与租赁。
-
-<a id="src-docs-05-assets-projects-asset-tracking-and-eam-readme--设计与配置"></a>
-### 设计与配置
-明确可资本化政策、项目/任务/资产类别/账簿、成本归集、资产行、Mass Additions、折旧和处置；项目成本、CIP、FA 和 GL 分别对账。
-上线前以正常、跨期、外币/多组织（如适用）、拒绝、冲销/撤回、重跑和月结场景完成验证。
-
-<a id="src-docs-05-assets-projects-asset-tracking-and-eam-readme--数据接口与会计追溯"></a>
-### 数据、接口与会计追溯
-FA_ADDITIONS_B、FA_BOOKS、FA_DISTRIBUTION_HISTORY、FA_DEPRN_SUMMARY、FA_MASS_ADDITIONS、PA_PROJECTS_ALL、PA_TASKS、PA_EXPENDITURE_ITEMS_ALL。接口必须维护来源业务键、批次号、行号、状态、错误码和可重放策略；会计追溯按交易主键、事件、分录和 GL 链分层进行。
-
-```sql
-select owner, table_name, column_name, data_type
-  from all_tab_columns
- where owner = upper(:p_owner)
-   and table_name = upper(:p_table_name)
- order by column_id;
+```text
+AP/采购/手工来源 → Mass Additions（批量资产增加） → 创建资产
+→ 投产/折旧 → 调拨/调整/重分类 → 减值（如适用） → 退休/处置 → GL
 ```
 
-<a id="src-docs-05-assets-projects-asset-tracking-and-eam-readme--常见问题与排查"></a>
-### 常见问题与排查
-把费用化和资本化成本混同；只看资产头忽略账簿/分配历史；未确认可选 Projects/Property/Lease 产品范围。 先确认产品是否已安装、职责和组织/账簿上下文是否正确，再检查业务状态、接口批次、并发日志、SLA 和报告。
+### 2.2 项目到资产/现金
 
-<a id="src-docs-05-assets-projects-asset-tracking-and-eam-readme--实施边界"></a>
-### 实施边界
-不直接 DML Oracle EBS 业务表。写入使用标准页面、公开 API、Open Interface 或受控自定义对象；可选产品需确认许可证、安装和补丁范围。
-
-<a id="src-docs-05-assets-projects-asset-tracking-and-eam-readme--关联与官方依据"></a>
-### 关联与官方依据
-[本知识域入口](#src-docs-05-assets-projects-readme)｜[Oracle Financials Documentation](https://docs.oracle.com/cd/E26401_01/nav/financials.htm)
-
-
-<!-- source: docs/05-assets-projects/fixed-assets/README.md -->
-<a id="src-docs-05-assets-projects-fixed-assets-readme"></a>
-## Assets and Projects： fixed-assets
-
-
-<a id="src-docs-05-assets-projects-fixed-assets-readme--业务定位"></a>
-### 业务定位
-本专题是 Assets and Projects 中的 fixed-assets 子域。覆盖固定资产、iAssets、eAM、Projects、项目成本/开票/计划/合同/Grants、项目转资产、物业与租赁。
-
-<a id="src-docs-05-assets-projects-fixed-assets-readme--设计与配置"></a>
-### 设计与配置
-明确可资本化政策、项目/任务/资产类别/账簿、成本归集、资产行、Mass Additions、折旧和处置；项目成本、CIP、FA 和 GL 分别对账。
-上线前以正常、跨期、外币/多组织（如适用）、拒绝、冲销/撤回、重跑和月结场景完成验证。
-
-<a id="src-docs-05-assets-projects-fixed-assets-readme--数据接口与会计追溯"></a>
-### 数据、接口与会计追溯
-FA_ADDITIONS_B、FA_BOOKS、FA_DISTRIBUTION_HISTORY、FA_DEPRN_SUMMARY、FA_MASS_ADDITIONS、PA_PROJECTS_ALL、PA_TASKS、PA_EXPENDITURE_ITEMS_ALL。接口必须维护来源业务键、批次号、行号、状态、错误码和可重放策略；会计追溯按交易主键、事件、分录和 GL 链分层进行。
-
-```sql
-select owner, table_name, column_name, data_type
-  from all_tab_columns
- where owner = upper(:p_owner)
-   and table_name = upper(:p_table_name)
- order by column_id;
+```text
+项目与任务 → 支出导入/归集 → 成本分配与负担成本
+→ 资本项目资产线 → 传送 FA → 创建资产/折旧
+或：合同/事件 → 收入生成 → 项目开票 → AR → 收款
 ```
 
-<a id="src-docs-05-assets-projects-fixed-assets-readme--常见问题与排查"></a>
-### 常见问题与排查
-把费用化和资本化成本混同；只看资产头忽略账簿/分配历史；未确认可选 Projects/Property/Lease 产品范围。 先确认产品是否已安装、职责和组织/账簿上下文是否正确，再检查业务状态、接口批次、并发日志、SLA 和报告。
+## 3. Fixed Assets 设计重点
 
-<a id="src-docs-05-assets-projects-fixed-assets-readme--实施边界"></a>
-### 实施边界
-不直接 DML Oracle EBS 业务表。写入使用标准页面、公开 API、Open Interface 或受控自定义对象；可选产品需确认许可证、安装和补丁范围。
+- Corporate Book（公司账簿）服务企业核算；Tax Book（税务账簿）服务税务折旧。账簿间复制规则要明确。
+- Asset Category（资产类别）通常默认成本、累计折旧、折旧费用等账户和折旧规则。
+- Depreciation Method（折旧方法）、寿命、比例分摊惯例和投产日期共同决定折旧。
+- Source Line（来源行）保留资产与 AP/项目来源的可追溯性；合并或拆分资产时不能丢失来源关系。
+- 退休、恢复、转移、调整和重分类都要测试当期及追溯影响。
 
-<a id="src-docs-05-assets-projects-fixed-assets-readme--关联与官方依据"></a>
-### 关联与官方依据
-[本知识域入口](#src-docs-05-assets-projects-readme)｜[Oracle Financials Documentation](https://docs.oracle.com/cd/E26401_01/nav/financials.htm)
+## 4. Projects 设计重点
 
+项目、任务、组织、支出类型和 Expenditure Organization（支出组织）决定成本归属。Burdening（负担成本）用于间接成本分摊；Capitalization（资本化）需要定义可资本化成本、资产线生成、分组和 FA 接收规则。项目开票与收入确认可能使用不同事件与分配逻辑，必须分别验证。
 
-<!-- source: docs/05-assets-projects/grants-accounting/README.md -->
-<a id="src-docs-05-assets-projects-grants-accounting-readme"></a>
-## Assets and Projects： grants-accounting
+## 5. 会计和对账
 
+常见控制包括：AP Mass Additions 与 FA 接收总额、CIP（在建工程）与资本化、FA 资产成本/累计折旧与 GL、项目未分配成本、项目成本到资产线、项目开票到 AR。
 
-<a id="src-docs-05-assets-projects-grants-accounting-readme--业务定位"></a>
-### 业务定位
-本专题是 Assets and Projects 中的 grants-accounting 子域。覆盖固定资产、iAssets、eAM、Projects、项目成本/开票/计划/合同/Grants、项目转资产、物业与租赁。
+关账顺序通常是完成来源交易和接口，处理未过账资产交易，运行折旧并创建会计，核对 FA/PA 与 GL 后关闭期间。折旧运行前要处理异常资产、未完成批量增加和回退限制。
 
-<a id="src-docs-05-assets-projects-grants-accounting-readme--设计与配置"></a>
-### 设计与配置
-明确可资本化政策、项目/任务/资产类别/账簿、成本归集、资产行、Mass Additions、折旧和处置；项目成本、CIP、FA 和 GL 分别对账。
-上线前以正常、跨期、外币/多组织（如适用）、拒绝、冲销/撤回、重跑和月结场景完成验证。
+## 6. 技术视角
 
-<a id="src-docs-05-assets-projects-grants-accounting-readme--数据接口与会计追溯"></a>
-### 数据、接口与会计追溯
-FA_ADDITIONS_B、FA_BOOKS、FA_DISTRIBUTION_HISTORY、FA_DEPRN_SUMMARY、FA_MASS_ADDITIONS、PA_PROJECTS_ALL、PA_TASKS、PA_EXPENDITURE_ITEMS_ALL。接口必须维护来源业务键、批次号、行号、状态、错误码和可重放策略；会计追溯按交易主键、事件、分录和 GL 链分层进行。
+常用对象包括 `FA_ADDITIONS_B`、`FA_BOOKS`、`FA_DISTRIBUTION_HISTORY`、`FA_TRANSACTION_HEADERS`、`FA_DEPRN_SUMMARY`、`FA_MASS_ADDITIONS`，以及 PA 的项目、任务、支出项目、成本分配、资产线和开票接口表。具体表与列必须在目标实例 eTRM/数据字典确认。
 
-```sql
-select owner, table_name, column_name, data_type
-  from all_tab_columns
- where owner = upper(:p_owner)
-   and table_name = upper(:p_table_name)
- order by column_id;
-```
+接口设计要区分来源行、资产、账簿和分配层级；项目成本接口要保留项目/任务、支出类型、组织、日期、人员/供应商和原始交易引用。处理部分成功时，不可简单整批重送。
 
-<a id="src-docs-05-assets-projects-grants-accounting-readme--常见问题与排查"></a>
-### 常见问题与排查
-把费用化和资本化成本混同；只看资产头忽略账簿/分配历史；未确认可选 Projects/Property/Lease 产品范围。 先确认产品是否已安装、职责和组织/账簿上下文是否正确，再检查业务状态、接口批次、并发日志、SLA 和报告。
+## 7. 高频问题定位
 
-<a id="src-docs-05-assets-projects-grants-accounting-readme--实施边界"></a>
-### 实施边界
-不直接 DML Oracle EBS 业务表。写入使用标准页面、公开 API、Open Interface 或受控自定义对象；可选产品需确认许可证、安装和补丁范围。
+| 问题 | 检查顺序 |
+| --- | --- |
+| Mass Addition 无法过账 | 来源状态、类别、账簿、成本、地点/员工和错误信息 |
+| 折旧金额异常 | 投产日期、方法、寿命、惯例、成本调整和追溯设置 |
+| FA 与 GL 不符 | 未会计交易、期间、账户、手工 GL 和折旧运行 |
+| 项目成本无法资本化 | 项目/任务状态、资本属性、成本分配、资产线和传送状态 |
+| 项目开票未进 AR | 合同/客户、事件、开票生成、接口和 AutoInvoice |
 
-<a id="src-docs-05-assets-projects-grants-accounting-readme--关联与官方依据"></a>
-### 关联与官方依据
-[本知识域入口](#src-docs-05-assets-projects-readme)｜[Oracle Financials Documentation](https://docs.oracle.com/cd/E26401_01/nav/financials.htm)
+## 8. 建议练习
 
+- 从 AP 发票创建资产，运行折旧、调拨并部分退休。
+- 从项目支出生成资产线并传入 FA，核对 CIP 清理。
+- 为公司账簿与税务账簿设计差异和对账方案。
 
-<!-- source: docs/05-assets-projects/iassets/README.md -->
-<a id="src-docs-05-assets-projects-iassets-readme"></a>
-## Assets and Projects： iassets
-
-
-<a id="src-docs-05-assets-projects-iassets-readme--业务定位"></a>
-### 业务定位
-本专题是 Assets and Projects 中的 iassets 子域。覆盖固定资产、iAssets、eAM、Projects、项目成本/开票/计划/合同/Grants、项目转资产、物业与租赁。
-
-<a id="src-docs-05-assets-projects-iassets-readme--设计与配置"></a>
-### 设计与配置
-明确可资本化政策、项目/任务/资产类别/账簿、成本归集、资产行、Mass Additions、折旧和处置；项目成本、CIP、FA 和 GL 分别对账。
-上线前以正常、跨期、外币/多组织（如适用）、拒绝、冲销/撤回、重跑和月结场景完成验证。
-
-<a id="src-docs-05-assets-projects-iassets-readme--数据接口与会计追溯"></a>
-### 数据、接口与会计追溯
-FA_ADDITIONS_B、FA_BOOKS、FA_DISTRIBUTION_HISTORY、FA_DEPRN_SUMMARY、FA_MASS_ADDITIONS、PA_PROJECTS_ALL、PA_TASKS、PA_EXPENDITURE_ITEMS_ALL。接口必须维护来源业务键、批次号、行号、状态、错误码和可重放策略；会计追溯按交易主键、事件、分录和 GL 链分层进行。
-
-```sql
-select owner, table_name, column_name, data_type
-  from all_tab_columns
- where owner = upper(:p_owner)
-   and table_name = upper(:p_table_name)
- order by column_id;
-```
-
-<a id="src-docs-05-assets-projects-iassets-readme--常见问题与排查"></a>
-### 常见问题与排查
-把费用化和资本化成本混同；只看资产头忽略账簿/分配历史；未确认可选 Projects/Property/Lease 产品范围。 先确认产品是否已安装、职责和组织/账簿上下文是否正确，再检查业务状态、接口批次、并发日志、SLA 和报告。
-
-<a id="src-docs-05-assets-projects-iassets-readme--实施边界"></a>
-### 实施边界
-不直接 DML Oracle EBS 业务表。写入使用标准页面、公开 API、Open Interface 或受控自定义对象；可选产品需确认许可证、安装和补丁范围。
-
-<a id="src-docs-05-assets-projects-iassets-readme--关联与官方依据"></a>
-### 关联与官方依据
-[本知识域入口](#src-docs-05-assets-projects-readme)｜[Oracle Financials Documentation](https://docs.oracle.com/cd/E26401_01/nav/financials.htm)
-
-
-<!-- source: docs/05-assets-projects/lease-and-finance-management/README.md -->
-<a id="src-docs-05-assets-projects-lease-and-finance-management-readme"></a>
-## Assets and Projects： lease-and-finance-management
-
-
-<a id="src-docs-05-assets-projects-lease-and-finance-management-readme--业务定位"></a>
-### 业务定位
-本专题是 Assets and Projects 中的 lease-and-finance-management 子域。覆盖固定资产、iAssets、eAM、Projects、项目成本/开票/计划/合同/Grants、项目转资产、物业与租赁。
-
-<a id="src-docs-05-assets-projects-lease-and-finance-management-readme--设计与配置"></a>
-### 设计与配置
-明确可资本化政策、项目/任务/资产类别/账簿、成本归集、资产行、Mass Additions、折旧和处置；项目成本、CIP、FA 和 GL 分别对账。
-上线前以正常、跨期、外币/多组织（如适用）、拒绝、冲销/撤回、重跑和月结场景完成验证。
-
-<a id="src-docs-05-assets-projects-lease-and-finance-management-readme--数据接口与会计追溯"></a>
-### 数据、接口与会计追溯
-FA_ADDITIONS_B、FA_BOOKS、FA_DISTRIBUTION_HISTORY、FA_DEPRN_SUMMARY、FA_MASS_ADDITIONS、PA_PROJECTS_ALL、PA_TASKS、PA_EXPENDITURE_ITEMS_ALL。接口必须维护来源业务键、批次号、行号、状态、错误码和可重放策略；会计追溯按交易主键、事件、分录和 GL 链分层进行。
-
-```sql
-select owner, table_name, column_name, data_type
-  from all_tab_columns
- where owner = upper(:p_owner)
-   and table_name = upper(:p_table_name)
- order by column_id;
-```
-
-<a id="src-docs-05-assets-projects-lease-and-finance-management-readme--常见问题与排查"></a>
-### 常见问题与排查
-把费用化和资本化成本混同；只看资产头忽略账簿/分配历史；未确认可选 Projects/Property/Lease 产品范围。 先确认产品是否已安装、职责和组织/账簿上下文是否正确，再检查业务状态、接口批次、并发日志、SLA 和报告。
-
-<a id="src-docs-05-assets-projects-lease-and-finance-management-readme--实施边界"></a>
-### 实施边界
-不直接 DML Oracle EBS 业务表。写入使用标准页面、公开 API、Open Interface 或受控自定义对象；可选产品需确认许可证、安装和补丁范围。
-
-<a id="src-docs-05-assets-projects-lease-and-finance-management-readme--关联与官方依据"></a>
-### 关联与官方依据
-[本知识域入口](#src-docs-05-assets-projects-readme)｜[Oracle Financials Documentation](https://docs.oracle.com/cd/E26401_01/nav/financials.htm)
-
-
-<!-- source: docs/05-assets-projects/project-billing/README.md -->
-<a id="src-docs-05-assets-projects-project-billing-readme"></a>
-## Assets and Projects： project-billing
-
-
-<a id="src-docs-05-assets-projects-project-billing-readme--业务定位"></a>
-### 业务定位
-本专题是 Assets and Projects 中的 project-billing 子域。覆盖固定资产、iAssets、eAM、Projects、项目成本/开票/计划/合同/Grants、项目转资产、物业与租赁。
-
-<a id="src-docs-05-assets-projects-project-billing-readme--设计与配置"></a>
-### 设计与配置
-明确可资本化政策、项目/任务/资产类别/账簿、成本归集、资产行、Mass Additions、折旧和处置；项目成本、CIP、FA 和 GL 分别对账。
-上线前以正常、跨期、外币/多组织（如适用）、拒绝、冲销/撤回、重跑和月结场景完成验证。
-
-<a id="src-docs-05-assets-projects-project-billing-readme--数据接口与会计追溯"></a>
-### 数据、接口与会计追溯
-FA_ADDITIONS_B、FA_BOOKS、FA_DISTRIBUTION_HISTORY、FA_DEPRN_SUMMARY、FA_MASS_ADDITIONS、PA_PROJECTS_ALL、PA_TASKS、PA_EXPENDITURE_ITEMS_ALL。接口必须维护来源业务键、批次号、行号、状态、错误码和可重放策略；会计追溯按交易主键、事件、分录和 GL 链分层进行。
-
-```sql
-select owner, table_name, column_name, data_type
-  from all_tab_columns
- where owner = upper(:p_owner)
-   and table_name = upper(:p_table_name)
- order by column_id;
-```
-
-<a id="src-docs-05-assets-projects-project-billing-readme--常见问题与排查"></a>
-### 常见问题与排查
-把费用化和资本化成本混同；只看资产头忽略账簿/分配历史；未确认可选 Projects/Property/Lease 产品范围。 先确认产品是否已安装、职责和组织/账簿上下文是否正确，再检查业务状态、接口批次、并发日志、SLA 和报告。
-
-<a id="src-docs-05-assets-projects-project-billing-readme--实施边界"></a>
-### 实施边界
-不直接 DML Oracle EBS 业务表。写入使用标准页面、公开 API、Open Interface 或受控自定义对象；可选产品需确认许可证、安装和补丁范围。
-
-<a id="src-docs-05-assets-projects-project-billing-readme--关联与官方依据"></a>
-### 关联与官方依据
-[本知识域入口](#src-docs-05-assets-projects-readme)｜[Oracle Financials Documentation](https://docs.oracle.com/cd/E26401_01/nav/financials.htm)
-
-
-<!-- source: docs/05-assets-projects/project-contracts/README.md -->
-<a id="src-docs-05-assets-projects-project-contracts-readme"></a>
-## Assets and Projects： project-contracts
-
-
-<a id="src-docs-05-assets-projects-project-contracts-readme--业务定位"></a>
-### 业务定位
-本专题是 Assets and Projects 中的 project-contracts 子域。覆盖固定资产、iAssets、eAM、Projects、项目成本/开票/计划/合同/Grants、项目转资产、物业与租赁。
-
-<a id="src-docs-05-assets-projects-project-contracts-readme--设计与配置"></a>
-### 设计与配置
-明确可资本化政策、项目/任务/资产类别/账簿、成本归集、资产行、Mass Additions、折旧和处置；项目成本、CIP、FA 和 GL 分别对账。
-上线前以正常、跨期、外币/多组织（如适用）、拒绝、冲销/撤回、重跑和月结场景完成验证。
-
-<a id="src-docs-05-assets-projects-project-contracts-readme--数据接口与会计追溯"></a>
-### 数据、接口与会计追溯
-FA_ADDITIONS_B、FA_BOOKS、FA_DISTRIBUTION_HISTORY、FA_DEPRN_SUMMARY、FA_MASS_ADDITIONS、PA_PROJECTS_ALL、PA_TASKS、PA_EXPENDITURE_ITEMS_ALL。接口必须维护来源业务键、批次号、行号、状态、错误码和可重放策略；会计追溯按交易主键、事件、分录和 GL 链分层进行。
-
-```sql
-select owner, table_name, column_name, data_type
-  from all_tab_columns
- where owner = upper(:p_owner)
-   and table_name = upper(:p_table_name)
- order by column_id;
-```
-
-<a id="src-docs-05-assets-projects-project-contracts-readme--常见问题与排查"></a>
-### 常见问题与排查
-把费用化和资本化成本混同；只看资产头忽略账簿/分配历史；未确认可选 Projects/Property/Lease 产品范围。 先确认产品是否已安装、职责和组织/账簿上下文是否正确，再检查业务状态、接口批次、并发日志、SLA 和报告。
-
-<a id="src-docs-05-assets-projects-project-contracts-readme--实施边界"></a>
-### 实施边界
-不直接 DML Oracle EBS 业务表。写入使用标准页面、公开 API、Open Interface 或受控自定义对象；可选产品需确认许可证、安装和补丁范围。
-
-<a id="src-docs-05-assets-projects-project-contracts-readme--关联与官方依据"></a>
-### 关联与官方依据
-[本知识域入口](#src-docs-05-assets-projects-readme)｜[Oracle Financials Documentation](https://docs.oracle.com/cd/E26401_01/nav/financials.htm)
-
-
-<!-- source: docs/05-assets-projects/project-costing/README.md -->
-<a id="src-docs-05-assets-projects-project-costing-readme"></a>
-## Assets and Projects： project-costing
-
-
-<a id="src-docs-05-assets-projects-project-costing-readme--业务定位"></a>
-### 业务定位
-本专题是 Assets and Projects 中的 project-costing 子域。覆盖固定资产、iAssets、eAM、Projects、项目成本/开票/计划/合同/Grants、项目转资产、物业与租赁。
-
-<a id="src-docs-05-assets-projects-project-costing-readme--设计与配置"></a>
-### 设计与配置
-明确可资本化政策、项目/任务/资产类别/账簿、成本归集、资产行、Mass Additions、折旧和处置；项目成本、CIP、FA 和 GL 分别对账。
-上线前以正常、跨期、外币/多组织（如适用）、拒绝、冲销/撤回、重跑和月结场景完成验证。
-
-<a id="src-docs-05-assets-projects-project-costing-readme--数据接口与会计追溯"></a>
-### 数据、接口与会计追溯
-FA_ADDITIONS_B、FA_BOOKS、FA_DISTRIBUTION_HISTORY、FA_DEPRN_SUMMARY、FA_MASS_ADDITIONS、PA_PROJECTS_ALL、PA_TASKS、PA_EXPENDITURE_ITEMS_ALL。接口必须维护来源业务键、批次号、行号、状态、错误码和可重放策略；会计追溯按交易主键、事件、分录和 GL 链分层进行。
-
-```sql
-select owner, table_name, column_name, data_type
-  from all_tab_columns
- where owner = upper(:p_owner)
-   and table_name = upper(:p_table_name)
- order by column_id;
-```
-
-<a id="src-docs-05-assets-projects-project-costing-readme--常见问题与排查"></a>
-### 常见问题与排查
-把费用化和资本化成本混同；只看资产头忽略账簿/分配历史；未确认可选 Projects/Property/Lease 产品范围。 先确认产品是否已安装、职责和组织/账簿上下文是否正确，再检查业务状态、接口批次、并发日志、SLA 和报告。
-
-<a id="src-docs-05-assets-projects-project-costing-readme--实施边界"></a>
-### 实施边界
-不直接 DML Oracle EBS 业务表。写入使用标准页面、公开 API、Open Interface 或受控自定义对象；可选产品需确认许可证、安装和补丁范围。
-
-<a id="src-docs-05-assets-projects-project-costing-readme--关联与官方依据"></a>
-### 关联与官方依据
-[本知识域入口](#src-docs-05-assets-projects-readme)｜[Oracle Financials Documentation](https://docs.oracle.com/cd/E26401_01/nav/financials.htm)
-
-
-<!-- source: docs/05-assets-projects/project-planning-control/README.md -->
-<a id="src-docs-05-assets-projects-project-planning-control-readme"></a>
-## Assets and Projects： project-planning-control
-
-
-<a id="src-docs-05-assets-projects-project-planning-control-readme--业务定位"></a>
-### 业务定位
-本专题是 Assets and Projects 中的 project-planning-control 子域。覆盖固定资产、iAssets、eAM、Projects、项目成本/开票/计划/合同/Grants、项目转资产、物业与租赁。
-
-<a id="src-docs-05-assets-projects-project-planning-control-readme--设计与配置"></a>
-### 设计与配置
-明确可资本化政策、项目/任务/资产类别/账簿、成本归集、资产行、Mass Additions、折旧和处置；项目成本、CIP、FA 和 GL 分别对账。
-上线前以正常、跨期、外币/多组织（如适用）、拒绝、冲销/撤回、重跑和月结场景完成验证。
-
-<a id="src-docs-05-assets-projects-project-planning-control-readme--数据接口与会计追溯"></a>
-### 数据、接口与会计追溯
-FA_ADDITIONS_B、FA_BOOKS、FA_DISTRIBUTION_HISTORY、FA_DEPRN_SUMMARY、FA_MASS_ADDITIONS、PA_PROJECTS_ALL、PA_TASKS、PA_EXPENDITURE_ITEMS_ALL。接口必须维护来源业务键、批次号、行号、状态、错误码和可重放策略；会计追溯按交易主键、事件、分录和 GL 链分层进行。
-
-```sql
-select owner, table_name, column_name, data_type
-  from all_tab_columns
- where owner = upper(:p_owner)
-   and table_name = upper(:p_table_name)
- order by column_id;
-```
-
-<a id="src-docs-05-assets-projects-project-planning-control-readme--常见问题与排查"></a>
-### 常见问题与排查
-把费用化和资本化成本混同；只看资产头忽略账簿/分配历史；未确认可选 Projects/Property/Lease 产品范围。 先确认产品是否已安装、职责和组织/账簿上下文是否正确，再检查业务状态、接口批次、并发日志、SLA 和报告。
-
-<a id="src-docs-05-assets-projects-project-planning-control-readme--实施边界"></a>
-### 实施边界
-不直接 DML Oracle EBS 业务表。写入使用标准页面、公开 API、Open Interface 或受控自定义对象；可选产品需确认许可证、安装和补丁范围。
-
-<a id="src-docs-05-assets-projects-project-planning-control-readme--关联与官方依据"></a>
-### 关联与官方依据
-[本知识域入口](#src-docs-05-assets-projects-readme)｜[Oracle Financials Documentation](https://docs.oracle.com/cd/E26401_01/nav/financials.htm)
-
-
-<!-- source: docs/05-assets-projects/project-to-asset/README.md -->
-<a id="src-docs-05-assets-projects-project-to-asset-readme"></a>
-## Assets and Projects： project-to-asset
-
-
-<a id="src-docs-05-assets-projects-project-to-asset-readme--业务定位"></a>
-### 业务定位
-本专题是 Assets and Projects 中的 project-to-asset 子域。覆盖固定资产、iAssets、eAM、Projects、项目成本/开票/计划/合同/Grants、项目转资产、物业与租赁。
-
-<a id="src-docs-05-assets-projects-project-to-asset-readme--设计与配置"></a>
-### 设计与配置
-明确可资本化政策、项目/任务/资产类别/账簿、成本归集、资产行、Mass Additions、折旧和处置；项目成本、CIP、FA 和 GL 分别对账。
-上线前以正常、跨期、外币/多组织（如适用）、拒绝、冲销/撤回、重跑和月结场景完成验证。
-
-<a id="src-docs-05-assets-projects-project-to-asset-readme--数据接口与会计追溯"></a>
-### 数据、接口与会计追溯
-FA_ADDITIONS_B、FA_BOOKS、FA_DISTRIBUTION_HISTORY、FA_DEPRN_SUMMARY、FA_MASS_ADDITIONS、PA_PROJECTS_ALL、PA_TASKS、PA_EXPENDITURE_ITEMS_ALL。接口必须维护来源业务键、批次号、行号、状态、错误码和可重放策略；会计追溯按交易主键、事件、分录和 GL 链分层进行。
-
-```sql
-select owner, table_name, column_name, data_type
-  from all_tab_columns
- where owner = upper(:p_owner)
-   and table_name = upper(:p_table_name)
- order by column_id;
-```
-
-<a id="src-docs-05-assets-projects-project-to-asset-readme--常见问题与排查"></a>
-### 常见问题与排查
-把费用化和资本化成本混同；只看资产头忽略账簿/分配历史；未确认可选 Projects/Property/Lease 产品范围。 先确认产品是否已安装、职责和组织/账簿上下文是否正确，再检查业务状态、接口批次、并发日志、SLA 和报告。
-
-<a id="src-docs-05-assets-projects-project-to-asset-readme--实施边界"></a>
-### 实施边界
-不直接 DML Oracle EBS 业务表。写入使用标准页面、公开 API、Open Interface 或受控自定义对象；可选产品需确认许可证、安装和补丁范围。
-
-<a id="src-docs-05-assets-projects-project-to-asset-readme--关联与官方依据"></a>
-### 关联与官方依据
-[本知识域入口](#src-docs-05-assets-projects-readme)｜[Oracle Financials Documentation](https://docs.oracle.com/cd/E26401_01/nav/financials.htm)
-
-
-<!-- source: docs/05-assets-projects/projects-foundation/README.md -->
-<a id="src-docs-05-assets-projects-projects-foundation-readme"></a>
-## Assets and Projects： projects-foundation
-
-
-<a id="src-docs-05-assets-projects-projects-foundation-readme--业务定位"></a>
-### 业务定位
-本专题是 Assets and Projects 中的 projects-foundation 子域。覆盖固定资产、iAssets、eAM、Projects、项目成本/开票/计划/合同/Grants、项目转资产、物业与租赁。
-
-<a id="src-docs-05-assets-projects-projects-foundation-readme--设计与配置"></a>
-### 设计与配置
-明确可资本化政策、项目/任务/资产类别/账簿、成本归集、资产行、Mass Additions、折旧和处置；项目成本、CIP、FA 和 GL 分别对账。
-上线前以正常、跨期、外币/多组织（如适用）、拒绝、冲销/撤回、重跑和月结场景完成验证。
-
-<a id="src-docs-05-assets-projects-projects-foundation-readme--数据接口与会计追溯"></a>
-### 数据、接口与会计追溯
-FA_ADDITIONS_B、FA_BOOKS、FA_DISTRIBUTION_HISTORY、FA_DEPRN_SUMMARY、FA_MASS_ADDITIONS、PA_PROJECTS_ALL、PA_TASKS、PA_EXPENDITURE_ITEMS_ALL。接口必须维护来源业务键、批次号、行号、状态、错误码和可重放策略；会计追溯按交易主键、事件、分录和 GL 链分层进行。
-
-```sql
-select owner, table_name, column_name, data_type
-  from all_tab_columns
- where owner = upper(:p_owner)
-   and table_name = upper(:p_table_name)
- order by column_id;
-```
-
-<a id="src-docs-05-assets-projects-projects-foundation-readme--常见问题与排查"></a>
-### 常见问题与排查
-把费用化和资本化成本混同；只看资产头忽略账簿/分配历史；未确认可选 Projects/Property/Lease 产品范围。 先确认产品是否已安装、职责和组织/账簿上下文是否正确，再检查业务状态、接口批次、并发日志、SLA 和报告。
-
-<a id="src-docs-05-assets-projects-projects-foundation-readme--实施边界"></a>
-### 实施边界
-不直接 DML Oracle EBS 业务表。写入使用标准页面、公开 API、Open Interface 或受控自定义对象；可选产品需确认许可证、安装和补丁范围。
-
-<a id="src-docs-05-assets-projects-projects-foundation-readme--关联与官方依据"></a>
-### 关联与官方依据
-[本知识域入口](#src-docs-05-assets-projects-readme)｜[Oracle Financials Documentation](https://docs.oracle.com/cd/E26401_01/nav/financials.htm)
-
-
-<!-- source: docs/05-assets-projects/property-manager/README.md -->
-<a id="src-docs-05-assets-projects-property-manager-readme"></a>
-## Assets and Projects： property-manager
-
-
-<a id="src-docs-05-assets-projects-property-manager-readme--业务定位"></a>
-### 业务定位
-本专题是 Assets and Projects 中的 property-manager 子域。覆盖固定资产、iAssets、eAM、Projects、项目成本/开票/计划/合同/Grants、项目转资产、物业与租赁。
-
-<a id="src-docs-05-assets-projects-property-manager-readme--设计与配置"></a>
-### 设计与配置
-明确可资本化政策、项目/任务/资产类别/账簿、成本归集、资产行、Mass Additions、折旧和处置；项目成本、CIP、FA 和 GL 分别对账。
-上线前以正常、跨期、外币/多组织（如适用）、拒绝、冲销/撤回、重跑和月结场景完成验证。
-
-<a id="src-docs-05-assets-projects-property-manager-readme--数据接口与会计追溯"></a>
-### 数据、接口与会计追溯
-FA_ADDITIONS_B、FA_BOOKS、FA_DISTRIBUTION_HISTORY、FA_DEPRN_SUMMARY、FA_MASS_ADDITIONS、PA_PROJECTS_ALL、PA_TASKS、PA_EXPENDITURE_ITEMS_ALL。接口必须维护来源业务键、批次号、行号、状态、错误码和可重放策略；会计追溯按交易主键、事件、分录和 GL 链分层进行。
-
-```sql
-select owner, table_name, column_name, data_type
-  from all_tab_columns
- where owner = upper(:p_owner)
-   and table_name = upper(:p_table_name)
- order by column_id;
-```
-
-<a id="src-docs-05-assets-projects-property-manager-readme--常见问题与排查"></a>
-### 常见问题与排查
-把费用化和资本化成本混同；只看资产头忽略账簿/分配历史；未确认可选 Projects/Property/Lease 产品范围。 先确认产品是否已安装、职责和组织/账簿上下文是否正确，再检查业务状态、接口批次、并发日志、SLA 和报告。
-
-<a id="src-docs-05-assets-projects-property-manager-readme--实施边界"></a>
-### 实施边界
-不直接 DML Oracle EBS 业务表。写入使用标准页面、公开 API、Open Interface 或受控自定义对象；可选产品需确认许可证、安装和补丁范围。
-
-<a id="src-docs-05-assets-projects-property-manager-readme--关联与官方依据"></a>
-### 关联与官方依据
-[本知识域入口](#src-docs-05-assets-projects-readme)｜[Oracle Financials Documentation](https://docs.oracle.com/cd/E26401_01/nav/financials.htm)
+## 9. 专题详解
 
 
 <!-- source: docs/05-fa/README.md -->
 <a id="src-docs-05-fa-readme"></a>
-## Oracle Assets（FA / Acquire to Retire）
+### Oracle Assets（FA / Acquire to Retire）
 
 
 本目录覆盖资产账簿、类别、增加、资本化、折旧、调整、转移、处置、Mass Additions、会计与关账。资产来源可来自 AP、Projects/CIP、iAssets 或外部迁移；不同来源需要保留来源单据和资产编号之间的可追溯链。
 
 <a id="src-docs-05-fa-readme--专题导航"></a>
-### 专题导航
+#### 专题导航
 
 - [资产生命周期](#src-docs-05-fa-process)
 - [账簿、类别、位置与配置](#src-docs-05-fa-setup)
@@ -543,7 +90,7 @@ select owner, table_name, column_name, data_type
 - [Mass Additions 与迁移接口](#src-docs-05-fa-interfaces)
 
 <a id="src-docs-05-fa-readme--会计与控制重点"></a>
-### 会计与控制重点
+#### 会计与控制重点
 
 | 业务动作 | 需确认的决定因素 | 常见遗漏 |
 | --- | --- | --- |
@@ -553,23 +100,23 @@ select owner, table_name, column_name, data_type
 | Retire | Proceeds、Removal Cost、Partial Units、Gain/Loss | 处置日期/期间不一致，或遗漏 AP/AR/CE 清算链 |
 
 <a id="src-docs-05-fa-readme--r122-边界"></a>
-### R12.2 边界
+#### R12.2 边界
 
 使用 Mass Additions 或 Oracle 公开 API 处理集成与迁移；不直接更新 `FA_ADDITIONS_B`、`FA_BOOKS` 或 `FA_DISTRIBUTION_HISTORY`。资产账簿、税务账簿和折旧规则变更应完成影响分析并留存审批。
 
 <a id="src-docs-05-fa-readme--官方依据"></a>
-### 官方依据
+#### 官方依据
 
 - [Oracle Assets Documentation](https://docs.oracle.com/cd/E26401_01/nav/financials.htm)
 
 
 <!-- source: docs/05-fa/asset-transactions.md -->
 <a id="src-docs-05-fa-asset-transactions"></a>
-## FA 资产增加、调整、转移、重分类与盘点
+### FA 资产增加、调整、转移、重分类与盘点
 
 
 <a id="src-docs-05-fa-asset-transactions--交易类型"></a>
-### 交易类型
+#### 交易类型
 
 - Addition/CIP Addition：建立资产、Book 和 Distribution；CIP 通过 Capitalization 开始折旧。
 - Cost/Book Adjustment：调整 Cost、Salvage、Life、Method、Rate、DPIS，可产生 Catch-up/Expensed Adjustment。
@@ -578,7 +125,7 @@ select owner, table_name, column_name, data_type
 - Physical Inventory：将现场盘点与 FA Location/Employee 对比，差异审批后执行转移/处置。
 
 <a id="src-docs-05-fa-asset-transactions--sql"></a>
-### SQL
+#### SQL
 
 ```sql
 -- 当前分配（DATE_INEFFECTIVE 为空）
@@ -600,7 +147,7 @@ SELECT fat.transaction_header_id, fat.transaction_type_code,
 ```
 
 <a id="src-docs-05-fa-asset-transactions--排查"></a>
-### 排查
+#### 排查
 
 - Transfer 不平：比较 Transfer Out/In Units，检查当前 Distribution 行、Location/Employee/CCID 有效性。
 - Adjustment 不可做：查 Asset/Book Status、Period、已运行折旧、Retirement 和源交易限制。
@@ -608,7 +155,7 @@ SELECT fat.transaction_header_id, fat.transaction_type_code,
 - Physical Inventory 差异太多：先统一 Asset Number/Tag/Location 映射与盘点截止日，再处理已退役/在途转移。
 
 <a id="src-docs-05-fa-asset-transactions--关联"></a>
-### 关联
+#### 关联
 
 - [FA Setup](#src-docs-05-fa-setup)
 - [Depreciation](#src-docs-05-fa-depreciation-accounting)
@@ -616,13 +163,13 @@ SELECT fat.transaction_header_id, fat.transaction_type_code,
 
 <!-- source: docs/05-fa/close-reports-interfaces.md -->
 <a id="src-docs-05-fa-close-reports-interfaces"></a>
-## FA 月结、报表、Mass Additions 与排错
+### FA 月结、报表、Mass Additions 与排错
 
 
 > `FA_MASS_ADDITIONS`、遗留资产迁移、Prepare/Post 和资产对账代码见 [FA 接口实现案例](#src-docs-05-fa-interfaces)。
 
 <a id="src-docs-05-fa-close-reports-interfaces--mass-additions"></a>
-### Mass Additions
+#### Mass Additions
 
 ```text
 AP/Projects/External Source
@@ -636,7 +183,7 @@ AP/Projects/External Source
 `POSTING_STATUS` 表示 New/On Hold/Posted/Delete/Error 等处理状态（具体 lookup 以实例为准）。一条 AP 分配是否进入 FA 取决于 Asset Tracking/Category/Account、Transfer to GL/FA 和接口程序。
 
 <a id="src-docs-05-fa-close-reports-interfaces--月结"></a>
-### 月结
+#### 月结
 
 1. 完成 Mass Additions、CIP Capitalization、Adjustments/Transfers/Retirements。
 2. 运行并复核 Depreciation，处理异常资产和未完交易。
@@ -645,7 +192,7 @@ AP/Projects/External Source
 5. 运行 Asset Register、Reserve Ledger、Cost Detail、CIP Detail、Retirement 和 Account Reconciliation 报表，关闭 FA 期间。
 
 <a id="src-docs-05-fa-close-reports-interfaces--sql"></a>
-### SQL
+#### SQL
 
 ```sql
 SELECT mass_addition_id, book_type_code, description,
@@ -673,7 +220,7 @@ SELECT xah.gl_transfer_status_code, COUNT(*) cnt
 ```
 
 <a id="src-docs-05-fa-close-reports-interfaces--排查"></a>
-### 排查
+#### 排查
 
 - AP 行未进 FA：查 Track as Asset、Asset Clearing Account、AP 会计/转 GL、Create Mass Additions 参数和已转标志。
 - Mass Addition 不能 Post：查 Category/Book、DPIS、Cost、Units、Location/Employee/Expense Account、Posting Status/Error。
@@ -681,31 +228,31 @@ SELECT xah.gl_transfer_status_code, COUNT(*) cnt
 - 期间无法关闭：检查 Depreciation Run、Pending Transactions、Mass Additions、Accounting 和当期报表。
 
 <a id="src-docs-05-fa-close-reports-interfaces--关联"></a>
-### 关联
+#### 关联
 
 - [FA Process](#src-docs-05-fa-process)
 - [Projects to Assets](09-end-to-end.md#src-docs-08-e2e-projects-assets)
 
 <a id="src-docs-05-fa-close-reports-interfaces--官方参考"></a>
-### 官方参考
+#### 官方参考
 
 - [Oracle E-Business Suite R12.2 Documentation Library](https://docs.oracle.com/cd/E26401_01/index.htm)
 
 
 <!-- source: docs/05-fa/depreciation-accounting.md -->
 <a id="src-docs-05-fa-depreciation-accounting"></a>
-## FA 折旧、税务折旧、资产处置与会计
+### FA 折旧、税务折旧、资产处置与会计
 
 
 <a id="src-docs-05-fa-depreciation-accounting--折旧原理"></a>
-### 折旧原理
+#### 折旧原理
 
 折旧由 Cost Basis、Method/Rate/Life、Salvage Value、Depreciation Ceiling、Prorate Convention、DPIS、Calendar 和已提折旧决定。Run Depreciation 对当期资产计算，关期后结果进入 SLA/GL。Rollback 仅在标准程序允许的未关闭场景使用。
 
 处置可为 Full/Partial Retirement，根据 Proceeds、Cost of Removal、Net Book Value 计算 Gain/Loss；Reinstatement 撤销处置并重建折旧/会计影响。
 
 <a id="src-docs-05-fa-depreciation-accounting--sql"></a>
-### SQL
+#### SQL
 
 ```sql
 SELECT fds.asset_id, fds.book_type_code, fds.period_counter,
@@ -728,7 +275,7 @@ SELECT retirement_id, asset_id, book_type_code,
 ```
 
 <a id="src-docs-05-fa-depreciation-accounting--排查"></a>
-### 排查
+#### 排查
 
 - 资产未折旧：查 `DEPRECIATE_FLAG`、DPIS/Prorate Date、Asset Type、Cost、Method/Life、Fully Reserved/Retired 状态。
 - 折旧金额不对：比较 Book/Method/Calendar、Cost Adjustments、Catch-up、Salvage/Ceiling、Bonus/Impairment 和舍入。
@@ -737,7 +284,7 @@ SELECT retirement_id, asset_id, book_type_code,
 - Tax Book 折旧差异：确认是政策差异而非 Mass Copy 遗漏，比较 Corporate/Tax Book 交易链。
 
 <a id="src-docs-05-fa-depreciation-accounting--关联"></a>
-### 关联
+#### 关联
 
 - [FA Transactions](#src-docs-05-fa-asset-transactions)
 - [FA Close/Interface](#src-docs-05-fa-close-reports-interfaces)
@@ -745,11 +292,11 @@ SELECT retirement_id, asset_id, book_type_code,
 
 <!-- source: docs/05-fa/interfaces.md -->
 <a id="src-docs-05-fa-interfaces"></a>
-## Oracle Assets 接口实现案例
+### Oracle Assets 接口实现案例
 
 
 <a id="src-docs-05-fa-interfaces--1-业界常用场景"></a>
-### 1. 业界常用场景
+#### 1. 业界常用场景
 
 | 场景 | 推荐接口 | 业务说明 |
 | --- | --- | --- |
@@ -760,7 +307,7 @@ SELECT retirement_id, asset_id, book_type_code,
 | 大批量资产调整/转移/处置 | Oracle Assets 公共 API/标准批处理 | 以当前 Integration Repository/API 文档签名为准，不直接改 FA 历史表 |
 
 <a id="src-docs-05-fa-interfaces--2-mass-additions-业务状态"></a>
-### 2. Mass Additions 业务状态
+#### 2. Mass Additions 业务状态
 
 外部来源通常只创建 `NEW` 待处理行，由资产会计在 Mass Additions Workbench 完善并置为可过账，再运行 Post Mass Additions。典型过程如下：
 
@@ -772,7 +319,7 @@ Source/Staging → NEW → Review/Prepare → POST → Posted Asset
 状态代码、Queue 名称和允许转换必须以目标实例 FA Lookup 和标准界面为准。不要通过 `UPDATE FA_MASS_ADDITIONS` 人工推动状态。
 
 <a id="src-docs-05-fa-interfaces--3-导入前校验"></a>
-### 3. 导入前校验
+#### 3. 导入前校验
 
 ```sql
 -- 资产账簿和当前期间
@@ -806,10 +353,10 @@ SELECT fl.location_id, fl.segment1, fl.segment2, fl.enabled_flag
 员工、地点、类别、费用 CCID 都存在并不代表在启用日有效；接口程序应按 `DATE_PLACED_IN_SERVICE` 做有效期校验。
 
 <a id="src-docs-05-fa-interfaces--4-famassadditions-具体实现"></a>
-### 4. `FA_MASS_ADDITIONS` 具体实现
+#### 4. `FA_MASS_ADDITIONS` 具体实现
 
 <a id="src-docs-05-fa-interfaces--41-外部资产新增"></a>
-#### 4.1 外部资产新增
+##### 4.1 外部资产新增
 
 ```sql
 DECLARE
@@ -876,7 +423,7 @@ END;
 `FA_MASS_ADDITIONS` 的列和必填规则会受来源、Book、功能和补丁影响。上线前使用目标实例 eTRM/`ALL_TAB_COLUMNS` 复核列，并用一条标准 AP/Projects 生成的 Mass Addition 作为字段映射样本。
 
 <a id="src-docs-05-fa-interfaces--42-运行前核对目标列"></a>
-#### 4.2 运行前核对目标列
+##### 4.2 运行前核对目标列
 
 ```sql
 SELECT column_id,
@@ -893,7 +440,7 @@ SELECT column_id,
 自定义程序应将源系统主键保存在自定义暂存/映射表中，并以唯一约束保证幂等。不要依赖 `DESCRIPTION`、`INVOICE_NUMBER` 或 `TAG_NUMBER` 单列作为全局唯一键。
 
 <a id="src-docs-05-fa-interfaces--5-遗留资产迁移的成本和累计折旧"></a>
-### 5. 遗留资产迁移的成本和累计折旧
+#### 5. 遗留资产迁移的成本和累计折旧
 
 遗留迁移不只是插入当前成本。至少要确认：
 
@@ -906,7 +453,7 @@ SELECT column_id,
 先用少量样本在关闭的测试环境走完 Prepare/Post/Depreciation，再核对剩余价值和下一期折旧。不要用 DML 直接补 `FA_BOOKS`、`FA_DEPRN_SUMMARY` 或 `FA_DISTRIBUTION_HISTORY`。
 
 <a id="src-docs-05-fa-interfaces--6-mass-additions-处理与监控"></a>
-### 6. Mass Additions 处理与监控
+#### 6. Mass Additions 处理与监控
 
 标准流程通常为：
 
@@ -943,7 +490,7 @@ SELECT mass_addition_id,
 ```
 
 <a id="src-docs-05-fa-interfaces--7-成功结果对账"></a>
-### 7. 成功结果对账
+#### 7. 成功结果对账
 
 ```sql
 SELECT fma.mass_addition_id,
@@ -970,7 +517,7 @@ SELECT fma.mass_addition_id,
 部分来源/流程可能不会回写可直接关联的 `ASSET_NUMBER`。生产映射表应在 Posting 后保存 `MASS_ADDITION_ID → ASSET_ID/ASSET_NUMBER`，并以标准报表结果核验。
 
 <a id="src-docs-05-fa-interfaces--8-常见问题与实现方法"></a>
-### 8. 常见问题与实现方法
+#### 8. 常见问题与实现方法
 
 | 问题 | 常见原因 | 排查/处理 |
 | --- | --- | --- |
@@ -981,7 +528,7 @@ SELECT fma.mass_addition_id,
 | 地点/员工无法选 | KFF/HR 有效期或 Security Profile 不匹配 | 按启用日查询有效记录，并核对职责权限 |
 
 <a id="src-docs-05-fa-interfaces--9-关联文档"></a>
-### 9. 关联文档
+#### 9. 关联文档
 
 - [FA 增加、调整、转移与处置](#src-docs-05-fa-asset-transactions)
 - [FA 折旧与会计](#src-docs-05-fa-depreciation-accounting)
@@ -989,7 +536,7 @@ SELECT fma.mass_addition_id,
 - [项目与资产资本化](09-end-to-end.md#src-docs-08-e2e-projects-assets)
 
 <a id="src-docs-05-fa-interfaces--10-官方参考"></a>
-### 10. 官方参考
+#### 10. 官方参考
 
 - [Oracle Assets User Guide: Mass Additions](https://docs.oracle.com/cd/E26401_01/doc.122/e48755/T293142T293157.htm)
 - [Oracle Assets User Guide R12.2](https://docs.oracle.com/cd/E26401_01/doc.122/e48755/)
@@ -998,11 +545,11 @@ SELECT fma.mass_addition_id,
 
 <!-- source: docs/05-fa/process.md -->
 <a id="src-docs-05-fa-process"></a>
-## Oracle Assets 资产全生命周期
+### Oracle Assets 资产全生命周期
 
 
 <a id="src-docs-05-fa-process--流程"></a>
-### 流程
+#### 流程
 
 ```text
 AP/CIP/Projects/Manual/Legacy
@@ -1016,14 +563,14 @@ AP/CIP/Projects/Manual/Legacy
 `FA_ADDITIONS_B` 保存资产主数据，`FA_BOOKS` 保存每个 Book 的成本/折旧属性历史，`FA_DISTRIBUTION_HISTORY` 保存责任人/费用账户/位置，`FA_TRANSACTION_HEADERS` 记录业务事件，`FA_DEPRN_SUMMARY/DETAIL` 保存折旧结果。
 
 <a id="src-docs-05-fa-process--控制点"></a>
-### 控制点
+#### 控制点
 
 - Asset Category 决定默认账户和折旧属性，Asset Book 决定会计/税务表述。
 - Corporate Book 与 Tax Book 通过 Mass Copy/Initial Mass Copy 关联，不应把税务调整直接混入公司账簿。
 - 资产交易按 FA 期间和 Date Placed in Service 生效，回溯交易可引起 Catch-up Depreciation。
 
 <a id="src-docs-05-fa-process--sql"></a>
-### SQL
+#### SQL
 
 ```sql
 SELECT fab.asset_id, fab.asset_number, fab.description,
@@ -1046,14 +593,14 @@ SELECT transaction_header_id, asset_id, book_type_code,
 ```
 
 <a id="src-docs-05-fa-process--排查"></a>
-### 排查
+#### 排查
 
 - Asset Workbench 找不到：查 Book、Asset Number、Security by Book、有效历史行和职责。
 - 交易日期不允许：查 FA Period、DPIS、已运行折旧、账簿开放期间和未完成批处理。
 - 成本/分配不一致：沿 Transaction Header 查 Books/Distribution History，区分当前行与历史行。
 
 <a id="src-docs-05-fa-process--关联"></a>
-### 关联
+#### 关联
 
 - [FA 常用表结构与字段含义](#src-docs-05-fa-tables)
 - [FA Setup](#src-docs-05-fa-setup)
@@ -1062,16 +609,16 @@ SELECT transaction_header_id, asset_id, book_type_code,
 
 <!-- source: docs/05-fa/projects-capitalization.md -->
 <a id="src-docs-05-fa-projects-capitalization"></a>
-## Projects 到 Assets：CIP 与资本化
+### Projects 到 Assets：CIP 与资本化
 
 
 <a id="src-docs-05-fa-projects-capitalization--业务边界"></a>
-### 业务边界
+#### 业务边界
 
 资本项目通常由 Oracle Projects 累积成本、生成项目资产和资产行，再由 Oracle Assets 的 Mass Additions/资产增加流程资本化。不是所有项目成本均可资本化；资本化政策、项目类型、任务、资产分类和 In Service 日期必须由财务/项目控制共同治理。
 
 <a id="src-docs-05-fa-projects-capitalization--推荐流程"></a>
-### 推荐流程
+#### 推荐流程
 
 ```text
 Project / Task / Expenditure Item
@@ -1084,7 +631,7 @@ Project / Task / Expenditure Item
 ```
 
 <a id="src-docs-05-fa-projects-capitalization--配置与控制点"></a>
-### 配置与控制点
+#### 配置与控制点
 
 - 定义可资本化项目类型、资产分类、CIP Clearing/Asset Clearing 账户、资产账簿、折旧方法及资产来源规则。
 - 项目资产必须有唯一资产分组/来源追溯逻辑；避免按描述文本将同一项目资产重复送入 FA。
@@ -1092,7 +639,7 @@ Project / Task / Expenditure Item
 - 建立 Projects 成本、CIP、FA Mass Additions、FA Asset Cost 和 GL 的四方对账，分别处理舍入、排除成本、未资本化成本和失败行。
 
 <a id="src-docs-05-fa-projects-capitalization--只读诊断-sql"></a>
-### 只读诊断 SQL
+#### 只读诊断 SQL
 
 ```sql
 -- FA 侧以 Mass Additions 状态追踪项目/外部来源资产行；列和值以目标实例 eTRM 为准。
@@ -1121,14 +668,14 @@ select fab.asset_id,
 ```
 
 <a id="src-docs-05-fa-projects-capitalization--排错顺序"></a>
-### 排错顺序
+#### 排错顺序
 
 1. 在 Projects 确认项目/任务、成本分配、资本化资格和资产行是否生成。
 2. 在 Mass Additions 确认状态、错误信息、资产分类、账簿、位置和资产来源字段。
 3. 在 FA 确认 Prepare/Post、资产增加、折旧期间和会计创建；最后与项目/CIP/GL 对账。
 
 <a id="src-docs-05-fa-projects-capitalization--官方参考"></a>
-### 官方参考
+#### 官方参考
 
 - [Oracle Projects Documentation](https://docs.oracle.com/cd/E26401_01/nav/projects.htm)
 - [Oracle Assets Documentation](https://docs.oracle.com/cd/E26401_01/nav/financials.htm)
@@ -1136,11 +683,11 @@ select fab.asset_id,
 
 <!-- source: docs/05-fa/setup.md -->
 <a id="src-docs-05-fa-setup"></a>
-## FA 资产账簿、类别、位置与关键配置
+### FA 资产账簿、类别、位置与关键配置
 
 
 <a id="src-docs-05-fa-setup--核心设置"></a>
-### 核心设置
+#### 核心设置
 
 - **Asset Book**：Corporate/Tax，关联 Ledger、Calendar、Prorate Calendar、Deprn Calendar、SLA 和账户规则。
 - **Category**：Major/Minor 弹性域组合，按 Book 默认 Asset Cost、Reserve、Expense、CIP、Clearing、Gain/Loss 账户。
@@ -1149,7 +696,7 @@ select fab.asset_id,
 - **Key Flexfields**：Category、Location、Asset Key；分配行还使用 GL Expense CCID 和 Employee。
 
 <a id="src-docs-05-fa-setup--实施顺序"></a>
-### 实施顺序
+#### 实施顺序
 
 1. 定义 FA Calendar/Prorate Calendar、Fiscal Year、Methods/Conventions。
 2. 定义 Category/Location/Asset Key KFF 及值，编译后创建 Category。
@@ -1158,7 +705,7 @@ select fab.asset_id,
 5. 使用少量资产测试增加、折旧、调整、转移、处置和会计。
 
 <a id="src-docs-05-fa-setup--sql"></a>
-### SQL
+#### SQL
 
 ```sql
 SELECT book_type_code, book_class, set_of_books_id,
@@ -1186,14 +733,14 @@ SELECT book_type_code, category_id,
 ```
 
 <a id="src-docs-05-fa-setup--排查"></a>
-### 排查
+#### 排查
 
 - Category 不可选：查 KFF 组合/值有效性、Category Enabled/Date、Book Assignment。
 - 默认账户不对：查 Category Book 账户、Asset Type（Capitalized/CIP/Expense）和 SLA 覆盖。
 - Tax Book 无数据：查 Corporate Book 关联、Initial/Mass Copy 参数、交易类型可复制性和请求日志。
 
 <a id="src-docs-05-fa-setup--关联"></a>
-### 关联
+#### 关联
 
 - [COA](01-foundation.md#src-docs-01-common-coa)
 - [FA Process](#src-docs-05-fa-process)
@@ -1201,16 +748,16 @@ SELECT book_type_code, category_id,
 
 <!-- source: docs/05-fa/tables.md -->
 <a id="src-docs-05-fa-tables"></a>
-## Oracle Assets 常用表结构
+### Oracle Assets 常用表结构
 
 
 <a id="src-docs-05-fa-tables--业务说明"></a>
-### 业务说明
+#### 业务说明
 
 FA 数据不能只查资产主表。一项资产的名称/类别在 Addition，成本/折旧属性按 Book 保存在 Books 历史，位置/责任人/费用账户在 Distribution History，每次业务变更在 Transaction Headers。当前行通常用 `DATE_INEFFECTIVE IS NULL` 识别，历史报表必须以业务截止日选取有效行。
 
 <a id="src-docs-05-fa-tables--表级速查"></a>
-### 表级速查
+#### 表级速查
 
 | 表 | 中文名 | 业务粒度 | 关键字段 |
 | --- | --- | --- | --- |
@@ -1229,7 +776,7 @@ FA 数据不能只查资产主表。一项资产的名称/类别在 Addition，�
 | `FA_MASS_ADDITIONS` | 批量资产增加接口 | 每个待处理资产行 | `MASS_ADDITION_ID`, `POSTING_STATUS`, `BOOK_TYPE_CODE` |
 
 <a id="src-docs-05-fa-tables--faadditionsb-资产主数据"></a>
-### `FA_ADDITIONS_B` — 资产主数据
+#### `FA_ADDITIONS_B` — 资产主数据
 
 | 字段 | 中文名 | 业务含义/常见值 |
 | --- | --- | --- |
@@ -1242,7 +789,7 @@ FA 数据不能只查资产主表。一项资产的名称/类别在 Addition，�
 | `PARENT_ASSET_ID` | 父资产 ID | 组件/附属资产层级 |
 
 <a id="src-docs-05-fa-tables--fabooks-资产账簿历史"></a>
-### `FA_BOOKS` — 资产账簿历史
+#### `FA_BOOKS` — 资产账簿历史
 
 | 字段 | 中文名 | 业务说明 |
 | --- | --- | --- |
@@ -1259,7 +806,7 @@ FA 数据不能只查资产主表。一项资产的名称/类别在 Addition，�
 | `PERIOD_COUNTER_FULLY_RETIRED` | 完全处置期 | 用于判断 Full Retirement 时点 |
 
 <a id="src-docs-05-fa-tables--fadistributionhistory-分配历史"></a>
-### `FA_DISTRIBUTION_HISTORY` — 分配历史
+#### `FA_DISTRIBUTION_HISTORY` — 分配历史
 
 | 字段 | 中文名 | 业务说明 |
 | --- | --- | --- |
@@ -1270,7 +817,7 @@ FA 数据不能只查资产主表。一项资产的名称/类别在 Addition，�
 | `DATE_INEFFECTIVE` | 失效日 | NULL 通常为当前分配；转移会关闭旧行并建新行 |
 
 <a id="src-docs-05-fa-tables--fadeprnsummary-折旧汇总"></a>
-### `FA_DEPRN_SUMMARY` — 折旧汇总
+#### `FA_DEPRN_SUMMARY` — 折旧汇总
 
 | 字段 | 中文名 | 说明 |
 | --- | --- | --- |
@@ -1282,12 +829,104 @@ FA 数据不能只查资产主表。一项资产的名称/类别在 Addition，�
 | `IMPAIRMENT_AMOUNT` | 减值金额 | 受资产减值功能和会计规则影响 |
 
 <a id="src-docs-05-fa-tables--famassadditionspostingstatus"></a>
-### `FA_MASS_ADDITIONS.POSTING_STATUS`
+#### `FA_MASS_ADDITIONS.POSTING_STATUS`
 
 常见业务含义包括 New、On Hold、Posted、Delete、Merge/Split 过程和 Error。内部代码会随处理阶段改变，应通过 Mass Additions Queue/Posting Status Lookup 解码，不直接更新 `POSTING_STATUS` 推进数据。
 
 <a id="src-docs-05-fa-tables--官方参考"></a>
-### 官方参考
+#### 官方参考
 
 - [Oracle E-Business Suite R12.2 Documentation Library](https://docs.oracle.com/cd/E26401_01/index.htm)
 - [Oracle E-Business Suite eTRM User's Guide](https://docs.oracle.com/cd/E26401_01/doc.122/f53031/)
+
+<!-- 兼容旧版目录与学习材料的定位锚点；正文已按主题重编。 -->
+<a id="src-docs-05-assets-projects-asset-tracking-and-eam-readme"></a>
+<a id="src-docs-05-assets-projects-asset-tracking-and-eam-readme--业务定位"></a>
+<a id="src-docs-05-assets-projects-asset-tracking-and-eam-readme--关联与官方依据"></a>
+<a id="src-docs-05-assets-projects-asset-tracking-and-eam-readme--实施边界"></a>
+<a id="src-docs-05-assets-projects-asset-tracking-and-eam-readme--常见问题与排查"></a>
+<a id="src-docs-05-assets-projects-asset-tracking-and-eam-readme--数据接口与会计追溯"></a>
+<a id="src-docs-05-assets-projects-asset-tracking-and-eam-readme--设计与配置"></a>
+<a id="src-docs-05-assets-projects-fixed-assets-readme"></a>
+<a id="src-docs-05-assets-projects-fixed-assets-readme--业务定位"></a>
+<a id="src-docs-05-assets-projects-fixed-assets-readme--关联与官方依据"></a>
+<a id="src-docs-05-assets-projects-fixed-assets-readme--实施边界"></a>
+<a id="src-docs-05-assets-projects-fixed-assets-readme--常见问题与排查"></a>
+<a id="src-docs-05-assets-projects-fixed-assets-readme--数据接口与会计追溯"></a>
+<a id="src-docs-05-assets-projects-fixed-assets-readme--设计与配置"></a>
+<a id="src-docs-05-assets-projects-grants-accounting-readme"></a>
+<a id="src-docs-05-assets-projects-grants-accounting-readme--业务定位"></a>
+<a id="src-docs-05-assets-projects-grants-accounting-readme--关联与官方依据"></a>
+<a id="src-docs-05-assets-projects-grants-accounting-readme--实施边界"></a>
+<a id="src-docs-05-assets-projects-grants-accounting-readme--常见问题与排查"></a>
+<a id="src-docs-05-assets-projects-grants-accounting-readme--数据接口与会计追溯"></a>
+<a id="src-docs-05-assets-projects-grants-accounting-readme--设计与配置"></a>
+<a id="src-docs-05-assets-projects-iassets-readme"></a>
+<a id="src-docs-05-assets-projects-iassets-readme--业务定位"></a>
+<a id="src-docs-05-assets-projects-iassets-readme--关联与官方依据"></a>
+<a id="src-docs-05-assets-projects-iassets-readme--实施边界"></a>
+<a id="src-docs-05-assets-projects-iassets-readme--常见问题与排查"></a>
+<a id="src-docs-05-assets-projects-iassets-readme--数据接口与会计追溯"></a>
+<a id="src-docs-05-assets-projects-iassets-readme--设计与配置"></a>
+<a id="src-docs-05-assets-projects-lease-and-finance-management-readme"></a>
+<a id="src-docs-05-assets-projects-lease-and-finance-management-readme--业务定位"></a>
+<a id="src-docs-05-assets-projects-lease-and-finance-management-readme--关联与官方依据"></a>
+<a id="src-docs-05-assets-projects-lease-and-finance-management-readme--实施边界"></a>
+<a id="src-docs-05-assets-projects-lease-and-finance-management-readme--常见问题与排查"></a>
+<a id="src-docs-05-assets-projects-lease-and-finance-management-readme--数据接口与会计追溯"></a>
+<a id="src-docs-05-assets-projects-lease-and-finance-management-readme--设计与配置"></a>
+<a id="src-docs-05-assets-projects-project-billing-readme"></a>
+<a id="src-docs-05-assets-projects-project-billing-readme--业务定位"></a>
+<a id="src-docs-05-assets-projects-project-billing-readme--关联与官方依据"></a>
+<a id="src-docs-05-assets-projects-project-billing-readme--实施边界"></a>
+<a id="src-docs-05-assets-projects-project-billing-readme--常见问题与排查"></a>
+<a id="src-docs-05-assets-projects-project-billing-readme--数据接口与会计追溯"></a>
+<a id="src-docs-05-assets-projects-project-billing-readme--设计与配置"></a>
+<a id="src-docs-05-assets-projects-project-contracts-readme"></a>
+<a id="src-docs-05-assets-projects-project-contracts-readme--业务定位"></a>
+<a id="src-docs-05-assets-projects-project-contracts-readme--关联与官方依据"></a>
+<a id="src-docs-05-assets-projects-project-contracts-readme--实施边界"></a>
+<a id="src-docs-05-assets-projects-project-contracts-readme--常见问题与排查"></a>
+<a id="src-docs-05-assets-projects-project-contracts-readme--数据接口与会计追溯"></a>
+<a id="src-docs-05-assets-projects-project-contracts-readme--设计与配置"></a>
+<a id="src-docs-05-assets-projects-project-costing-readme"></a>
+<a id="src-docs-05-assets-projects-project-costing-readme--业务定位"></a>
+<a id="src-docs-05-assets-projects-project-costing-readme--关联与官方依据"></a>
+<a id="src-docs-05-assets-projects-project-costing-readme--实施边界"></a>
+<a id="src-docs-05-assets-projects-project-costing-readme--常见问题与排查"></a>
+<a id="src-docs-05-assets-projects-project-costing-readme--数据接口与会计追溯"></a>
+<a id="src-docs-05-assets-projects-project-costing-readme--设计与配置"></a>
+<a id="src-docs-05-assets-projects-project-planning-control-readme"></a>
+<a id="src-docs-05-assets-projects-project-planning-control-readme--业务定位"></a>
+<a id="src-docs-05-assets-projects-project-planning-control-readme--关联与官方依据"></a>
+<a id="src-docs-05-assets-projects-project-planning-control-readme--实施边界"></a>
+<a id="src-docs-05-assets-projects-project-planning-control-readme--常见问题与排查"></a>
+<a id="src-docs-05-assets-projects-project-planning-control-readme--数据接口与会计追溯"></a>
+<a id="src-docs-05-assets-projects-project-planning-control-readme--设计与配置"></a>
+<a id="src-docs-05-assets-projects-project-to-asset-readme"></a>
+<a id="src-docs-05-assets-projects-project-to-asset-readme--业务定位"></a>
+<a id="src-docs-05-assets-projects-project-to-asset-readme--关联与官方依据"></a>
+<a id="src-docs-05-assets-projects-project-to-asset-readme--实施边界"></a>
+<a id="src-docs-05-assets-projects-project-to-asset-readme--常见问题与排查"></a>
+<a id="src-docs-05-assets-projects-project-to-asset-readme--数据接口与会计追溯"></a>
+<a id="src-docs-05-assets-projects-project-to-asset-readme--设计与配置"></a>
+<a id="src-docs-05-assets-projects-projects-foundation-readme"></a>
+<a id="src-docs-05-assets-projects-projects-foundation-readme--业务定位"></a>
+<a id="src-docs-05-assets-projects-projects-foundation-readme--关联与官方依据"></a>
+<a id="src-docs-05-assets-projects-projects-foundation-readme--实施边界"></a>
+<a id="src-docs-05-assets-projects-projects-foundation-readme--常见问题与排查"></a>
+<a id="src-docs-05-assets-projects-projects-foundation-readme--数据接口与会计追溯"></a>
+<a id="src-docs-05-assets-projects-projects-foundation-readme--设计与配置"></a>
+<a id="src-docs-05-assets-projects-property-manager-readme"></a>
+<a id="src-docs-05-assets-projects-property-manager-readme--业务定位"></a>
+<a id="src-docs-05-assets-projects-property-manager-readme--关联与官方依据"></a>
+<a id="src-docs-05-assets-projects-property-manager-readme--实施边界"></a>
+<a id="src-docs-05-assets-projects-property-manager-readme--常见问题与排查"></a>
+<a id="src-docs-05-assets-projects-property-manager-readme--数据接口与会计追溯"></a>
+<a id="src-docs-05-assets-projects-property-manager-readme--设计与配置"></a>
+<a id="src-docs-05-assets-projects-readme"></a>
+<a id="src-docs-05-assets-projects-readme--与既有知识的关系"></a>
+<a id="src-docs-05-assets-projects-readme--官方依据"></a>
+<a id="src-docs-05-assets-projects-readme--核心数据对象"></a>
+<a id="src-docs-05-assets-projects-readme--范围与目标"></a>
+<a id="src-docs-05-assets-projects-readme--运行与实施控制"></a>

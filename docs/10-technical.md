@@ -1,623 +1,106 @@
-# 技术架构、开发与集成
+# 技术架构、开发与集成（Technical Architecture, Development and Integration）
 
-> R12.2 架构、数据模型、接口、并发、Workflow、OAF、Forms、ADOP 与运维。本文件由原目录中的 29 份资料合并而成；各章节保留原来源标记，便于审计与后续去重。
+> 技术顾问需要同时理解 EBS 三层架构、R12.2 在线补丁、数据模型、标准扩展点、接口状态机、安全和可运维性。
 
-## 本模块章节导航
+## 阅读导航
 
-- [Oracle EBS R12.2.x 技术架构、开发与集成](#src-docs-10-technical-readme)（原 `docs/10-technical/README.md`）
-- [R12.2 技术专题：adop-and-ebr](#src-docs-10-technical-adop-and-ebr-readme)（原 `docs/10-technical/adop-and-ebr/README.md`）
-- [R12.2 技术专题：architecture](#src-docs-10-technical-architecture-readme)（原 `docs/10-technical/architecture/README.md`）
-- [R12.2 技术专题：audit-and-compliance](#src-docs-10-technical-audit-and-compliance-readme)（原 `docs/10-technical/audit-and-compliance/README.md`）
-- [R12.2 技术专题：concurrent-processing](#src-docs-10-technical-concurrent-processing-readme)（原 `docs/10-technical/concurrent-processing/README.md`）
-- [R12.2 技术专题：configuration-migration](#src-docs-10-technical-configuration-migration-readme)（原 `docs/10-technical/configuration-migration/README.md`）
-- [R12.2 技术专题：data-model](#src-docs-10-technical-data-model-readme)（原 `docs/10-technical/data-model/README.md`）
-- [R12.2 技术专题：database-development](#src-docs-10-technical-database-development-readme)（原 `docs/10-technical/database-development/README.md`）
-- [R12.2 技术专题：database-platform](#src-docs-10-technical-database-platform-readme)（原 `docs/10-technical/database-platform/README.md`）
-- [R12.2 技术专题：forms](#src-docs-10-technical-forms-readme)（原 `docs/10-technical/forms/README.md`）
-- [R12.2 技术专题：integration](#src-docs-10-technical-integration-readme)（原 `docs/10-technical/integration/README.md`）
-- [R12.2 技术专题：middleware](#src-docs-10-technical-middleware-readme)（原 `docs/10-technical/middleware/README.md`）
-- [R12.2 技术专题：oaf](#src-docs-10-technical-oaf-readme)（原 `docs/10-technical/oaf/README.md`）
-- [R12.2 技术专题：performance](#src-docs-10-technical-performance-readme)（原 `docs/10-technical/performance/README.md`）
-- [R12.2 技术专题：release-engineering](#src-docs-10-technical-release-engineering-readme)（原 `docs/10-technical/release-engineering/README.md`）
-- [R12.2 技术专题：reporting-development](#src-docs-10-technical-reporting-development-readme)（原 `docs/10-technical/reporting-development/README.md`）
-- [R12.2 技术专题：security](#src-docs-10-technical-security-readme)（原 `docs/10-technical/security/README.md`）
-- [R12.2 技术专题：testing-and-automation](#src-docs-10-technical-testing-and-automation-readme)（原 `docs/10-technical/testing-and-automation/README.md`）
-- [R12.2 技术专题：workflow-and-ame](#src-docs-10-technical-workflow-and-ame-readme)（原 `docs/10-technical/workflow-and-ame/README.md`）
-- [EBS R12.2 技术、集成与运维](#src-docs-09-technical-readme)（原 `docs/09-technical/README.md`）
-- [R12.2 Online Patching、EBR 与发布治理](#src-docs-09-technical-adop-ebr-release)（原 `docs/09-technical/adop-ebr-release.md`）
-- [Concurrent Program、请求集与日志排错](#src-docs-09-technical-concurrent-programs)（原 `docs/09-technical/concurrent-programs.md`）
-- [PL/SQL、Forms、Personalization 与 OAF 定制](#src-docs-09-technical-customization)（原 `docs/09-technical/customization.md`）
-- [EBS R12.2 数据模型与常用表](#src-docs-09-technical-data-model)（原 `docs/09-technical/data-model.md`）
-- [开放接口、API、报表与数据迁移](#src-docs-09-technical-integration)（原 `docs/09-technical/integration.md`）
-- [Oracle EBS 技术接口实现手册](#src-docs-09-technical-interfaces)（原 `docs/09-technical/interfaces.md`）
-- [性能调优、权限审计与 R12.2 生产运维](#src-docs-09-technical-operations)（原 `docs/09-technical/operations.md`）
-- [FND、Concurrent、Workflow 与运维常用表结构](#src-docs-09-technical-tables)（原 `docs/09-technical/tables.md`）
-- [Workflow、AME、OAF/Forms 与配置迁移治理](#src-docs-09-technical-workflow-ame-oaf-governance)（原 `docs/09-technical/workflow-ame-oaf-governance.md`）
+- [架构](#2-r122-架构心智模型) · [扩展与数据](#3-扩展方案优先级) · [接口 API](#5-接口与-api-设计) · [并发与页面](#6-concurrent-processing) · [ADOP 发布](#8-adop-发布周期) · [性能安全](#9-性能与故障证据包) · [技术专题](#12-技术专题详解)
 
----
+## 1. 学习目标
 
-<!-- source: docs/10-technical/README.md -->
-<a id="src-docs-10-technical-readme"></a>
-## Oracle EBS R12.2.x 技术架构、开发与集成
+应能判断请求运行在哪一层，选择标准接口/API/页面扩展方案，设计可重跑集成，定位 Concurrent、Workflow、OAF 和数据库问题，并按 ADOP/EBR 要求安全发布。
 
+## 2. R12.2 架构心智模型
 
-本目录面向财务技术顾问、集成顾问、应用 DBA、测试和生产运维人员。它维护跨产品的技术原则；AP、AR、GL、FA、CE、CST 等具体接口表、业务规则和会计验证仍以对应产品目录为权威入口。
+| 层 | 主要组件 | 诊断证据 |
+| --- | --- | --- |
+| 客户端 | 浏览器、Java Web Start/Forms 客户端（依实例） | 浏览器/Java 日志、URL、用户与职责 |
+| 应用层 | Oracle HTTP Server、WebLogic、OAF、Forms、Concurrent Managers | 服务日志、请求日志、配置、节点状态 |
+| 数据库层 | Oracle Database、APPS schema、产品 schema、EBR editions | 会话、对象、SQL、无效对象、警报日志 |
 
-<a id="src-docs-10-technical-readme--技术认知地图"></a>
-### 技术认知地图
+R12.2 使用 Online Patching（在线补丁）和 Edition-Based Redefinition。应用文件系统通常有 run/patch 双文件系统；数据库对象要遵守 editioned/non-editioned 对象规则。不要把传统单文件系统发布方式直接用于 R12.2。
+
+## 3. 扩展方案优先级
+
+1. 标准配置、Profile Option（配置文件选项）和 Personalization（个性化）。
+2. 标准 Open Interface、Public API、Business Event 或 Integration Repository 服务。
+3. BI Publisher、FSG、Web ADI 等标准工具。
+4. 受控的 OAF/Forms/Workflow 扩展。
+5. 自定义程序和对象，采用自定义前缀、独立 schema/目录、版本控制和发布包。
+
+禁止直接修改 Oracle 标准代码或直接 DML 业务基表。任何扩展都要说明升级影响、权限、审计、性能、回退和支持边界。
+
+## 4. 数据模型与查询方法
+
+先从业务主键和文档号定位交易，再到分配、会计和 GL；不要从大表无条件扫描。R12 常见 `_ALL` 表含 `ORG_ID`，但数据隔离方式因产品而异。视图可能应用安全上下文；技术诊断要明确是查基表、视图还是公开 API。
+
+安全查询原则：只读、绑定变量、限制 Ledger/OU/期间/主键、先看执行计划、避免在生产高峰运行重查询、输出敏感字段脱敏。表名和列需由目标实例数据字典确认。
+
+## 5. 接口与 API 设计
+
+### 5.1 标准接口状态机
 
 ```text
-Browser / Forms Client / External System
-          │
-Load Balancer / OHS / TLS
-          │
-WebLogic ─ OAF / Forms / ISG / Workflow
-          │
-Concurrent Processing / OPP / File Integration
-          │
-Oracle Database ─ APPS / Product Schemas / EBR
-          │
-Business Tables → SLA/XLA → GL
+Received → Validated → Staged → Submitted → Imported
+         ↘ Rejected                 ↘ Partially Succeeded
+→ Accounted → Reconciled → Archived
 ```
 
-<a id="src-docs-10-technical-readme--专题导航"></a>
-### 专题导航
+接口表、业务导入和会计是不同阶段。设计需包含业务唯一键、批次/行号、控制总额、原始载荷引用、状态、错误码、请求 ID、重试次数和下游业务主键。
 
-| 专题 | 中文说明 | 应掌握内容 | 现有详文 |
-| --- | --- | --- | --- |
-| [architecture](#src-docs-10-technical-architecture-readme) | 总体架构 | 请求链路、节点、OHS、WebLogic、Forms、Concurrent、数据库 | [旧版技术总览](#src-docs-09-technical-readme) |
-| [data-model](#src-docs-10-technical-data-model-readme) | 数据模型 | APPS/产品 Schema、同义词、EBR View、WHO、共享模型 | [数据模型详文](#src-docs-09-technical-data-model) |
-| [database-development](#src-docs-10-technical-database-development-readme) | 数据库开发 | PL/SQL、Context、FND API、事务、锁、批处理和日志 | [定制开发](#src-docs-09-technical-customization) |
-| [integration](#src-docs-10-technical-integration-readme) | 系统集成 | Open Interface、Public API、ISG、事件、文件、幂等和对账 | [技术接口手册](#src-docs-09-technical-interfaces) |
-| [concurrent-processing](#src-docs-10-technical-concurrent-processing-readme) | 并发处理 | Program、Request Set、Manager、队列、OPP 和诊断 | [并发程序详文](#src-docs-09-technical-concurrent-programs) |
-| [workflow-and-ame](#src-docs-10-technical-workflow-and-ame-readme) | 工作流与审批 | Item/Activity、Notification、Mailer、AME Rule、重试和清理 | [Workflow/AME 治理](#src-docs-09-technical-workflow-ame-oaf-governance) |
-| [oaf](#src-docs-10-technical-oaf-readme) | Oracle 应用框架 | MVC、EO/VO/AM/CO、Personalization、Extension 和调试 | [定制开发](#src-docs-09-technical-customization) |
-| [forms](#src-docs-10-technical-forms-readme) | Oracle Forms | Template、PLL、Personalization、编译、部署和跟踪 | [定制开发](#src-docs-09-technical-customization) |
-| [reporting-development](#src-docs-10-technical-reporting-development-readme) | 报表开发 | BI Publisher、eText、Bursting、FSG、Web ADI、OPP | [报表接口](02-record-to-report.md#src-docs-04-gl-reporting-interfaces) |
-| [configuration-migration](#src-docs-10-technical-configuration-migration-readme) | 配置迁移 | FNDLOAD、WFLOAD、XDOLoader、依赖、环境差异和验证 | [迁移治理](#src-docs-09-technical-workflow-ame-oaf-governance) |
-| [adop-and-ebr](#src-docs-10-technical-adop-and-ebr-readme) | 在线补丁与 EBR | Run/Patch、Edition、ADOP 周期、同步、恢复和边界 | [ADOP/EBR 详文](#src-docs-09-technical-adop-ebr-release) |
-| [database-platform](#src-docs-10-technical-database-platform-readme) | 数据库平台 | Schema、存储、统计、锁、备份、RAC/Data Guard 边界 | [运维详文](#src-docs-09-technical-operations) |
-| [middleware](#src-docs-10-technical-middleware-readme) | 中间件 | OHS、WebLogic、Node Manager、JVM、TLS、Wallet 和日志 | [运维详文](#src-docs-09-technical-operations) |
-| [performance](#src-docs-10-technical-performance-readme) | 性能 | 请求、SQL、锁、执行计划、JVM、OPP、容量和许可证 | [运维详文](#src-docs-09-technical-operations) |
-| [security](#src-docs-10-technical-security-readme) | 技术安全 | 用户/职责、RBAC、MOAC、TLS、SSO、DMZ、最小权限 | [财务安全](01-foundation.md#src-docs-01-common-security) |
-| [audit-and-compliance](#src-docs-10-technical-audit-and-compliance-readme) | 审计与合规 | AuditTrail、Sign-On、WHO、SoD、保留和脱敏 | [生产安全边界](00-guide.md#src-docs-00-guide-safety-and-production-boundaries) |
-| [testing-and-automation](#src-docs-10-technical-testing-and-automation-readme) | 测试与自动化 | 接口契约、会计断言、回归、性能、安全和测试数据 | [角色学习路径](00-guide.md#src-docs-00-guide-reading-paths-by-role) |
-| [release-engineering](#src-docs-10-technical-release-engineering-readme) | 发布工程 | Git、评审、依赖、Patch Driver、晋级、回退和证据 | [ADOP/EBR 详文](#src-docs-09-technical-adop-ebr-release) |
+### 5.2 幂等与重放
 
-<a id="src-docs-10-technical-readme--技术顾问的最低能力"></a>
-### 技术顾问的最低能力
+Idempotency（幂等）表示同一业务消息重复到达不会产生重复业务结果。使用来源系统 + 来源业务键 + 版本作为唯一性依据；重跑应处理完全失败、部分成功和回执丢失三种情况。不要把清空接口表作为恢复策略。
 
-<a id="src-docs-10-technical-readme--业务与数据"></a>
-#### 业务与数据
+## 6. Concurrent Processing
 
-- 能说明一笔 AP/AR/FA/INV 交易的业务状态、组织、账簿、期间和币种。
-- 能从业务主键追溯 `XLA_TRANSACTION_ENTITIES`、`XLA_EVENTS`、`XLA_AE_HEADERS/LINES`，并在保留导入引用时追溯 GL Journal。
-- 能解释 `_ALL`、`_B`、`_TL`、`_VL`、Interface 和临时对象的常见含义，同时用目标实例验证而非仅凭命名猜测。
-- 能用只读、绑定变量和范围受限的 SQL 收集证据，不把直接 DML 基表当作修复。
+Concurrent Program（并发程序）由可执行文件、程序定义、参数、请求组和 Manager 共同运行。排查按请求状态、实际开始/结束时间、Manager、日志/输出、参数、数据库会话和后续请求顺序进行。Pending 不等于程序错误；可能是 Manager 未启用、专业化规则、冲突域或资源等待。
 
-<a id="src-docs-10-technical-readme--集成与批处理"></a>
-#### 集成与批处理
+自定义程序应正确设置 completion status，记录批次和关键统计，不在日志输出凭据/完整敏感数据，并支持明确的重跑边界。
 
-- 能按业务量、实时性和支持边界选择 Open Interface、Public API、ISG、Business Event、Concurrent 或文件接口。
-- 能设计业务唯一键、批次、相关号、幂等、重试上限、人工补偿和数量/金额对账。
-- 能区分 HTTP/API/文件/请求“技术成功”和 EBS 业务对象、会计、银行/税务回执“业务成功”。
-- 能从请求号定位参数、日志、父子请求、Manager、数据库会话和最终业务结果。
+## 7. Workflow、AME、OAF 与 Forms
 
-<a id="src-docs-10-technical-readme--r122-发布与运行"></a>
-#### R12.2 发布与运行
+Workflow（工作流）处理业务流程和通知；Approvals Management Engine（审批管理引擎，AME）计算审批规则；Oracle Application Framework（Oracle 应用框架，OAF）构建 HTML 页面；Forms 服务传统表单。排查审批需区分规则未生成审批人、工作流活动错误、通知投递失败和用户权限问题。
 
-- 理解 Run/Patch File System、Run/Patch Edition、`fs_ne`、AutoConfig 和 Context File。
-- 能说明 `adop` Prepare、Apply、Finalize、Cutover、Cleanup 的目的和验证点。
-- 自定义数据库对象、文件和配置迁移具有 EBR 合规说明、版本、依赖、安装/卸载和回退步骤。
-- 性能和安全诊断遵守 AWR/ASH/SQL Monitor 等许可证边界及敏感数据最小暴露原则。
+个性化应记录页面/功能、触发条件、层级和版本；高复杂逻辑不要堆在 Personalization 中。OAF/Forms 扩展必须验证升级和在线补丁兼容性。
 
-<a id="src-docs-10-technical-readme--标准排障框架"></a>
-### 标准排障框架
+## 8. ADOP 发布周期
 
-```text
-1. 明确实例/版本/时间/用户/职责/组织/账簿/期间
-2. 确认业务主键、当前状态、预期状态和最近变更
-3. 定位接口批次、并发请求、Workflow Item 或 Web 请求
-4. 读取首个有意义错误并确认可否安全重试
-5. 验证业务结果、SLA、GL、报表和外部回执
-6. 使用标准流程/API/接口或批准的 Support 方案恢复
-7. 保存前后数量金额对账、日志和审批证据
-```
+典型阶段为 `prepare → apply → finalize → cutover → cleanup`，必要时包含 abort/actualize_all 等受控操作，具体命令和参数以实例运维标准及 Oracle 文档为准。发布前确认补丁文件系统同步、磁盘、无效对象、服务和备份/回退；cutover 是业务影响点，应有窗口、监控和验收。
 
-<a id="src-docs-10-technical-readme--设计评审清单"></a>
-### 设计评审清单
+自定义数据库变更需评估 EBR：editioned 对象、cross-edition trigger、同义词和授权。发布包必须可重复、可审计并区分 run/patch 文件系统。
 
-| 维度 | 必答问题 |
-| --- | --- |
-| 支持性 | 是否使用 Oracle 标准页面、公开 API、Open Interface 或受支持扩展点？ |
-| 上下文 | 用户、职责、应用、OU、Ledger、NLS 和会计日期如何设置/验证？ |
-| 事务 | 谁 Commit/Rollback？部分成功如何处理？是否有补偿？ |
-| 幂等 | 重复、乱序、超时重放是否会重复付款/开票/记账？ |
-| 对账 | 来源、接口、业务、SLA、GL、外部回执如何按数量和金额闭环？ |
-| 安全 | 认证、授权、TLS、证书/密钥、敏感数据和审计如何控制？ |
-| 性能 | 峰值量、批次大小、并发度、索引、锁和窗口是否验证？ |
-| 可观测性 | 业务键、相关号、请求号、状态、错误分类、指标和告警是否齐全？ |
-| 发布 | 工件是否版本化、EBR 合规并纳入 ADOP？环境差异如何注入？ |
-| 恢复 | 技术回退、业务冲销、重试上限和人工处置是否明确？ |
+## 9. 性能与故障证据包
 
-<a id="src-docs-10-technical-readme--安全边界"></a>
-### 安全边界
+证据至少包括实例/节点、时间、用户/职责、业务主键、请求 ID、错误原文、日志路径、相关 SQL ID/会话、影响数量和最近变更。性能问题先量化响应时间和资源，再判断 SQL、锁、并发配置、应用服务或外部依赖；不要先重启服务掩盖证据。
 
-1. 禁止直接 DML Oracle EBS 业务、会计、FND 或 Workflow 运行时基表作为常规集成/修复。
-2. 禁止覆盖 Oracle 标准文件或在 APPS Schema 中无治理地创建对象。
-3. 禁止在未确认上下文、事务和公开性时调用来源不明的 Package。
-4. 禁止在生产执行无范围限制的大表查询、Debug 或 Trace。
-5. 任何数据修复都应优先使用标准业务反向流程；确需 Support 数据修复时保留 SR、批准、备份、演练和前后对账。
+## 10. 安全基线
 
-<a id="src-docs-10-technical-readme--官方资料"></a>
-### 官方资料
+- 最小权限、职责分离、凭据集中管理和定期访问复核。
+- 不在代码、参数、日志或仓库保存密码和完整银行/个人信息。
+- 自定义对象授权给受控角色，不直接广泛授权 APPS。
+- 输入验证、绑定变量、输出编码和文件路径白名单。
+- 生产变更需批准、测试、备份/回退和审计记录。
 
-- [Oracle E-Business Suite Technology Documentation](https://docs.oracle.com/cd/E26401_01/nav/technology.htm)
-- [Oracle E-Business Suite Concepts](https://docs.oracle.com/cd/E26401_01/doc.122/e22949/toc.htm)
-- [Oracle E-Business Suite Maintenance Guide](https://docs.oracle.com/cd/E26401_01/doc.122/e22954/toc.htm)
-- [Oracle Integrated SOA Gateway Developer's Guide](https://docs.oracle.com/cd/E26401_01/doc.122/e20927/toc.htm)
-- [Oracle E-Business Suite Electronic Technical Reference Manual User's Guide](https://docs.oracle.com/cd/E26401_01/doc.122/f53031/)
+## 11. 建议练习
 
+- 追踪一个 Concurrent Request 从提交到数据库会话和日志。
+- 为 AP 发票接口设计状态、幂等键、部分成功恢复和监控指标。
+- 把一个数据库对象和并发程序按 R12.2 ADOP 方式打包并在测试环境验证。
+- 从业务单据追溯 XLA/GL，再从 GL 反查来源。
 
-<!-- source: docs/10-technical/adop-and-ebr/README.md -->
-<a id="src-docs-10-technical-adop-and-ebr-readme"></a>
-## R12.2 技术专题：adop-and-ebr
-
-
-<a id="src-docs-10-technical-adop-and-ebr-readme--目标"></a>
-### 目标
-本专题规范 adop-and-ebr 的设计、部署、运行和故障定位，所有实现均须符合 EBR、ADOP、最小权限和可观测性要求。
-
-<a id="src-docs-10-technical-adop-and-ebr-readme--实施要点"></a>
-### 实施要点
-
-明确对象所有者、依赖、配置来源、环境差异、日志、监控、回退和审批。接口/并发程序必须具备业务键、幂等、状态、错误分类和对账；页面和数据库定制优先使用受支持扩展点。
-
-<a id="src-docs-10-technical-adop-and-ebr-readme--r122-边界"></a>
-### R12.2 边界
-
-禁止覆盖 Oracle 标准文件或直接修改标准业务对象。发布纳入 ADOP 生命周期，使用版本化工件、校验清单和回归测试；性能诊断先限定请求、会话、SQL 或时间窗口，许可证能力单独确认。
-
-<a id="src-docs-10-technical-adop-and-ebr-readme--诊断"></a>
-### 诊断
-
-使用数据字典、并发日志、应用日志、会话信息和对象有效性进行只读诊断；保存请求号、时间、节点、Context 和关联业务键。
-
-
-<!-- source: docs/10-technical/architecture/README.md -->
-<a id="src-docs-10-technical-architecture-readme"></a>
-## R12.2 技术专题：architecture
-
-
-<a id="src-docs-10-technical-architecture-readme--目标"></a>
-### 目标
-本专题规范 architecture 的设计、部署、运行和故障定位，所有实现均须符合 EBR、ADOP、最小权限和可观测性要求。
-
-<a id="src-docs-10-technical-architecture-readme--实施要点"></a>
-### 实施要点
-
-明确对象所有者、依赖、配置来源、环境差异、日志、监控、回退和审批。接口/并发程序必须具备业务键、幂等、状态、错误分类和对账；页面和数据库定制优先使用受支持扩展点。
-
-<a id="src-docs-10-technical-architecture-readme--r122-边界"></a>
-### R12.2 边界
-
-禁止覆盖 Oracle 标准文件或直接修改标准业务对象。发布纳入 ADOP 生命周期，使用版本化工件、校验清单和回归测试；性能诊断先限定请求、会话、SQL 或时间窗口，许可证能力单独确认。
-
-<a id="src-docs-10-technical-architecture-readme--诊断"></a>
-### 诊断
-
-使用数据字典、并发日志、应用日志、会话信息和对象有效性进行只读诊断；保存请求号、时间、节点、Context 和关联业务键。
-
-
-<!-- source: docs/10-technical/audit-and-compliance/README.md -->
-<a id="src-docs-10-technical-audit-and-compliance-readme"></a>
-## R12.2 技术专题：audit-and-compliance
-
-
-<a id="src-docs-10-technical-audit-and-compliance-readme--目标"></a>
-### 目标
-本专题规范 audit-and-compliance 的设计、部署、运行和故障定位，所有实现均须符合 EBR、ADOP、最小权限和可观测性要求。
-
-<a id="src-docs-10-technical-audit-and-compliance-readme--实施要点"></a>
-### 实施要点
-
-明确对象所有者、依赖、配置来源、环境差异、日志、监控、回退和审批。接口/并发程序必须具备业务键、幂等、状态、错误分类和对账；页面和数据库定制优先使用受支持扩展点。
-
-<a id="src-docs-10-technical-audit-and-compliance-readme--r122-边界"></a>
-### R12.2 边界
-
-禁止覆盖 Oracle 标准文件或直接修改标准业务对象。发布纳入 ADOP 生命周期，使用版本化工件、校验清单和回归测试；性能诊断先限定请求、会话、SQL 或时间窗口，许可证能力单独确认。
-
-<a id="src-docs-10-technical-audit-and-compliance-readme--诊断"></a>
-### 诊断
-
-使用数据字典、并发日志、应用日志、会话信息和对象有效性进行只读诊断；保存请求号、时间、节点、Context 和关联业务键。
-
-
-<!-- source: docs/10-technical/concurrent-processing/README.md -->
-<a id="src-docs-10-technical-concurrent-processing-readme"></a>
-## R12.2 技术专题：concurrent-processing
-
-
-<a id="src-docs-10-technical-concurrent-processing-readme--目标"></a>
-### 目标
-本专题规范 concurrent-processing 的设计、部署、运行和故障定位，所有实现均须符合 EBR、ADOP、最小权限和可观测性要求。
-
-<a id="src-docs-10-technical-concurrent-processing-readme--实施要点"></a>
-### 实施要点
-
-明确对象所有者、依赖、配置来源、环境差异、日志、监控、回退和审批。接口/并发程序必须具备业务键、幂等、状态、错误分类和对账；页面和数据库定制优先使用受支持扩展点。
-
-<a id="src-docs-10-technical-concurrent-processing-readme--r122-边界"></a>
-### R12.2 边界
-
-禁止覆盖 Oracle 标准文件或直接修改标准业务对象。发布纳入 ADOP 生命周期，使用版本化工件、校验清单和回归测试；性能诊断先限定请求、会话、SQL 或时间窗口，许可证能力单独确认。
-
-<a id="src-docs-10-technical-concurrent-processing-readme--诊断"></a>
-### 诊断
-
-使用数据字典、并发日志、应用日志、会话信息和对象有效性进行只读诊断；保存请求号、时间、节点、Context 和关联业务键。
-
-
-<!-- source: docs/10-technical/configuration-migration/README.md -->
-<a id="src-docs-10-technical-configuration-migration-readme"></a>
-## R12.2 技术专题：configuration-migration
-
-
-<a id="src-docs-10-technical-configuration-migration-readme--目标"></a>
-### 目标
-本专题规范 configuration-migration 的设计、部署、运行和故障定位，所有实现均须符合 EBR、ADOP、最小权限和可观测性要求。
-
-<a id="src-docs-10-technical-configuration-migration-readme--实施要点"></a>
-### 实施要点
-
-明确对象所有者、依赖、配置来源、环境差异、日志、监控、回退和审批。接口/并发程序必须具备业务键、幂等、状态、错误分类和对账；页面和数据库定制优先使用受支持扩展点。
-
-<a id="src-docs-10-technical-configuration-migration-readme--r122-边界"></a>
-### R12.2 边界
-
-禁止覆盖 Oracle 标准文件或直接修改标准业务对象。发布纳入 ADOP 生命周期，使用版本化工件、校验清单和回归测试；性能诊断先限定请求、会话、SQL 或时间窗口，许可证能力单独确认。
-
-<a id="src-docs-10-technical-configuration-migration-readme--诊断"></a>
-### 诊断
-
-使用数据字典、并发日志、应用日志、会话信息和对象有效性进行只读诊断；保存请求号、时间、节点、Context 和关联业务键。
-
-
-<!-- source: docs/10-technical/data-model/README.md -->
-<a id="src-docs-10-technical-data-model-readme"></a>
-## R12.2 技术专题：data-model
-
-
-<a id="src-docs-10-technical-data-model-readme--目标"></a>
-### 目标
-本专题规范 data-model 的设计、部署、运行和故障定位，所有实现均须符合 EBR、ADOP、最小权限和可观测性要求。
-
-<a id="src-docs-10-technical-data-model-readme--实施要点"></a>
-### 实施要点
-
-明确对象所有者、依赖、配置来源、环境差异、日志、监控、回退和审批。接口/并发程序必须具备业务键、幂等、状态、错误分类和对账；页面和数据库定制优先使用受支持扩展点。
-
-<a id="src-docs-10-technical-data-model-readme--r122-边界"></a>
-### R12.2 边界
-
-禁止覆盖 Oracle 标准文件或直接修改标准业务对象。发布纳入 ADOP 生命周期，使用版本化工件、校验清单和回归测试；性能诊断先限定请求、会话、SQL 或时间窗口，许可证能力单独确认。
-
-<a id="src-docs-10-technical-data-model-readme--诊断"></a>
-### 诊断
-
-使用数据字典、并发日志、应用日志、会话信息和对象有效性进行只读诊断；保存请求号、时间、节点、Context 和关联业务键。
-
-
-<!-- source: docs/10-technical/database-development/README.md -->
-<a id="src-docs-10-technical-database-development-readme"></a>
-## R12.2 技术专题：database-development
-
-
-<a id="src-docs-10-technical-database-development-readme--目标"></a>
-### 目标
-本专题规范 database-development 的设计、部署、运行和故障定位，所有实现均须符合 EBR、ADOP、最小权限和可观测性要求。
-
-<a id="src-docs-10-technical-database-development-readme--实施要点"></a>
-### 实施要点
-
-明确对象所有者、依赖、配置来源、环境差异、日志、监控、回退和审批。接口/并发程序必须具备业务键、幂等、状态、错误分类和对账；页面和数据库定制优先使用受支持扩展点。
-
-<a id="src-docs-10-technical-database-development-readme--r122-边界"></a>
-### R12.2 边界
-
-禁止覆盖 Oracle 标准文件或直接修改标准业务对象。发布纳入 ADOP 生命周期，使用版本化工件、校验清单和回归测试；性能诊断先限定请求、会话、SQL 或时间窗口，许可证能力单独确认。
-
-<a id="src-docs-10-technical-database-development-readme--诊断"></a>
-### 诊断
-
-使用数据字典、并发日志、应用日志、会话信息和对象有效性进行只读诊断；保存请求号、时间、节点、Context 和关联业务键。
-
-
-<!-- source: docs/10-technical/database-platform/README.md -->
-<a id="src-docs-10-technical-database-platform-readme"></a>
-## R12.2 技术专题：database-platform
-
-
-<a id="src-docs-10-technical-database-platform-readme--目标"></a>
-### 目标
-本专题规范 database-platform 的设计、部署、运行和故障定位，所有实现均须符合 EBR、ADOP、最小权限和可观测性要求。
-
-<a id="src-docs-10-technical-database-platform-readme--实施要点"></a>
-### 实施要点
-
-明确对象所有者、依赖、配置来源、环境差异、日志、监控、回退和审批。接口/并发程序必须具备业务键、幂等、状态、错误分类和对账；页面和数据库定制优先使用受支持扩展点。
-
-<a id="src-docs-10-technical-database-platform-readme--r122-边界"></a>
-### R12.2 边界
-
-禁止覆盖 Oracle 标准文件或直接修改标准业务对象。发布纳入 ADOP 生命周期，使用版本化工件、校验清单和回归测试；性能诊断先限定请求、会话、SQL 或时间窗口，许可证能力单独确认。
-
-<a id="src-docs-10-technical-database-platform-readme--诊断"></a>
-### 诊断
-
-使用数据字典、并发日志、应用日志、会话信息和对象有效性进行只读诊断；保存请求号、时间、节点、Context 和关联业务键。
-
-
-<!-- source: docs/10-technical/forms/README.md -->
-<a id="src-docs-10-technical-forms-readme"></a>
-## R12.2 技术专题：forms
-
-
-<a id="src-docs-10-technical-forms-readme--目标"></a>
-### 目标
-本专题规范 forms 的设计、部署、运行和故障定位，所有实现均须符合 EBR、ADOP、最小权限和可观测性要求。
-
-<a id="src-docs-10-technical-forms-readme--实施要点"></a>
-### 实施要点
-
-明确对象所有者、依赖、配置来源、环境差异、日志、监控、回退和审批。接口/并发程序必须具备业务键、幂等、状态、错误分类和对账；页面和数据库定制优先使用受支持扩展点。
-
-<a id="src-docs-10-technical-forms-readme--r122-边界"></a>
-### R12.2 边界
-
-禁止覆盖 Oracle 标准文件或直接修改标准业务对象。发布纳入 ADOP 生命周期，使用版本化工件、校验清单和回归测试；性能诊断先限定请求、会话、SQL 或时间窗口，许可证能力单独确认。
-
-<a id="src-docs-10-technical-forms-readme--诊断"></a>
-### 诊断
-
-使用数据字典、并发日志、应用日志、会话信息和对象有效性进行只读诊断；保存请求号、时间、节点、Context 和关联业务键。
-
-
-<!-- source: docs/10-technical/integration/README.md -->
-<a id="src-docs-10-technical-integration-readme"></a>
-## R12.2 技术专题：integration
-
-
-<a id="src-docs-10-technical-integration-readme--目标"></a>
-### 目标
-本专题规范 integration 的设计、部署、运行和故障定位，所有实现均须符合 EBR、ADOP、最小权限和可观测性要求。
-
-<a id="src-docs-10-technical-integration-readme--实施要点"></a>
-### 实施要点
-
-明确对象所有者、依赖、配置来源、环境差异、日志、监控、回退和审批。接口/并发程序必须具备业务键、幂等、状态、错误分类和对账；页面和数据库定制优先使用受支持扩展点。
-
-<a id="src-docs-10-technical-integration-readme--r122-边界"></a>
-### R12.2 边界
-
-禁止覆盖 Oracle 标准文件或直接修改标准业务对象。发布纳入 ADOP 生命周期，使用版本化工件、校验清单和回归测试；性能诊断先限定请求、会话、SQL 或时间窗口，许可证能力单独确认。
-
-<a id="src-docs-10-technical-integration-readme--诊断"></a>
-### 诊断
-
-使用数据字典、并发日志、应用日志、会话信息和对象有效性进行只读诊断；保存请求号、时间、节点、Context 和关联业务键。
-
-
-<!-- source: docs/10-technical/middleware/README.md -->
-<a id="src-docs-10-technical-middleware-readme"></a>
-## R12.2 技术专题：middleware
-
-
-<a id="src-docs-10-technical-middleware-readme--目标"></a>
-### 目标
-本专题规范 middleware 的设计、部署、运行和故障定位，所有实现均须符合 EBR、ADOP、最小权限和可观测性要求。
-
-<a id="src-docs-10-technical-middleware-readme--实施要点"></a>
-### 实施要点
-
-明确对象所有者、依赖、配置来源、环境差异、日志、监控、回退和审批。接口/并发程序必须具备业务键、幂等、状态、错误分类和对账；页面和数据库定制优先使用受支持扩展点。
-
-<a id="src-docs-10-technical-middleware-readme--r122-边界"></a>
-### R12.2 边界
-
-禁止覆盖 Oracle 标准文件或直接修改标准业务对象。发布纳入 ADOP 生命周期，使用版本化工件、校验清单和回归测试；性能诊断先限定请求、会话、SQL 或时间窗口，许可证能力单独确认。
-
-<a id="src-docs-10-technical-middleware-readme--诊断"></a>
-### 诊断
-
-使用数据字典、并发日志、应用日志、会话信息和对象有效性进行只读诊断；保存请求号、时间、节点、Context 和关联业务键。
-
-
-<!-- source: docs/10-technical/oaf/README.md -->
-<a id="src-docs-10-technical-oaf-readme"></a>
-## R12.2 技术专题：oaf
-
-
-<a id="src-docs-10-technical-oaf-readme--目标"></a>
-### 目标
-本专题规范 oaf 的设计、部署、运行和故障定位，所有实现均须符合 EBR、ADOP、最小权限和可观测性要求。
-
-<a id="src-docs-10-technical-oaf-readme--实施要点"></a>
-### 实施要点
-
-明确对象所有者、依赖、配置来源、环境差异、日志、监控、回退和审批。接口/并发程序必须具备业务键、幂等、状态、错误分类和对账；页面和数据库定制优先使用受支持扩展点。
-
-<a id="src-docs-10-technical-oaf-readme--r122-边界"></a>
-### R12.2 边界
-
-禁止覆盖 Oracle 标准文件或直接修改标准业务对象。发布纳入 ADOP 生命周期，使用版本化工件、校验清单和回归测试；性能诊断先限定请求、会话、SQL 或时间窗口，许可证能力单独确认。
-
-<a id="src-docs-10-technical-oaf-readme--诊断"></a>
-### 诊断
-
-使用数据字典、并发日志、应用日志、会话信息和对象有效性进行只读诊断；保存请求号、时间、节点、Context 和关联业务键。
-
-
-<!-- source: docs/10-technical/performance/README.md -->
-<a id="src-docs-10-technical-performance-readme"></a>
-## R12.2 技术专题：performance
-
-
-<a id="src-docs-10-technical-performance-readme--目标"></a>
-### 目标
-本专题规范 performance 的设计、部署、运行和故障定位，所有实现均须符合 EBR、ADOP、最小权限和可观测性要求。
-
-<a id="src-docs-10-technical-performance-readme--实施要点"></a>
-### 实施要点
-
-明确对象所有者、依赖、配置来源、环境差异、日志、监控、回退和审批。接口/并发程序必须具备业务键、幂等、状态、错误分类和对账；页面和数据库定制优先使用受支持扩展点。
-
-<a id="src-docs-10-technical-performance-readme--r122-边界"></a>
-### R12.2 边界
-
-禁止覆盖 Oracle 标准文件或直接修改标准业务对象。发布纳入 ADOP 生命周期，使用版本化工件、校验清单和回归测试；性能诊断先限定请求、会话、SQL 或时间窗口，许可证能力单独确认。
-
-<a id="src-docs-10-technical-performance-readme--诊断"></a>
-### 诊断
-
-使用数据字典、并发日志、应用日志、会话信息和对象有效性进行只读诊断；保存请求号、时间、节点、Context 和关联业务键。
-
-
-<!-- source: docs/10-technical/release-engineering/README.md -->
-<a id="src-docs-10-technical-release-engineering-readme"></a>
-## R12.2 技术专题：release-engineering
-
-
-<a id="src-docs-10-technical-release-engineering-readme--目标"></a>
-### 目标
-本专题规范 release-engineering 的设计、部署、运行和故障定位，所有实现均须符合 EBR、ADOP、最小权限和可观测性要求。
-
-<a id="src-docs-10-technical-release-engineering-readme--实施要点"></a>
-### 实施要点
-
-明确对象所有者、依赖、配置来源、环境差异、日志、监控、回退和审批。接口/并发程序必须具备业务键、幂等、状态、错误分类和对账；页面和数据库定制优先使用受支持扩展点。
-
-<a id="src-docs-10-technical-release-engineering-readme--r122-边界"></a>
-### R12.2 边界
-
-禁止覆盖 Oracle 标准文件或直接修改标准业务对象。发布纳入 ADOP 生命周期，使用版本化工件、校验清单和回归测试；性能诊断先限定请求、会话、SQL 或时间窗口，许可证能力单独确认。
-
-<a id="src-docs-10-technical-release-engineering-readme--诊断"></a>
-### 诊断
-
-使用数据字典、并发日志、应用日志、会话信息和对象有效性进行只读诊断；保存请求号、时间、节点、Context 和关联业务键。
-
-
-<!-- source: docs/10-technical/reporting-development/README.md -->
-<a id="src-docs-10-technical-reporting-development-readme"></a>
-## R12.2 技术专题：reporting-development
-
-
-<a id="src-docs-10-technical-reporting-development-readme--目标"></a>
-### 目标
-本专题规范 reporting-development 的设计、部署、运行和故障定位，所有实现均须符合 EBR、ADOP、最小权限和可观测性要求。
-
-<a id="src-docs-10-technical-reporting-development-readme--实施要点"></a>
-### 实施要点
-
-明确对象所有者、依赖、配置来源、环境差异、日志、监控、回退和审批。接口/并发程序必须具备业务键、幂等、状态、错误分类和对账；页面和数据库定制优先使用受支持扩展点。
-
-<a id="src-docs-10-technical-reporting-development-readme--r122-边界"></a>
-### R12.2 边界
-
-禁止覆盖 Oracle 标准文件或直接修改标准业务对象。发布纳入 ADOP 生命周期，使用版本化工件、校验清单和回归测试；性能诊断先限定请求、会话、SQL 或时间窗口，许可证能力单独确认。
-
-<a id="src-docs-10-technical-reporting-development-readme--诊断"></a>
-### 诊断
-
-使用数据字典、并发日志、应用日志、会话信息和对象有效性进行只读诊断；保存请求号、时间、节点、Context 和关联业务键。
-
-
-<!-- source: docs/10-technical/security/README.md -->
-<a id="src-docs-10-technical-security-readme"></a>
-## R12.2 技术专题：security
-
-
-<a id="src-docs-10-technical-security-readme--目标"></a>
-### 目标
-本专题规范 security 的设计、部署、运行和故障定位，所有实现均须符合 EBR、ADOP、最小权限和可观测性要求。
-
-<a id="src-docs-10-technical-security-readme--实施要点"></a>
-### 实施要点
-
-明确对象所有者、依赖、配置来源、环境差异、日志、监控、回退和审批。接口/并发程序必须具备业务键、幂等、状态、错误分类和对账；页面和数据库定制优先使用受支持扩展点。
-
-<a id="src-docs-10-technical-security-readme--r122-边界"></a>
-### R12.2 边界
-
-禁止覆盖 Oracle 标准文件或直接修改标准业务对象。发布纳入 ADOP 生命周期，使用版本化工件、校验清单和回归测试；性能诊断先限定请求、会话、SQL 或时间窗口，许可证能力单独确认。
-
-<a id="src-docs-10-technical-security-readme--诊断"></a>
-### 诊断
-
-使用数据字典、并发日志、应用日志、会话信息和对象有效性进行只读诊断；保存请求号、时间、节点、Context 和关联业务键。
-
-
-<!-- source: docs/10-technical/testing-and-automation/README.md -->
-<a id="src-docs-10-technical-testing-and-automation-readme"></a>
-## R12.2 技术专题：testing-and-automation
-
-
-<a id="src-docs-10-technical-testing-and-automation-readme--目标"></a>
-### 目标
-本专题规范 testing-and-automation 的设计、部署、运行和故障定位，所有实现均须符合 EBR、ADOP、最小权限和可观测性要求。
-
-<a id="src-docs-10-technical-testing-and-automation-readme--实施要点"></a>
-### 实施要点
-
-明确对象所有者、依赖、配置来源、环境差异、日志、监控、回退和审批。接口/并发程序必须具备业务键、幂等、状态、错误分类和对账；页面和数据库定制优先使用受支持扩展点。
-
-<a id="src-docs-10-technical-testing-and-automation-readme--r122-边界"></a>
-### R12.2 边界
-
-禁止覆盖 Oracle 标准文件或直接修改标准业务对象。发布纳入 ADOP 生命周期，使用版本化工件、校验清单和回归测试；性能诊断先限定请求、会话、SQL 或时间窗口，许可证能力单独确认。
-
-<a id="src-docs-10-technical-testing-and-automation-readme--诊断"></a>
-### 诊断
-
-使用数据字典、并发日志、应用日志、会话信息和对象有效性进行只读诊断；保存请求号、时间、节点、Context 和关联业务键。
-
-
-<!-- source: docs/10-technical/workflow-and-ame/README.md -->
-<a id="src-docs-10-technical-workflow-and-ame-readme"></a>
-## R12.2 技术专题：workflow-and-ame
-
-
-<a id="src-docs-10-technical-workflow-and-ame-readme--目标"></a>
-### 目标
-本专题规范 workflow-and-ame 的设计、部署、运行和故障定位，所有实现均须符合 EBR、ADOP、最小权限和可观测性要求。
-
-<a id="src-docs-10-technical-workflow-and-ame-readme--实施要点"></a>
-### 实施要点
-
-明确对象所有者、依赖、配置来源、环境差异、日志、监控、回退和审批。接口/并发程序必须具备业务键、幂等、状态、错误分类和对账；页面和数据库定制优先使用受支持扩展点。
-
-<a id="src-docs-10-technical-workflow-and-ame-readme--r122-边界"></a>
-### R12.2 边界
-
-禁止覆盖 Oracle 标准文件或直接修改标准业务对象。发布纳入 ADOP 生命周期，使用版本化工件、校验清单和回归测试；性能诊断先限定请求、会话、SQL 或时间窗口，许可证能力单独确认。
-
-<a id="src-docs-10-technical-workflow-and-ame-readme--诊断"></a>
-### 诊断
-
-使用数据字典、并发日志、应用日志、会话信息和对象有效性进行只读诊断；保存请求号、时间、节点、Context 和关联业务键。
+## 12. 技术专题详解
 
 
 <!-- source: docs/09-technical/README.md -->
 <a id="src-docs-09-technical-readme"></a>
-## EBS R12.2 技术、集成与运维
+### EBS R12.2 技术、集成与运维
 
 
 本目录覆盖 R12.2 技术开发和生产运行的公共规范。业务模块接口文档描述产品入口；本目录定义接口选型、并发程序、PL/SQL、Workflow、OAF/Forms、迁移、EBR/ADOP、性能、安全和可观测性的共性边界。
 
 <a id="src-docs-09-technical-readme--专题导航"></a>
-### 专题导航
+#### 专题导航
 
 - [开放接口、API、报表与迁移](#src-docs-09-technical-integration)
 - [技术接口实现手册](#src-docs-09-technical-interfaces)
@@ -630,7 +113,7 @@ Business Tables → SLA/XLA → GL
 - [FND、Concurrent、Workflow 表](#src-docs-09-technical-tables)
 
 <a id="src-docs-09-technical-readme--r122-不可省略的边界"></a>
-### R12.2 不可省略的边界
+#### R12.2 不可省略的边界
 
 1. 定制对象和部署必须遵循 Edition-Based Redefinition 与 Online Patching（ADOP）约束；不得以覆盖 Oracle 标准文件或直接修改标准对象作为常规交付方式。
 2. 支持写入的路径依次为标准页面、公开 API、Open Interface、Integration Repository/ISG 和客户自定义对象；禁止直接 DML EBS 业务基表修复数据。
@@ -638,7 +121,7 @@ Business Tables → SLA/XLA → GL
 4. 性能问题先以并发请求、日志、SQL 执行计划和应用上下文定位；AWR、ASH、SQL Monitor 等能力须确认数据库许可证。
 
 <a id="src-docs-09-technical-readme--官方依据"></a>
-### 官方依据
+#### 官方依据
 
 - [Oracle E-Business Suite Technology Documentation](https://docs.oracle.com/cd/E26401_01/nav/technology.htm)
 - [Oracle E-Business Suite Maintenance Guide](https://docs.oracle.com/cd/E26401_01/doc.122/e22954/toc.htm)
@@ -646,16 +129,16 @@ Business Tables → SLA/XLA → GL
 
 <!-- source: docs/09-technical/adop-ebr-release.md -->
 <a id="src-docs-09-technical-adop-ebr-release"></a>
-## R12.2 Online Patching、EBR 与发布治理
+### R12.2 Online Patching、EBR 与发布治理
 
 
 <a id="src-docs-09-technical-adop-ebr-release--核心原则"></a>
-### 核心原则
+#### 核心原则
 
 R12.2 使用 Online Patching（ADOP）与 Edition-Based Redefinition（EBR）降低在线补丁对业务的影响，但并不意味着自定义对象可以任意创建、修改或直接在生产库修复。每次交付均应识别对象类型、Edition 属性、依赖、部署方式、回滚策略和验证证据。
 
 <a id="src-docs-09-technical-adop-ebr-release--adop-生命周期"></a>
-### ADOP 生命周期
+#### ADOP 生命周期
 
 ```text
 Prepare → Apply → Finalize → Cutover → Cleanup
@@ -671,7 +154,7 @@ Prepare → Apply → Finalize → Cutover → Cleanup
 | Cleanup | 清理旧版定义 | 归档日志、更新基线、完成回归与配置对比 |
 
 <a id="src-docs-09-technical-adop-ebr-release--自定义交付清单"></a>
-### 自定义交付清单
+#### 自定义交付清单
 
 1. 源码、数据库对象、Forms/OAF、报表、FND 注册、Workflow、Profile/Lookup 分别建立受版本控制的迁移工件。
 2. 自定义数据库对象使用独立 schema、最小授权和受支持 synonym/grant；不得直接修改 Oracle 标准对象。
@@ -679,7 +162,7 @@ Prepare → Apply → Finalize → Cutover → Cleanup
 4. 发布包应具有唯一版本、依赖清单、校验 SQL、回滚/补偿方案、日志位置和责任人。
 
 <a id="src-docs-09-technical-adop-ebr-release--只读诊断-sql"></a>
-### 只读诊断 SQL
+#### 只读诊断 SQL
 
 ```sql
 -- 检查自定义对象的有效性；不要在生产直接编译 Oracle 标准对象作为常规修复。
@@ -702,14 +185,14 @@ select owner, table_name, column_name, data_type, data_length
 ```
 
 <a id="src-docs-09-technical-adop-ebr-release--常见问题"></a>
-### 常见问题
+#### 常见问题
 
 - 只在 Run 文件系统修改文件：下一个 ADOP 周期可能被覆盖，且无法形成可部署基线。
 - 直接在生产补数据或编译：可能绕过 Edition、审计和回退设计；应改用受支持 API、补丁或 Oracle Support 方案。
 - Cutover 后接口/并发异常：按发布清单检查服务、context、custom library/报表、注册定义、日志与依赖，而不是盲目重跑整批业务。
 
 <a id="src-docs-09-technical-adop-ebr-release--官方参考"></a>
-### 官方参考
+#### 官方参考
 
 - [Oracle E-Business Suite Maintenance Guide](https://docs.oracle.com/cd/E26401_01/doc.122/e22954/toc.htm)
 - [Oracle E-Business Suite Technology Documentation](https://docs.oracle.com/cd/E26401_01/nav/technology.htm)
@@ -717,11 +200,11 @@ select owner, table_name, column_name, data_type, data_length
 
 <!-- source: docs/09-technical/concurrent-programs.md -->
 <a id="src-docs-09-technical-concurrent-programs"></a>
-## Concurrent Program、请求集与日志排错
+### Concurrent Program、请求集与日志排错
 
 
 <a id="src-docs-09-technical-concurrent-programs--架构"></a>
-### 架构
+#### 架构
 
 ```text
 Submit Request → FND_CONCURRENT_REQUESTS(Pending)
@@ -736,7 +219,7 @@ Concurrent Program 关联 Executable、Parameters/Value Sets、Incompatibility�
 R12.2 在 Online Patching 时使用 `ADZDPATCH` 协调不兼容程序；不要为了让 adop 继续而随意终止 ICM/ADZDPATCH。
 
 <a id="src-docs-09-technical-concurrent-programs--sql"></a>
-### SQL
+#### SQL
 
 ```sql
 SELECT r.request_id, r.parent_request_id,
@@ -767,7 +250,7 @@ SELECT request_id, phase_code, status_code,
 ```
 
 <a id="src-docs-09-technical-concurrent-programs--排错"></a>
-### 排错
+#### 排错
 
 - Pending/Standby：查 Requested Start、Hold、Manager Specialization、Incompatibility、Parent Request、Manager Processes、Node/Work Shift。
 - Running 过久：查日志最后进度、DB Session/Wait/Blocking、参数数据量和子请求；先评估 Cancel/Terminate 业务后果。
@@ -776,7 +259,7 @@ SELECT request_id, phase_code, status_code,
 - Manager 异常：通过 OAM/标准脚本管理，保留 ICM/Manager/Service Manager 日志，不直接改 FND Queue/Request 状态。
 
 <a id="src-docs-09-technical-concurrent-programs--关联"></a>
-### 关联
+#### 关联
 
 - [Operations](#src-docs-09-technical-operations)
 - [Integration](#src-docs-09-technical-integration)
@@ -784,11 +267,11 @@ SELECT request_id, phase_code, status_code,
 
 <!-- source: docs/09-technical/customization.md -->
 <a id="src-docs-09-technical-customization"></a>
-## PL/SQL、Forms、Personalization 与 OAF 定制
+### PL/SQL、Forms、Personalization 与 OAF 定制
 
 
 <a id="src-docs-09-technical-customization--r122-定制原则"></a>
-### R12.2 定制原则
+#### R12.2 定制原则
 
 - 优先级：标准设置 > Personalization/Extension > Published API/Open Interface > 经评审的定制；禁止修改 Oracle seeded 源码和基表。
 - 自定义对象使用客户前缀/Schema，通过 APPS Synonym/Grant 接入，所有 DDL 满足 Edition-Based Redefinition（EBR）。
@@ -797,7 +280,7 @@ SELECT request_id, phase_code, status_code,
 - OAF 使用 Personalization 或 Controller Extension，不修改 seeded XML/Java；扩展需评估升级/补丁兼容。
 
 <a id="src-docs-09-technical-customization--plsql-标准"></a>
-### PL/SQL 标准
+#### PL/SQL 标准
 
 1. 公开 API 前初始化 FND/MOAC 上下文，传入 `p_api_version/p_init_msg_list/p_commit`。
 2. 尊重 API 交易边界，默认由调用者 Commit/Rollback，不在底层工具函数隐式提交。
@@ -805,7 +288,7 @@ SELECT request_id, phase_code, status_code,
 4. SQL 使用 Bind、明确组织/账簿条件、批量处理和可重启设计，避免 Row-by-row 大批量处理。
 
 <a id="src-docs-09-technical-customization--诊断-sql"></a>
-### 诊断 SQL
+#### 诊断 SQL
 
 ```sql
 SELECT owner, object_name, object_type, status, edition_name
@@ -826,7 +309,7 @@ SELECT lookup_type, lookup_code, meaning, enabled_flag,
 ```
 
 <a id="src-docs-09-technical-customization--排错"></a>
-### 排错
+#### 排错
 
 - 补丁后定制失效：检查 Invalid Objects、API Signature/View Columns 变更、Synonym/Grant、OAF Extension 兼容和 adop 日志。
 - Personalization 不生效：查 Function/Form/Page Context、Level/Sequence/Condition、字段名、缓存，使用 Diagnostics 验证实际项。
@@ -834,7 +317,7 @@ SELECT lookup_type, lookup_code, meaning, enabled_flag,
 - ORA-04061/4068：可能是 Package 重编译导致会话状态失效，重建会话并检查发布是否遵循 Online Patching。
 
 <a id="src-docs-09-technical-customization--关联"></a>
-### 关联
+#### 关联
 
 - [Data Model](#src-docs-09-technical-data-model)
 - [Operations](#src-docs-09-technical-operations)
@@ -842,11 +325,11 @@ SELECT lookup_type, lookup_code, meaning, enabled_flag,
 
 <!-- source: docs/09-technical/data-model.md -->
 <a id="src-docs-09-technical-data-model"></a>
-## EBS R12.2 数据模型与常用表
+### EBS R12.2 数据模型与常用表
 
 
 <a id="src-docs-09-technical-data-model--建模约定"></a>
-### 建模约定
+#### 建模约定
 
 - `_ALL` 通常包含 OU 级数据并带 `ORG_ID`；`_B` 为基表，`_TL` 为翻译，`_VL` 常为基表+当前语言视图，`_F` 常为 DateTrack，`_INTERFACE` 为接口，`_TEMP/_GT` 可为临时数据。
 - WHO 列：`CREATION_DATE/CREATED_BY/LAST_UPDATE_DATE/LAST_UPDATED_BY/LAST_UPDATE_LOGIN`。
@@ -855,7 +338,7 @@ SELECT lookup_type, lookup_code, meaning, enabled_flag,
 - APPS 通过 Synonym/View/Package 访问产品 Schema。R12.2 定制对象必须遵循 Editioning/Online Patching 标准。
 
 <a id="src-docs-09-technical-data-model--模块速查"></a>
-### 模块速查
+#### 模块速查
 
 | 模块 | 主要对象 |
 | --- | --- |
@@ -873,7 +356,7 @@ SELECT lookup_type, lookup_code, meaning, enabled_flag,
 | CE/Tax | `CE_BANK_ACCOUNTS`, `CE_STATEMENT_*`, `ZX_LINES` |
 
 <a id="src-docs-09-technical-data-model--元数据-sql"></a>
-### 元数据 SQL
+#### 元数据 SQL
 
 ```sql
 SELECT owner, object_name, object_type, status
@@ -903,7 +386,7 @@ SELECT acc.owner, acc.constraint_name, acc.table_name,
 ```
 
 <a id="src-docs-09-technical-data-model--原则与排错"></a>
-### 原则与排错
+#### 原则与排错
 
 - 先用 eTRM/`ALL_*` 确认对象、列、同义词和约束，不凭记忆跨版本写 SQL。
 - 查询必须包含组织/账簿、主键或日期范围，对大表先看执行计划。
@@ -911,7 +394,7 @@ SELECT acc.owner, acc.constraint_name, acc.table_name,
 - 不使用 `SELECT *`、隐式日期转换和字符串拼 SQL；使用显式列、绑定变量和 ANSI Join。
 
 <a id="src-docs-09-technical-data-model--关联"></a>
-### 关联
+#### 关联
 
 - [FND、Concurrent、Workflow 与运维常用表](#src-docs-09-technical-tables)
 - [Integration](#src-docs-09-technical-integration)
@@ -920,13 +403,13 @@ SELECT acc.owner, acc.constraint_name, acc.table_name,
 
 <!-- source: docs/09-technical/integration.md -->
 <a id="src-docs-09-technical-integration"></a>
-## 开放接口、API、报表与数据迁移
+### 开放接口、API、报表与数据迁移
 
 
 > Concurrent Worker、标准 API 模板、ISG REST、重试与可观测性代码见 [技术接口实现手册](#src-docs-09-technical-interfaces)。
 
 <a id="src-docs-09-technical-integration--选型原则"></a>
-### 选型原则
+#### 选型原则
 
 | 方式 | 适用场景 | 控制要点 |
 | --- | --- | --- |
@@ -938,7 +421,7 @@ SELECT acc.owner, acc.constraint_name, acc.table_name,
 | BI Publisher/Concurrent | 报表/文件 | Data Definition、Template、Locale、OPP/Output |
 
 <a id="src-docs-09-technical-integration--接口分层"></a>
-### 接口分层
+#### 接口分层
 
 ```text
 Source → Landing（原始不可变）
@@ -951,7 +434,7 @@ Source → Landing（原始不可变）
 每条数据保存 Source System、External Key、Batch/Correlation ID、ORG_ID/Ledger、Payload Hash、Status、Retry Count、Request ID、EBS Transaction ID、Error Code/Message。技术重试必须幂等，业务驳回需修正后重提，不应无限自动重试。
 
 <a id="src-docs-09-technical-integration--sql"></a>
-### SQL
+#### SQL
 
 ```sql
 -- 并发请求跟踪
@@ -978,7 +461,7 @@ SELECT item_type, item_key, process_activity,
 ```
 
 <a id="src-docs-09-technical-integration--迁移清单"></a>
-### 迁移清单
+#### 迁移清单
 
 1. 数据 Profile/清洗/映射，确定历史深度和未结业务边界。
 2. 按主数据→期初余额→未结交易→历史的依赖顺序导入。
@@ -986,7 +469,7 @@ SELECT item_type, item_key, process_activity,
 4. Cutover 冻结、Delta、业务签字和回退标准必须事先定义。
 
 <a id="src-docs-09-technical-integration--排错"></a>
-### 排错
+#### 排错
 
 - 先定位 Landing/Staging/EBS Interface/Import/Base/Accounting 断点，再查对应状态。
 - 重复：检查 External Key/Hash、超时后重试、EBS 已成功但 ACK 失败的情况。
@@ -994,7 +477,7 @@ SELECT item_type, item_key, process_activity,
 - 性能：使用批次、Bind/Array Processing、合理 Commit Size、并发限流，避免过度 API 单行循环。
 
 <a id="src-docs-09-technical-integration--关联"></a>
-### 关联
+#### 关联
 
 - [AP Interface](03-procure-to-pay.md#src-docs-02-ap-interfaces-troubleshooting)
 - [AR Interface](04-credit-to-cash.md#src-docs-03-ar-interfaces-troubleshooting)
@@ -1003,11 +486,11 @@ SELECT item_type, item_key, process_activity,
 
 <!-- source: docs/09-technical/interfaces.md -->
 <a id="src-docs-09-technical-interfaces"></a>
-## Oracle EBS 技术接口实现手册
+### Oracle EBS 技术接口实现手册
 
 
 <a id="src-docs-09-technical-interfaces--1-接口方式选型"></a>
-### 1. 接口方式选型
+#### 1. 接口方式选型
 
 | 方式 | 适合场景 | 调用/处理特点 | 主要风险控制 |
 | --- | --- | --- | --- |
@@ -1022,10 +505,10 @@ SELECT item_type, item_key, process_activity,
 Oracle R12.2 官方说明：PL/SQL API、Concurrent Program、Business Service Object 可暴露为 SOAP/REST；Inbound Open Interface REST 支持 POST/GET/PUT/DELETE；Concurrent Program REST 只支持 POST。自定义 Open Interface 表/视图不能直接作为 Integration Repository 的 Custom Interface 类型发布，应使用自定义 PL/SQL API 或标准接口暂存层。
 
 <a id="src-docs-09-technical-interfaces--2-自定义-concurrent-program-worker"></a>
-### 2. 自定义 Concurrent Program Worker
+#### 2. 自定义 Concurrent Program Worker
 
 <a id="src-docs-09-technical-interfaces--21-package-specification"></a>
-#### 2.1 Package Specification
+##### 2.1 Package Specification
 
 ```sql
 CREATE OR REPLACE PACKAGE xxint_worker_pkg AUTHID DEFINER AS
@@ -1040,7 +523,7 @@ END xxint_worker_pkg;
 ```
 
 <a id="src-docs-09-technical-interfaces--22-package-body"></a>
-#### 2.2 Package Body
+##### 2.2 Package Body
 
 ```sql
 CREATE OR REPLACE PACKAGE BODY xxint_worker_pkg AS
@@ -1148,7 +631,7 @@ END xxint_worker_pkg;
 R12.2 自定义数据库对象应放在自定义 Schema/APPS 同义词策略下，并通过 ADOP/Edition-Based Redefinition 合规发布。Worker 使用 `FOR UPDATE SKIP LOCKED` 支持多并发实例，并在达到批次大小后停止领取。
 
 <a id="src-docs-09-technical-interfaces--3-标准-plsql-api-调用模板"></a>
-### 3. 标准 PL/SQL API 调用模板
+#### 3. 标准 PL/SQL API 调用模板
 
 ```sql
 DECLARE
@@ -1190,10 +673,10 @@ END;
 `XX_PUBLIC_API` 只是调用模板占位符。实际 API 名、版本、Record Type、`G_MISS_*` 默认值、是否自动 Commit，必须从当前实例 Integration Repository/Package Specification 获取。
 
 <a id="src-docs-09-technical-interfaces--4-isg-rest-服务部署与调用"></a>
-### 4. ISG REST 服务部署与调用
+#### 4. ISG REST 服务部署与调用
 
 <a id="src-docs-09-technical-interfaces--41-管理端步骤"></a>
-#### 4.1 管理端步骤
+##### 4.1 管理端步骤
 
 1. 在 Integration Repository 按 Internal Name 搜索标准 API/Concurrent/Open Interface。
 2. 检查方法签名、方向、生命周期状态和产品补丁说明。
@@ -1203,7 +686,7 @@ END;
 6. 使用最小权限职责/MOAC/Data Access Set 验证不同组织的数据隔离。
 
 <a id="src-docs-09-technical-interfaces--42-rest-调用"></a>
-#### 4.2 REST 调用
+##### 4.2 REST 调用
 
 ```bash
 curl --fail-with-body \
@@ -1218,7 +701,7 @@ curl --fail-with-body \
 REST Endpoint、资源路径、Context Header 和 Payload 必须从已部署服务的 WADL/XSD 获得。Token、密码和 Cookie 不写脚本、Git 或 Concurrent Log；Basic Authentication 只通过 HTTPS 使用。
 
 <a id="src-docs-09-technical-interfaces--43-带退避的客户端示例"></a>
-#### 4.3 带退避的客户端示例
+##### 4.3 带退避的客户端示例
 
 ```bash
 #!/usr/bin/env bash
@@ -1251,7 +734,7 @@ exit 2
 客户端只能重试确认幂等的操作。连接超时不代表 EBS 未处理，应先以业务幂等键/Request ID 查询结果；HTTP 4xx 业务/权限错误不应自动重试。
 
 <a id="src-docs-09-technical-interfaces--5-concurrent-program-异步状态-api"></a>
-### 5. Concurrent Program 异步状态 API
+#### 5. Concurrent Program 异步状态 API
 
 ```sql
 SELECT fcr.request_id,
@@ -1281,7 +764,7 @@ SELECT fcr.request_id,
 状态查询服务将 EBS `PHASE_CODE/STATUS_CODE` 映射为 Submitted/Running/Success/Warning/Error，不直接把内部单字符状态暴露给消费者。
 
 <a id="src-docs-09-technical-interfaces--6-ebs-调用外部-rest"></a>
-### 6. EBS 调用外部 REST
+#### 6. EBS 调用外部 REST
 
 Oracle 官方 Service Invocation Framework 使用 Workflow Business Event System；PL/SQL 通过 `WF_EVENT.RAISE` 触发，Java Deferred Agent Listener 调用服务，并可在 Service Invocation Monitor 监控。
 
@@ -1308,7 +791,7 @@ END;
 需要先定义 Event、REST Invocation Metadata 和带 Java Rule Function 的 Subscription。不要自行在数据库中保存明文密码或使用不受支持的网络 ACL 绕过框架。
 
 <a id="src-docs-09-technical-interfaces--7-可观测性和错误分类"></a>
-### 7. 可观测性和错误分类
+#### 7. 可观测性和错误分类
 
 ```sql
 SELECT interface_code,
@@ -1334,7 +817,7 @@ SELECT interface_code,
 日志必须包含 Correlation ID、Interface Code、External Key、Request ID、EBS ID 和阶段，但要脱敏银行账户、税号、身份证、Token、密码和完整 Payload。
 
 <a id="src-docs-09-technical-interfaces--8-测试矩阵"></a>
-### 8. 测试矩阵
+#### 8. 测试矩阵
 
 - Contract：WADL/WSDL/XSD/JSON Schema 与客户端版本兼容。
 - Functional：正常、缺字段、无效主数据、跨 OU、期间关闭、重复消息。
@@ -1345,7 +828,7 @@ SELECT interface_code,
 - Reconciliation：输入/接口/业务/SLA/GL/ACK 的数量和金额闭环。
 
 <a id="src-docs-09-technical-interfaces--9-关联文档"></a>
-### 9. 关联文档
+#### 9. 关联文档
 
 - [开放接口、API 与迁移](#src-docs-09-technical-integration)
 - [Concurrent Program](#src-docs-09-technical-concurrent-programs)
@@ -1354,7 +837,7 @@ SELECT interface_code,
 - [通用接口治理](01-foundation.md#src-docs-01-common-interfaces)
 
 <a id="src-docs-09-technical-interfaces--10-官方参考"></a>
-### 10. 官方参考
+#### 10. 官方参考
 
 - [ISG Implementation Guide: Deploying REST Services](https://docs.oracle.com/cd/E26401_01/doc.122/e20925/T511175T513044.htm)
 - [ISG Developer's Guide: Using PL/SQL APIs as Web Services](https://docs.oracle.com/cd/E26401_01/doc.122/e20927/T511473T522190.htm)
@@ -1364,11 +847,11 @@ SELECT interface_code,
 
 <!-- source: docs/09-technical/operations.md -->
 <a id="src-docs-09-technical-operations"></a>
-## 性能调优、权限审计与 R12.2 生产运维
+### 性能调优、权限审计与 R12.2 生产运维
 
 
 <a id="src-docs-09-technical-operations--r122-运维边界"></a>
-### R12.2 运维边界
+#### R12.2 运维边界
 
 - 应用层管理节点、WebLogic/OHS、Forms、Concurrent Processing、Workflow Mailer、OPP 和集成服务。
 - R12.2 使用 Online Patching（adop）的 Prepare、Apply、Finalize、Cutover、Cleanup 周期，并基于 Run/Patch File System 与 EBR。
@@ -1376,7 +859,7 @@ SELECT interface_code,
 - 数据库、中间件、EBS Codelevel/ETCC、Java 和浏览器兼容性应按 Oracle 证证矩阵和 Support 建议维护。
 
 <a id="src-docs-09-technical-operations--性能诊断法"></a>
-### 性能诊断法
+#### 性能诊断法
 
 ```text
 Business Symptom
@@ -1393,7 +876,7 @@ Business Symptom
 4. 对并发程序将性能与数据量、参数、Manager Queue/Processes、Incompatibility 和 OPP 分开分析。
 
 <a id="src-docs-09-technical-operations--安全和审计"></a>
-### 安全和审计
+#### 安全和审计
 
 - 定期复核用户、职责、失效日期、User-level Profile、特权职责、共享账号和服务账号。
 - 实施 SoD：Supplier/Bank Change、Invoice Approval、Payment Creation/Release、Journal Create/Approve/Post、User Admin 分离。
@@ -1401,7 +884,7 @@ Business Symptom
 - 日志/报表脱敏银行账号、税号、个人信息和 Token；限制输出保留和下载权限。
 
 <a id="src-docs-09-technical-operations--实用-sql"></a>
-### 实用 SQL
+#### 实用 SQL
 
 ```sql
 -- 失效对象；不要无差别全库重编译
@@ -1436,7 +919,7 @@ SELECT fu.user_name, fpo.user_profile_option_name,
 > `DBA_OBJECTS` 需 DBA 权限；普通账号使用 `ALL_OBJECTS`。生产性能诊断必须有时间范围，避免高成本全库查询。
 
 <a id="src-docs-09-technical-operations--常见问题"></a>
-### 常见问题
+#### 常见问题
 
 - adop 卡住：从当前 Phase/Worker 日志和 adopscanlog 定位首个错误，检查节点、空间、ETCC、无效对象、ADZDPATCH/并发程序，不盲目 `abort/cleanup`。
 - Forms/OAF 单点故障：比较用户/职责/功能和节点，查 OHS/WebLogic/Managed Server 日志、会话和近期变更。
@@ -1444,14 +927,14 @@ SELECT fu.user_name, fpo.user_profile_option_name,
 - 补丁后性能回退：比较 SQL Plan/Stats/Codelevel、无效对象和定制兼容，使用可重现证据建 SR。
 
 <a id="src-docs-09-technical-operations--关联"></a>
-### 关联
+#### 关联
 
 - [Security](01-foundation.md#src-docs-01-common-security)
 - [Concurrent Processing](#src-docs-09-technical-concurrent-programs)
 - [Customization](#src-docs-09-technical-customization)
 
 <a id="src-docs-09-technical-operations--官方参考"></a>
-### 官方参考
+#### 官方参考
 
 - [Oracle E-Business Suite Concepts R12.2](https://docs.oracle.com/cd/E26401_01/doc.122/e22949/)
 - [Oracle E-Business Suite R12.2 Documentation Library](https://docs.oracle.com/cd/E26401_01/index.htm)
@@ -1459,16 +942,16 @@ SELECT fu.user_name, fpo.user_profile_option_name,
 
 <!-- source: docs/09-technical/tables.md -->
 <a id="src-docs-09-technical-tables"></a>
-## FND、Concurrent、Workflow 与运维常用表结构
+### FND、Concurrent、Workflow 与运维常用表结构
 
 
 <a id="src-docs-09-technical-tables--业务说明"></a>
-### 业务说明
+#### 业务说明
 
 FND 是 EBS 应用对象字典、用户/职责、Profile、菜单、并发处理和 Lookup 的共享基础。Workflow 保存 Item/Activity/Notification 状态与延迟队列。运维 SQL 应优先查询状态与日志证据，不通过直接更新 FND/WF 表来“修复”请求或流程。
 
 <a id="src-docs-09-technical-tables--fnd-安全与设置表"></a>
-### FND 安全与设置表
+#### FND 安全与设置表
 
 | 表/视图 | 中文名 | 粒度/用途 | 关键字段 |
 | --- | --- | --- | --- |
@@ -1484,7 +967,7 @@ FND 是 EBS 应用对象字典、用户/职责、Profile、菜单、并发处理
 | `FND_APPLICATION` / `_TL` / `_VL` | EBS 应用 | 每个 Application | `APPLICATION_ID`, `APPLICATION_SHORT_NAME` |
 
 <a id="src-docs-09-technical-tables--profile-levelid"></a>
-#### Profile `LEVEL_ID`
+##### Profile `LEVEL_ID`
 
 | 值 | 层级 | `LEVEL_VALUE` 含义 |
 | --- | --- | --- |
@@ -1496,7 +979,7 @@ FND 是 EBS 应用对象字典、用户/职责、Profile、菜单、并发处理
 最终 Profile 值优先级通常为 User > Responsibility > Application > Site。但 Profile 可更新层级受其定义限制；诊断时应同时查显式设置和 `FND_PROFILE.VALUE` 运行时最终值。
 
 <a id="src-docs-09-technical-tables--concurrent-processing-表"></a>
-### Concurrent Processing 表
+#### Concurrent Processing 表
 
 | 表/视图 | 中文名 | 粒度/用途 | 关键字段 |
 | --- | --- | --- | --- |
@@ -1510,7 +993,7 @@ FND 是 EBS 应用对象字典、用户/职责、Profile、菜单、并发处理
 | `FND_RUN_REQUESTS` | 请求子请求关系/打印选项 | Parent Request 执行元数据 | `PARENT_REQUEST_ID` 等 |
 
 <a id="src-docs-09-technical-tables--fndconcurrentrequests"></a>
-#### `FND_CONCURRENT_REQUESTS`
+##### `FND_CONCURRENT_REQUESTS`
 
 | 字段 | 中文名 | 业务说明 |
 | --- | --- | --- |
@@ -1525,7 +1008,7 @@ FND 是 EBS 应用对象字典、用户/职责、Profile、菜单、并发处理
 | `LOGFILE_NAME/OUTFILE_NAME` | 日志/输出路径 | 应通过 EBS 标准页面/授权访问，路径可受节点和迁移影响 |
 
 <a id="src-docs-09-technical-tables--workflow-表"></a>
-### Workflow 表
+#### Workflow 表
 
 | 表 | 中文名 | 粒度/用途 |
 | --- | --- | --- |
@@ -1541,7 +1024,7 @@ FND 是 EBS 应用对象字典、用户/职责、Profile、菜单、并发处理
 `WF_ITEM_ACTIVITY_STATUSES.ACTIVITY_STATUS` 常见 Notified、Active、Complete、Error、Deferred、Suspended 等含义，必须结合 Activity Result、Error Name/Message、Begin/End Date 和归档表查询。`WF_NOTIFICATIONS.STATUS/MAIL_STATUS` 分别表示业务通知状态与邮件发送状态，Open 通知不等于邮件必然未发出。
 
 <a id="src-docs-09-technical-tables--状态解码-sql"></a>
-### 状态解码 SQL
+#### 状态解码 SQL
 
 ```sql
 SELECT lookup_type, lookup_code, meaning, description
@@ -1568,7 +1051,7 @@ SELECT fcr.request_id,
 > Lookup 视图可包含多语言/多行有效性，如返回重复，增加 `LANGUAGE = USERENV('LANG')`、启用标志和有效日条件。
 
 <a id="src-docs-09-technical-tables--官方参考"></a>
-### 官方参考
+#### 官方参考
 
 - [Oracle E-Business Suite eTRM User's Guide R12.2](https://docs.oracle.com/cd/E26401_01/doc.122/f53031/)
 - [Oracle E-Business Suite Concepts R12.2](https://docs.oracle.com/cd/E26401_01/doc.122/e22949/)
@@ -1576,18 +1059,18 @@ SELECT fcr.request_id,
 
 <!-- source: docs/09-technical/workflow-ame-oaf-governance.md -->
 <a id="src-docs-09-technical-workflow-ame-oaf-governance"></a>
-## Workflow、AME、OAF/Forms 与配置迁移治理
+### Workflow、AME、OAF/Forms 与配置迁移治理
 
 
 <a id="src-docs-09-technical-workflow-ame-oaf-governance--分工"></a>
-### 分工
+#### 分工
 
 - Oracle Workflow 负责业务流程、通知、活动、Business Event 与后台引擎处理。
 - AME 负责规则化审批人清单和条件；业务单据仍由各产品的审批集成点驱动。
 - OAF/Forms Personalization 用于受支持的界面行为调整；复杂定制需要遵守 R12.2 EBR/ADOP、扩展点、安全和回归要求。
 
 <a id="src-docs-09-technical-workflow-ame-oaf-governance--实施与发布顺序"></a>
-### 实施与发布顺序
+#### 实施与发布顺序
 
 1. 用业务流程图定义事件、状态、审批角色、超时、代理、拒绝/撤回和异常补偿。
 2. 将 AME 条件、属性、规则、动作类型和测试样例纳入版本控制；覆盖金额、组织、币种、项目、税务等边界值。
@@ -1595,7 +1078,7 @@ SELECT fcr.request_id,
 4. 使用 FNDLOAD、WFLOAD、OAF/Forms 发布工件或 Oracle 受支持工具迁移，并在 ADOP 流程中完成多环境回归。
 
 <a id="src-docs-09-technical-workflow-ame-oaf-governance--诊断-sql"></a>
-### 诊断 SQL
+#### 诊断 SQL
 
 ```sql
 -- Workflow 项目状态按业务键收缩；敏感内容和通知正文不应随意导出。
@@ -1622,14 +1105,117 @@ select wias.item_type,
 ```
 
 <a id="src-docs-09-technical-workflow-ame-oaf-governance--常见问题"></a>
-### 常见问题
+#### 常见问题
 
 - 审批人不正确：先检查交易属性和 AME 条件输入，再检查职责/人员/组织层级；不要直接修改已运行 Workflow 状态表。
 - 通知未发：分辨 Workflow 状态、Background Engine、Mailer、邮件通道和外部 SMTP 断点。
 - 页面修改在补丁后消失：检查是否使用受支持 Personalization/扩展及其迁移工件，避免运行文件系统临时改动。
 
 <a id="src-docs-09-technical-workflow-ame-oaf-governance--官方参考"></a>
-### 官方参考
+#### 官方参考
 
 - [Oracle E-Business Suite Technology Documentation](https://docs.oracle.com/cd/E26401_01/nav/technology.htm)
 - [Oracle E-Business Suite Maintenance Guide](https://docs.oracle.com/cd/E26401_01/doc.122/e22954/toc.htm)
+
+<!-- 兼容旧版目录与学习材料的定位锚点；正文已按主题重编。 -->
+<a id="src-docs-10-technical-adop-and-ebr-readme"></a>
+<a id="src-docs-10-technical-adop-and-ebr-readme--r122-边界"></a>
+<a id="src-docs-10-technical-adop-and-ebr-readme--实施要点"></a>
+<a id="src-docs-10-technical-adop-and-ebr-readme--目标"></a>
+<a id="src-docs-10-technical-adop-and-ebr-readme--诊断"></a>
+<a id="src-docs-10-technical-architecture-readme"></a>
+<a id="src-docs-10-technical-architecture-readme--r122-边界"></a>
+<a id="src-docs-10-technical-architecture-readme--实施要点"></a>
+<a id="src-docs-10-technical-architecture-readme--目标"></a>
+<a id="src-docs-10-technical-architecture-readme--诊断"></a>
+<a id="src-docs-10-technical-audit-and-compliance-readme"></a>
+<a id="src-docs-10-technical-audit-and-compliance-readme--r122-边界"></a>
+<a id="src-docs-10-technical-audit-and-compliance-readme--实施要点"></a>
+<a id="src-docs-10-technical-audit-and-compliance-readme--目标"></a>
+<a id="src-docs-10-technical-audit-and-compliance-readme--诊断"></a>
+<a id="src-docs-10-technical-concurrent-processing-readme"></a>
+<a id="src-docs-10-technical-concurrent-processing-readme--r122-边界"></a>
+<a id="src-docs-10-technical-concurrent-processing-readme--实施要点"></a>
+<a id="src-docs-10-technical-concurrent-processing-readme--目标"></a>
+<a id="src-docs-10-technical-concurrent-processing-readme--诊断"></a>
+<a id="src-docs-10-technical-configuration-migration-readme"></a>
+<a id="src-docs-10-technical-configuration-migration-readme--r122-边界"></a>
+<a id="src-docs-10-technical-configuration-migration-readme--实施要点"></a>
+<a id="src-docs-10-technical-configuration-migration-readme--目标"></a>
+<a id="src-docs-10-technical-configuration-migration-readme--诊断"></a>
+<a id="src-docs-10-technical-data-model-readme"></a>
+<a id="src-docs-10-technical-data-model-readme--r122-边界"></a>
+<a id="src-docs-10-technical-data-model-readme--实施要点"></a>
+<a id="src-docs-10-technical-data-model-readme--目标"></a>
+<a id="src-docs-10-technical-data-model-readme--诊断"></a>
+<a id="src-docs-10-technical-database-development-readme"></a>
+<a id="src-docs-10-technical-database-development-readme--r122-边界"></a>
+<a id="src-docs-10-technical-database-development-readme--实施要点"></a>
+<a id="src-docs-10-technical-database-development-readme--目标"></a>
+<a id="src-docs-10-technical-database-development-readme--诊断"></a>
+<a id="src-docs-10-technical-database-platform-readme"></a>
+<a id="src-docs-10-technical-database-platform-readme--r122-边界"></a>
+<a id="src-docs-10-technical-database-platform-readme--实施要点"></a>
+<a id="src-docs-10-technical-database-platform-readme--目标"></a>
+<a id="src-docs-10-technical-database-platform-readme--诊断"></a>
+<a id="src-docs-10-technical-forms-readme"></a>
+<a id="src-docs-10-technical-forms-readme--r122-边界"></a>
+<a id="src-docs-10-technical-forms-readme--实施要点"></a>
+<a id="src-docs-10-technical-forms-readme--目标"></a>
+<a id="src-docs-10-technical-forms-readme--诊断"></a>
+<a id="src-docs-10-technical-integration-readme"></a>
+<a id="src-docs-10-technical-integration-readme--r122-边界"></a>
+<a id="src-docs-10-technical-integration-readme--实施要点"></a>
+<a id="src-docs-10-technical-integration-readme--目标"></a>
+<a id="src-docs-10-technical-integration-readme--诊断"></a>
+<a id="src-docs-10-technical-middleware-readme"></a>
+<a id="src-docs-10-technical-middleware-readme--r122-边界"></a>
+<a id="src-docs-10-technical-middleware-readme--实施要点"></a>
+<a id="src-docs-10-technical-middleware-readme--目标"></a>
+<a id="src-docs-10-technical-middleware-readme--诊断"></a>
+<a id="src-docs-10-technical-oaf-readme"></a>
+<a id="src-docs-10-technical-oaf-readme--r122-边界"></a>
+<a id="src-docs-10-technical-oaf-readme--实施要点"></a>
+<a id="src-docs-10-technical-oaf-readme--目标"></a>
+<a id="src-docs-10-technical-oaf-readme--诊断"></a>
+<a id="src-docs-10-technical-performance-readme"></a>
+<a id="src-docs-10-technical-performance-readme--r122-边界"></a>
+<a id="src-docs-10-technical-performance-readme--实施要点"></a>
+<a id="src-docs-10-technical-performance-readme--目标"></a>
+<a id="src-docs-10-technical-performance-readme--诊断"></a>
+<a id="src-docs-10-technical-readme"></a>
+<a id="src-docs-10-technical-readme--r122-发布与运行"></a>
+<a id="src-docs-10-technical-readme--专题导航"></a>
+<a id="src-docs-10-technical-readme--业务与数据"></a>
+<a id="src-docs-10-technical-readme--安全边界"></a>
+<a id="src-docs-10-technical-readme--官方资料"></a>
+<a id="src-docs-10-technical-readme--技术认知地图"></a>
+<a id="src-docs-10-technical-readme--技术顾问的最低能力"></a>
+<a id="src-docs-10-technical-readme--标准排障框架"></a>
+<a id="src-docs-10-technical-readme--设计评审清单"></a>
+<a id="src-docs-10-technical-readme--集成与批处理"></a>
+<a id="src-docs-10-technical-release-engineering-readme"></a>
+<a id="src-docs-10-technical-release-engineering-readme--r122-边界"></a>
+<a id="src-docs-10-technical-release-engineering-readme--实施要点"></a>
+<a id="src-docs-10-technical-release-engineering-readme--目标"></a>
+<a id="src-docs-10-technical-release-engineering-readme--诊断"></a>
+<a id="src-docs-10-technical-reporting-development-readme"></a>
+<a id="src-docs-10-technical-reporting-development-readme--r122-边界"></a>
+<a id="src-docs-10-technical-reporting-development-readme--实施要点"></a>
+<a id="src-docs-10-technical-reporting-development-readme--目标"></a>
+<a id="src-docs-10-technical-reporting-development-readme--诊断"></a>
+<a id="src-docs-10-technical-security-readme"></a>
+<a id="src-docs-10-technical-security-readme--r122-边界"></a>
+<a id="src-docs-10-technical-security-readme--实施要点"></a>
+<a id="src-docs-10-technical-security-readme--目标"></a>
+<a id="src-docs-10-technical-security-readme--诊断"></a>
+<a id="src-docs-10-technical-testing-and-automation-readme"></a>
+<a id="src-docs-10-technical-testing-and-automation-readme--r122-边界"></a>
+<a id="src-docs-10-technical-testing-and-automation-readme--实施要点"></a>
+<a id="src-docs-10-technical-testing-and-automation-readme--目标"></a>
+<a id="src-docs-10-technical-testing-and-automation-readme--诊断"></a>
+<a id="src-docs-10-technical-workflow-and-ame-readme"></a>
+<a id="src-docs-10-technical-workflow-and-ame-readme--r122-边界"></a>
+<a id="src-docs-10-technical-workflow-and-ame-readme--实施要点"></a>
+<a id="src-docs-10-technical-workflow-and-ame-readme--目标"></a>
+<a id="src-docs-10-technical-workflow-and-ame-readme--诊断"></a>
