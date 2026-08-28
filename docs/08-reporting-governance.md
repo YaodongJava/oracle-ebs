@@ -4,7 +4,7 @@
 
 ## 阅读导航
 
-- [工具选型](#2-报表工具选型) · [报表治理](#3-报表治理最小模型) · [关账内控](#4-关账与对账治理) · [架构性能](#6-报表架构开发与性能) · [对账矩阵](#7-关账日历与对账设计) · [审计排错](#8-审计数据保留与隐私) · [验证练习](#10-验证清单)
+- [工具选型](#2-报表工具选型) · [报表治理](#3-报表治理最小模型) · [关账内控](#4-关账与对账治理) · [架构性能](#6-报表架构开发与性能) · [对账矩阵](#7-关账日历与对账设计) · [审计排错](#8-审计数据保留与隐私) · [验证练习](#10-验证清单) · [页面与关账实操](#13-资深顾问实操报表与关账)
 
 ## 1. 学习目标
 
@@ -143,6 +143,73 @@ Data Retention（数据保留）策略同时覆盖数据库交易、并发输出
 - **SoD — Segregation of Duties（职责分离）**
 - **Data Lineage（数据血缘）**：数据从来源到报表的转换与追溯关系。
 - **Control Total（控制总额）**：用于证明批次数量和金额完整性的独立汇总。
+
+## 13. 资深顾问实操：报表与关账
+
+### 13.1 关账治理状态图
+
+```mermaid
+stateDiagram-v2
+    [*] --> Planned
+    Planned --> Running: Predecessors complete
+    Running --> Blocked: Exception or dependency
+    Blocked --> Running: Exception resolved
+    Running --> Completed: Evidence attached
+    Completed --> Reviewed: Independent review
+    Reviewed --> SignedOff: Controller approval
+    Reviewed --> Running: Rework required
+    SignedOff --> Reopened: Approved late adjustment
+    Reopened --> Reviewed: Rerun affected controls
+    SignedOff --> [*]
+```
+
+带例外完成必须记录差异金额、风险、临时控制、所有者和解决日期。迟到调整导致重新开期时，只重跑受影响报表是不够的，还要重跑关联子账、对账、重估/折算和签核。
+
+### 13.2 页面剧本：定义并运行 FSG
+
+**常见职责与导航**：`General Ledger Super User → Reports（报表） → Define（定义） → Row Set/Column Set/Content Set/Report`；运行入口通常在 `Reports → Request → Financial`。
+
+1. 先在报表口径文档定义 Ledger、期间、币种、余额类型、科目范围、符号和舍入。
+2. 定义 Row Set：行号、说明、账户范围、计算行和显示格式。
+3. 定义 Column Set：期间、金额类型、币种、预算/实际和计算列。
+4. 需要按公司/成本中心拆分时定义 Content Set；需要排序/显示控制时配置 Row Order/Display Set。
+5. 组合成 Financial Report，提交运行并记录参数和 Request ID。
+6. 用 GL Trial Balance/Account Inquiry 验证关键行，测试零余额、负数、外币、调整期间和层级变更。
+
+### 13.3 页面剧本：BI Publisher 报表变更
+
+1. 确认 Data Definition/Data Model、Template、Language/Territory 和并发程序映射。
+2. 在测试环境导出旧模板并纳入版本控制；数据模型与版式分别变更。
+3. 使用小数据、月末最大数据、零数据、特殊字符、分页和多语言样本测试。
+4. 验证 PDF/Excel/XML 输出、Bursting 分发、权限、敏感字段和文件大小。
+5. 与批准的控制总额对账；由业务所有者确认格式和口径。
+6. 按配置迁移工具/受控发布流程推广，生产运行后保存 Request ID、版本和输出校验。
+
+### 13.4 页面剧本：月结签核
+
+1. 在关账任务表检查每项前置任务、执行人、Request ID 和证据链接。
+2. 对 AP、AR、FA、CE、Inventory/WIP、Projects、Tax 分别确认业务完成、SLA 和 GL 对账。
+3. 检查 GL 未过账、Suspense、Intercompany、Revaluation、Translation 和 Consolidation。
+4. 运行批准的报表集，锁定参数、模板版本和输出文件。
+5. 对所有差异更新 Roll-forward：期初 + 新增 - 解决 = 期末。
+6. Controller 独立复核后签核；开期/关期和迟到调整由不同角色批准。
+
+### 13.5 报表变更影响矩阵
+
+| 变更 | 必查对象 | 回归重点 |
+| --- | --- | --- |
+| 科目值/层级 | FSG、Smart View、接口映射、预算 | 历史比较、父值汇总、权限 |
+| Ledger/OU | Data Access Set、MOAC、报表参数 | 应见/不应见数据、默认值 |
+| SLA 账户规则 | 子账报表、GL 控制账户、对账 | 新旧事件、冲销、跨期 |
+| BI Publisher 模板 | Data Model、并发程序、Bursting | 多语言、分页、敏感分发 |
+| 补丁/ECC | 数据加载、索引、Dashboard | 新鲜度、角色、性能、数字一致性 |
+
+### 13.6 高级异常演练
+
+- 报表在最后一分钟改变：冻结版本，比较数据模型/模板/参数，不覆盖已签核输出。
+- 子账对账通过但 FSG 不符：核对余额类型、币种、Summary Account、Row/Content Set 和未过账日记账。
+- ECC 与交易页面不符：先核对最后加载时间和增量请求，再检查安全与索引，不直接修改交易数据。
+- 敏感报表误发：停止分发、保留审计证据、按事件响应处理，不通过删除日志掩盖事故。
 
 <!-- 兼容旧版目录与学习材料的定位锚点；正文已按主题重编。 -->
 <a id="src-docs-08-reporting-governance-audit-and-data-retention-readme"></a>

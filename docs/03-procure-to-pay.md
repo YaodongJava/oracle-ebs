@@ -4,7 +4,7 @@
 
 ## 阅读导航
 
-- [产品边界](#1-学习目标与产品边界) · [业务会计主链](#2-业务与会计主链) · [关键控制](#3-关键控制设计) · [功能实施](#4-功能顾问实施顺序) · [接口设计](#5-技术与接口设计) · [月结排错](#6-月结与对账) · [专题详解](#9-专题详解)
+- [产品边界](#1-学习目标与产品边界) · [业务会计主链](#2-业务与会计主链) · [关键控制](#3-关键控制设计) · [功能实施](#4-功能顾问实施顺序) · [接口设计](#5-技术与接口设计) · [月结排错](#6-月结与对账) · [页面与支付实操](#9-资深顾问实操发票匹配与支付) · [专题详解](#10-专题详解)
 
 ## 1. 学习目标与产品边界
 
@@ -80,7 +80,109 @@ AP Invoice Open Interface 应维护来源、发票号、供应商、业务唯一
 - 设计 AP 发票接口的幂等键、拒绝重跑和控制总额。
 - 制作 P2P 月结清单并为每一步指定证据和责任人。
 
-## 9. 专题详解
+## 9. 资深顾问实操：发票、匹配与支付
+
+### 9.1 P2P 跨模块时序图
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant REQ as Requester 请购人
+    participant PO as Purchasing 采购
+    participant RCV as Receiving 收货
+    participant AP as Payables 应付
+    participant ZX as E-Business Tax 税务
+    participant IBY as Payments 支付
+    participant BANK as Bank 银行
+    participant SLA as SLA / GL
+
+    REQ->>PO: Requisition / Approval
+    PO->>RCV: Purchase Order
+    RCV->>AP: Receipt and Accrual
+    AP->>ZX: Calculate Tax
+    AP->>AP: Match, Validate, Approve
+    AP->>SLA: Create Invoice Accounting
+    AP->>IBY: Payment Process Request
+    IBY->>BANK: Payment Instruction / File
+    BANK-->>IBY: ACK, Reject or Settlement
+    IBY->>SLA: Payment / Clearing Accounting
+```
+
+### 9.2 页面剧本：录入并验证标准发票
+
+**常见职责与导航**：`Payables Super User（应付超级用户） → Invoices（发票） → Entry（录入） → Invoices`，进入 Invoice Workbench（发票工作台）。
+
+**前置检查**：当前 OU、Supplier/Site、发票期间、付款条件、币种/汇率、PO/Receipt、税注册和重复发票规则。
+
+1. 输入 Supplier、Site、Invoice Number、Invoice Date、GL Date、Invoice Amount、Currency 和 Type。
+2. 对 PO 发票选择 Match（匹配），按 PO Shipment 或 Receipt 选择数量/金额；非 PO 发票录入 Lines/Distributions。
+3. 核对税务计算、Recoverable/Nonrecoverable Tax、Withholding（预扣税，如适用）及账户分配。
+4. 保存并选择 Actions → Validate；查看 Holds（挂起）并区分匹配、期间、税、分配或审批原因。
+5. 需要审批时提交 Invoice Approval Workflow；确认批准历史，而非仅看 Validation Status。
+6. 运行 Create Accounting（Final），确认会计完成并按项目策略传送 GL。
+7. 在 Invoice Overview/Distributions/View Accounting 中核对负债、费用/资产、税和应计冲销。
+
+**结果验证**：发票总额等于行和税；匹配数量不超过可用数量；付款计划正确；无未解释 Hold；SLA 与 GL 可追溯。
+
+### 9.3 页面剧本：处理匹配差异与 Hold
+
+1. 在 Invoice Workbench 查询发票，打开 Holds 标签或 Actions 查看 Hold 名称和原因。
+2. 对 Quantity/Price/Amount Hold，比较 PO、Receipt、Invoice 的数量、单价、币种和 UOM。
+3. 判断正确动作是更正 PO、补/退收货、更正发票、批准容差例外还是释放 Hold。
+4. 释放需授权的 Hold 时填写原因并保存审批证据；不可为通过付款而无依据释放系统控制。
+5. 重新 Validate，并复核分配与会计是否发生变化。
+
+### 9.4 页面剧本：创建 Payment Process Request
+
+**常见职责与导航**：`Payables Manager/Payments Responsibility → Payments → Entry → Payment Manager`。
+
+1. 新建 PPR，输入名称、Payment Process Profile、支付日期、银行账户和选择条件。
+2. 运行/提交 Invoice Selection，复核 Selected、Rejected 和未选发票原因。
+3. Review Proposed Payments，按审批规则移除或暂停异常付款；核对供应商银行变更和高额/重复付款。
+4. Build Payments 后复核 Payment Instruction、付款数量和控制总额。
+5. Format/Transmit 支付文件，保存文件 ID、哈希或控制总额及传输状态。
+6. 获取银行 ACK/Reject，不把“文件已生成”当作“银行已支付”。
+7. 按银行事实完成确认、作废/重发和 CE Clearing/Reconciliation；核对付款会计与现金账户。
+
+### 9.5 PPR 状态与恢复决策
+
+```mermaid
+stateDiagram-v2
+    [*] --> Selecting: Submit PPR
+    Selecting --> Review: Selection complete
+    Selecting --> Failed: Selection error
+    Review --> Building: Approve proposal
+    Building --> Formatting: Payments built
+    Formatting --> Transmitted: File sent
+    Formatting --> Failed: Format error
+    Transmitted --> Acknowledged: Bank ACK
+    Transmitted --> Rejected: Bank rejects
+    Acknowledged --> Settled: Bank settlement
+    Rejected --> Review: Correct and rebuild
+    Failed --> Selecting: Correct and resubmit
+    Settled --> [*]
+```
+
+恢复前确认是否已生成 Payment、Payment Instruction 或银行文件。同一 PPR 的不同阶段不能采用相同重跑方式；银行回执不明时先向银行查询，不得盲目重发造成重复支付。
+
+### 9.6 月结页面检查
+
+在 AP Period Close/Control 页面检查期间，运行 Invoice Validation、Create Accounting、Transfer to GL 和相关 Trial Balance/Accounting 报表。关闭前清理未验证、Hold、未会计、未传输、未清算和接口拒绝，并与 PO Receiving Accrual、IBY、CE 和 GL 责任人签核。
+
+### 9.7 资深顾问必须设计的例外
+
+- 预付款申请与核销、员工报销、借项/贷项通知单、外币付款与汇兑损益。
+- 取消发票、取消付款、Stop Payment（止付）、Void（作废）和银行已结算后的补偿。
+- 同一供应商多个地点/银行、供应商合并、银行账户变更冻结期。
+- PO/Receipt 在旧期间、发票在新期间时的应计与价格差异。
+- 接口部分成功、重复发票号、税额舍入和 Project/Asset 分配。
+
+### 9.8 官方操作依据
+
+- [Oracle Payables User's Guide](https://docs.oracle.com/cd/E26401_01/doc.122/e48760/title.htm)
+- [Oracle Payables User's Guide — Contents](https://docs.oracle.com/cd/E26401_01/doc.122/e48760/toc.htm)
+
+## 10. 专题详解
 
 
 <!-- source: docs/02-ap/README.md -->

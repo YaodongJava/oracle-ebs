@@ -4,7 +4,7 @@
 
 ## 阅读导航
 
-- [范围](#1-学习目标与范围) · [业务主链](#2-业务主链) · [对象与状态](#3-关键对象与状态) · [功能设计](#4-功能设计重点) · [会计对账](#5-会计与对账) · [接口排错](#6-技术与接口视角) · [专题详解](#9-专题详解)
+- [范围](#1-学习目标与范围) · [业务主链](#2-业务主链) · [对象与状态](#3-关键对象与状态) · [功能设计](#4-功能设计重点) · [会计对账](#5-会计与对账) · [接口排错](#6-技术与接口视角) · [页面与收款实操](#9-资深顾问实操开票收款与信用) · [专题详解](#10-专题详解)
 
 ## 1. 学习目标与范围
 
@@ -73,7 +73,105 @@ Lockbox 处理银行收款文件、客户识别和自动核销。匹配规则应
 - 设计 Lockbox 匹配优先级和例外队列。
 - 从账龄差异反向定位到交易、核销、XLA 和 GL。
 
-## 9. 专题详解
+## 9. 资深顾问实操：开票、收款与信用
+
+### 9.1 C2C 时序图
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant CUST as Customer 客户
+    participant OM as Order Management
+    participant AR as Receivables
+    participant ZX as E-Business Tax
+    participant COL as Collections
+    participant BANK as Bank / Lockbox
+    participant CE as Cash Management
+    participant SLA as SLA / GL
+
+    CUST->>OM: Order / Credit Check
+    OM->>AR: AutoInvoice Interface
+    AR->>ZX: Tax determination
+    AR->>SLA: Revenue and Receivable Accounting
+    AR->>COL: Aging / Delinquency
+    CUST->>BANK: Payment
+    BANK->>AR: Lockbox / Receipt
+    AR->>AR: Apply, Unapply or On-account
+    AR->>CE: Remit and Clear
+    CE->>SLA: Cash clearing accounting
+```
+
+### 9.2 页面剧本：创建应收交易
+
+**常见职责与导航**：`Receivables Manager（应收经理） → Transactions（交易） → Transactions`，进入 Transactions Workbench（交易工作台）。
+
+1. 确认 OU、Customer Account、Bill-to/Ship-to Site Use、Transaction Source 和 Transaction Type。
+2. 输入 Transaction Date、GL Date、Currency、Payment Terms、Reference 和必要 DFF。
+3. 录入 Lines：项目/说明、数量、单价；核对税分类、税额和收入规则。
+4. 查看 Distributions，确认 Receivable、Revenue、Tax、Freight、Unearned/Unbilled 等账户来源。
+5. Complete（完成）交易；若不能完成，检查客户用途、AutoAccounting、期间、税和借贷平衡。
+6. 运行 Create Accounting，并从 View Accounting 验证 SLA/GL。
+7. 打印/交付发票并保留版本；打印后变更受 System Options 和内控约束。
+
+### 9.3 页面剧本：录入并核销收款
+
+**常见职责与导航**：`Receivables Manager → Receipts（收款） → Receipts`，进入 Receipts Workbench（收款工作台）。
+
+1. 输入 Receipt Method、Receipt Number、Customer、Receipt Date、GL Date、Currency 和 Amount。
+2. 保存后进入 Applications，按交易号或客户未结项查询。
+3. 核销到 Invoice/Debit Memo，或按批准原因保留 Unapplied/On-account；核对余额和折扣。
+4. 需要撤销核销时使用 Unapply，并记录业务原因；不能删除已形成会计或银行链的结果。
+5. 根据 Receipt Class 完成 Confirmation、Remittance 和 Clearing；与 CE 银行对账状态保持一致。
+6. 运行 Create Accounting，验证 Cash/Clearing、Receivable、Unapplied/On-account 会计。
+
+### 9.4 AutoInvoice 操作与验收
+
+1. 在来源系统/接口暂存层核对批次、交易头/行/分配、客户、币种、日期和控制总额。
+2. 提交 AutoInvoice Import（自动开票导入），参数至少记录 Transaction Source、日期范围和 Batch Source。
+3. 查看 AutoInvoice Execution/Validation Report，区分接口拒绝与已生成交易。
+4. 对拒绝行按 Interface Line ID 和错误原因修正；重跑前排除已成功生成的交易。
+5. 对生成交易抽样检查 Grouping Rule、Transaction Number、Tax、AutoAccounting、Complete 状态和会计日期。
+6. 用来源数量/金额/税额 = 成功交易 + 拒绝记录建立批次平衡。
+
+### 9.5 收款状态 UML
+
+```mermaid
+stateDiagram-v2
+    [*] --> Entered: Enter or import receipt
+    Entered --> Unidentified: Customer unknown
+    Entered --> Unapplied: Customer known
+    Unapplied --> Applied: Apply to transaction
+    Unapplied --> OnAccount: Place on account
+    Applied --> Unapplied: Unapply
+    Applied --> Remitted: Remittance
+    Remitted --> Cleared: Bank clears
+    Remitted --> Reversed: Reject or reverse
+    Cleared --> Reversed: Returned payment process
+    Cleared --> [*]
+```
+
+实际状态受 Receipt Class、Method、确认/汇款方式和本地化影响。逆向处理前必须判断银行是否已清算、会计是否已过账及下游催收/退款是否已发生。
+
+### 9.6 信用与催收高级控制
+
+| 场景 | 资深顾问的设计问题 | 验收证据 |
+| --- | --- | --- |
+| 信用检查 | 检查层级、额度、风险类别、到期余额、人工覆盖 | 通过/失败/覆盖三类订单 |
+| 逾期催收 | Aging Bucket、评分、策略工作项、承诺付款 | 策略执行与活动历史 |
+| 争议与扣款 | 原因、所有者、审批、贷项/调整/收回路径 | 争议账龄和结案会计 |
+| 退款 | 原收款、贷项、最低金额、支付方式和 IBY/AP 边界 | 退款审批、付款和核销 |
+| 坏账 | 资格、核销账户、税务影响和追收 | 审批、会计、后续收回 |
+
+### 9.7 月结页面检查
+
+检查未完成交易、AutoInvoice 拒绝、未核销/未识别收款、未确认/汇款/清算收款、未会计事件和未传 GL 分录；运行 Aging、AR Reconciliation/Trial Balance 及 Create Accounting。差异按 Transaction/Receipt、Schedule、Application、XLA 和 GL 分层定位。
+
+### 9.8 官方操作依据
+
+- [Oracle Receivables User Guide — Contents](https://docs.oracle.com/cd/E26401_01/doc.122/f10570/toc.htm)
+- [Oracle Receivables User Guide — AutoAccounting](https://docs.oracle.com/cd/E26401_01/doc.122/f10570/T355475T355481.htm)
+
+## 10. 专题详解
 
 
 <!-- source: docs/03-ar/README.md -->

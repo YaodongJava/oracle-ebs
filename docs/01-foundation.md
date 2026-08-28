@@ -4,7 +4,7 @@
 
 ## 阅读导航
 
-- [学习目标](#1-学习目标与范围) · [企业结构](#2-企业结构的认知顺序) · [配置顺序](#3-推荐配置顺序) · [COA 与主数据](#4-coa-与主数据治理) · [权限](#5-权限与数据访问) · [诊断与练习](#7-基础问题诊断清单) · [专题详解](#9-专题详解)
+- [学习目标](#1-学习目标与范围) · [企业结构](#2-企业结构的认知顺序) · [配置顺序](#3-推荐配置顺序) · [COA 与主数据](#4-coa-与主数据治理) · [权限](#5-权限与数据访问) · [诊断与练习](#7-基础问题诊断清单) · [页面与配置实操](#9-资深顾问实操页面与配置) · [专题详解](#10-专题详解)
 
 ## 1. 学习目标与范围
 
@@ -82,7 +82,92 @@ Responsibility（职责）决定菜单、请求组和配置文件；MOAC Securit
 - 用同一用户切换两项职责，解释为何可见 OU 或 Ledger 不同。
 - 从一张 AP 发票追溯到 XLA 和 GL，标注每层主键及状态。
 
-## 9. 专题详解
+## 9. 资深顾问实操：页面与配置
+
+> 下列为 Oracle EBS R12.2 标准职责下的常见导航。客户常通过自定义职责、菜单排除和功能安全调整入口，执行前须在目标实例核对；基础配置变更应先在非生产环境完成影响分析和回归测试。
+
+### 9.1 企业结构 UML
+
+```mermaid
+classDiagram
+    class BusinessGroup["Business Group\n业务组"]
+    class LegalEntity["Legal Entity\n法人实体"]
+    class Ledger["Primary Ledger\n主账簿"]
+    class OperatingUnit["Operating Unit\n业务实体"]
+    class InventoryOrg["Inventory Organization\n库存组织"]
+    class DataAccessSet["Data Access Set\n数据访问集"]
+    class SecurityProfile["MOAC Security Profile\n多组织安全配置"]
+    class COA["Chart of Accounts\n会计科目表"]
+    class Calendar["Accounting Calendar\n会计日历"]
+    class Currency["Ledger Currency\n账簿币种"]
+
+    BusinessGroup "1" --> "*" OperatingUnit : contains
+    LegalEntity "1" --> "*" OperatingUnit : owns or uses
+    Ledger "1" --> "*" OperatingUnit : accounts for
+    OperatingUnit "1" --> "*" InventoryOrg : services
+    Ledger --> COA : uses
+    Ledger --> Calendar : uses
+    Ledger --> Currency : uses
+    DataAccessSet --> Ledger : grants GL access
+    SecurityProfile --> OperatingUnit : grants transaction access
+```
+
+这张图是设计检查图，不代表所有客户都采用一对多关系。法人、Ledger、OU 和库存组织之间的实际映射应在组织设计文档中逐项列明，并说明税务登记、平衡段和跨组织结算逻辑。
+
+### 9.2 页面剧本：检查 Accounting Setup Manager
+
+**目标**：确认 Ledger 及其法律实体、业务实体、会计选项和报告关系已完整配置。
+
+**常见职责与导航**：`General Ledger Super User（总账超级用户） → Setup（设置） → Financials（财务） → Accounting Setup Manager（会计设置管理器）`。部分版本从 Accounting Setup Manager 首页进入 Accounting Setups。
+
+**操作步骤**：
+
+1. 选择适用的 Accounting Setup（会计设置），先记录名称、状态和变更请求号。
+2. 展开 Primary Ledger，核对 COA、Calendar、Currency、Accounting Method 和启用日期。
+3. 核对 Legal Entity、Balancing Segment Value、Operating Unit 及 Ledger 的关系。
+4. 核对 Subledger Accounting Options、Intracompany Balancing、Sequencing、Secondary Ledger 和 Reporting Currency。
+5. 对比批准的组织/会计设计，不一致项先登记，不在生产页面直接试改。
+6. 保存截图或导出配置清单，并由功能、财务和技术负责人共同签认。
+
+**结果验证**：使用相同职责检查 GL Ledger 可见性，再使用 AP/AR 职责核对默认 OU 和可切换 OU；建立一笔低风险测试交易验证会计上下文。
+
+### 9.3 页面剧本：维护科目值与层级
+
+**常见职责与导航**：`General Ledger Super User → Setup → Financials → Flexfields → Key → Values（值）`；父子层级也可能通过 Account Hierarchy Manager（科目层级管理器）维护。
+
+1. 取得已批准的段、值、父值、有效日期、允许过账/预算标志和属性。
+2. 查询目标 Value Set（值集），确认不存在同义值或时间重叠。
+3. 新增或修改值，维护 Description（说明）、Parent（父值）和 Segment Qualifiers（段限定符）。
+4. 仅对明细值启用 Allow Posting；父值用于汇总时通常不允许过账。
+5. 检查 Cross-Validation Rules（交叉验证规则）、Security Rules（安全规则）和报表层级影响。
+6. 在非生产环境建立账户组合，测试日记账、子账派生、FSG 汇总和接口校验。
+
+**禁止事项**：不要通过更新 `FND_FLEX_VALUES` 等基表修复值；不要在关闭历史科目值前忽略未结交易、预算、报表和接口映射。
+
+### 9.4 页面剧本：检查 MOAC 与 GL 数据权限
+
+1. 在 `System Administrator（系统管理员） → Profile → System` 查询 `MO: Security Profile`、`MO: Operating Unit` 和 `GL: Data Access Set` 的 Site/Application/Responsibility/User 层值。
+2. 记录最终生效值及覆盖层级，不只看 Site 层默认值。
+3. 使用目标职责进入 AP/AR 查询页面，验证可见 OU；在 GL 日记账或余额查询中验证可见 Ledger/平衡段。
+4. 用“应可见”和“应不可见”各一组样本验证，保留用户、职责、参数和结果。
+5. 权限修改后重新登录，防止旧会话缓存造成误判。
+
+### 9.5 资深顾问的基础配置评审表
+
+| 决策 | 必须形成的证据 | 下游影响 |
+| --- | --- | --- |
+| Ledger 四要素 | 会计政策、币种/日历、COA 设计、会计方法 | 所有子账、SLA、报表 |
+| 法人与平衡段映射 | 法定主体清单、税务登记、平衡规则 | 税务、公司间、法定报告 |
+| OU 与共享服务 | 业务所有权、处理职责、MOAC 范围 | AP/AR/PO、数据访问 |
+| 科目值与层级 | 值所有者、有效期、父子层级、审批 | 接口、SLA、FSG、预算 |
+| 数据访问和职责 | SoD 矩阵、应见/不应见测试 | 交易、查询、审批、审计 |
+| 主数据治理 | 唯一性规则、变更流程、停用策略 | 客户、供应商、银行、税务 |
+
+### 9.6 高级诊断：配置正确但交易仍失败
+
+按“生效日期 → 配置层级 → 组织上下文 → 缓存/会话 → 业务对象默认 → SLA/接口”检查。比较正常与异常职责的 Profile 值、OU、Ledger、用户权限和单据类型；确认页面默认值是否来自 Supplier/Customer Site、Transaction Type、Financial Options 或 SLA，而不是只检查总账设置。
+
+## 10. 专题详解
 
 
 <!-- source: docs/01-common/README.md -->

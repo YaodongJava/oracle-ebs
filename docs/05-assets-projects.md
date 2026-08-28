@@ -4,7 +4,7 @@
 
 ## 阅读导航
 
-- [范围](#1-学习目标与边界) · [核心链路](#2-两条核心链路) · [固定资产](#3-fixed-assets-设计重点) · [项目](#4-projects-设计重点) · [会计对账](#5-会计和对账) · [技术排错](#6-技术视角) · [专题详解](#9-专题详解)
+- [范围](#1-学习目标与边界) · [核心链路](#2-两条核心链路) · [固定资产](#3-fixed-assets-设计重点) · [项目](#4-projects-设计重点) · [会计对账](#5-会计和对账) · [技术排错](#6-技术视角) · [页面与资本化实操](#9-资深顾问实操资产项目与资本化) · [专题详解](#10-专题详解)
 
 ## 1. 学习目标与边界
 
@@ -67,7 +67,98 @@ AP/采购/手工来源 → Mass Additions（批量资产增加） → 创建资�
 - 从项目支出生成资产线并传入 FA，核对 CIP 清理。
 - 为公司账簿与税务账簿设计差异和对账方案。
 
-## 9. 专题详解
+## 9. 资深顾问实操：资产、项目与资本化
+
+### 9.1 Project to Asset UML
+
+```mermaid
+flowchart LR
+    A[AP / PO / Timecard\n来源成本] --> B[PA Expenditure Item\n项目支出项]
+    B --> C{Eligible for\nCapitalization?}
+    C -- No --> D[Expense / Project Cost\n费用或项目成本]
+    C -- Yes --> E[Capital Cost Distribution\n资本成本分配]
+    E --> F[Asset Line\n资产线]
+    F --> G[Interface to Oracle Assets\n传送固定资产]
+    G --> H[Mass Addition\n批量资产增加]
+    H --> I[Asset Workbench\n创建正式资产]
+    I --> J[Depreciation / Accounting\n折旧与会计]
+    J --> K[FA - PA - GL Reconciliation\n三方对账]
+```
+
+### 9.2 页面剧本：QuickAdditions 创建资产
+
+**常见职责与导航**：`Fixed Assets Manager（固定资产经理） → Assets（资产） → Asset Workbench（资产工作台） → QuickAdditions（快速增加）`。
+
+1. 选择 Corporate Book（公司账簿），输入 Asset Category、Description、Cost 和 Date Placed in Service（投产日期）。
+2. 核对默认 Depreciation Method、Life/Rate、Prorate Convention、Salvage Value 和 Depreciate 标志。
+3. 维护 Assignment：Units、Employee（如适用）、Expense Account 和 Location。
+4. 保存并记录 Asset Number；在 Asset Workbench 查询 Books、Assignments 和 Source Lines。
+5. 运行或查看 Create Accounting 前，确认类别账户、成本和折旧参数符合批准政策。
+
+QuickAdditions 适合默认规则完整的简单资产。需要多来源行、复杂账簿信息或逐项控制时使用 Detail Additions；批量来源优先使用 Mass Additions。
+
+### 9.3 页面剧本：处理 Mass Additions
+
+**常见职责与导航**：`Fixed Assets Manager → Mass Additions → Prepare Mass Additions`，菜单名称可能因职责而异。
+
+1. 按 Source Batch、Invoice、Supplier 或 Queue 查询来自 AP/Projects 的行。
+2. 检查 Queue Name（队列）、Posting Status、Asset Category、Book、Cost、Units 和来源行。
+3. 判断行应 Post、Merge、Split、Hold、Delete 还是作为 Expense；所有决定保留业务依据。
+4. 对合并/拆分后的金额执行控制总额，确保来源行总额不变。
+5. 提交 Post Mass Additions，查看请求日志和错误；查询生成的 Asset Number。
+6. 从资产 Source Lines 反查 AP Invoice Distribution 或 PA Asset Line，完成来源对账。
+
+### 9.4 页面剧本：运行折旧与关期
+
+**常见职责与导航**：`Fixed Assets Manager → Depreciation → Run Depreciation`。
+
+1. 选择资产 Book，确认当前期间、未完成增加/调整/转移/退休和异常资产已处理。
+2. 第一次运行时通常不要立即选择 Close Period，先执行折旧并复核结果。
+3. 记录并发请求，检查 Depreciation 日志、Journal Entry Reserve Ledger/Tax Reserve Ledger 等输出。
+4. 对失败资产按 Asset Number、Category、Method、Life、投产日期和账簿设置修复后重跑。
+5. 核对 Cost、Reserve、YTD Depreciation、Depreciation Expense 与 GL 控制账户。
+6. 获得签核后再选择 Close Period 运行；成功后确认本期关闭且下一期间打开。
+
+Oracle Assets 在折旧运行期间限制相关资产交易。未关闭期间发生允许的资产调整时，系统可能自动回滚相关资产折旧；资深顾问必须评估重跑范围和报表版本。
+
+### 9.5 页面剧本：资产调整、转移与退休
+
+在 `Assets → Asset Workbench` 按唯一 Asset Number/Tag Number 查询：
+
+- **Books**：调整成本、残值、方法、寿命等，并选择 Amortize（摊销调整）或 Expense（当期费用）策略。
+- **Assignments**：在成本中心、地点或员工间转移数量；确认分配总单位数等于资产单位数。
+- **Retirements**：输入退休日期、数量/成本、处置收入和成本；计算并复核 Gain/Loss（处置损益）。
+- **Reclassification**：变更类别后复核成本/累计折旧账户迁移及折旧规则是否需要人工调整。
+
+逆向操作前确认期间、折旧、会计和税务账簿影响。已完全退休或已关期间的处理限制必须以目标实例验证。
+
+### 9.6 页面剧本：项目成本到资本化
+
+1. 在 Projects 责任下查询 Project/Task，核对 Project Type、Capital 标志、组织、状态和关键日期。
+2. 在 Expenditure Inquiry 查看员工工时、费用、AP 发票、采购承诺等支出项及 Cost Distribution 状态。
+3. 运行成本分配/会计，清理 Uncosted、Rejected 和跨期支出。
+4. 生成或维护 Capital Asset、Asset Assignment 和 Asset Lines，检查资本化日期、类别、单位和成本分组。
+5. 执行 Interface Assets/Asset Lines to Oracle Assets，记录请求 ID 和接口批次。
+6. 在 FA Mass Additions 接收并过账；用项目资产线金额 = FA 来源行/资产成本建立控制总额。
+
+### 9.7 资深顾问决策矩阵
+
+| 决策 | 关键问题 | 必测场景 |
+| --- | --- | --- |
+| 资产类别 | 账户、折旧规则、实物分类是否稳定 | 新增、重分类、退休 |
+| 投产日期/惯例 | 首期和末期折旧如何处理 | 月初/月末、追溯投产 |
+| 调整方式 | 当期费用还是剩余寿命摊销 | 折旧前后、已关期间 |
+| 公司/税务账簿 | 复制规则和差异来源是什么 | 成本、寿命、方法差异 |
+| 项目资本化 | 哪些成本可资本化，何时停止资本化 | 部分资本化、冲销、跨期 |
+| 项目开票 | 收入与开票是否同步、如何进 AR | 预付款、里程碑、贷项 |
+
+### 9.8 官方操作依据
+
+- [Oracle Assets User Guide](https://docs.oracle.com/cd/E26401_01/doc.122/e48755/T293142T293144.htm)
+- [Oracle Assets User Guide — Depreciation](https://docs.oracle.com/cd/E26401_01/doc.122/e48755/T293142T301315.htm)
+- [Oracle EBS R12.2 Projects Documentation](https://docs.oracle.com/cd/E26401_01/nav/projects.htm)
+
+## 10. 专题详解
 
 
 <!-- source: docs/05-fa/README.md -->

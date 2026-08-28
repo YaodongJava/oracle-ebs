@@ -4,7 +4,7 @@
 
 ## 阅读导航
 
-- [范围](#1-学习目标与范围) · [数量与价值流](#2-数量流与价值流) · [成本方法](#3-成本方法与要素) · [业务会计](#4-关键业务会计) · [功能实施](#5-功能顾问实施重点) · [接口月结](#6-技术与接口视角) · [专题详解](#9-专题详解)
+- [范围](#1-学习目标与范围) · [数量与价值流](#2-数量流与价值流) · [成本方法](#3-成本方法与要素) · [业务会计](#4-关键业务会计) · [功能实施](#5-功能顾问实施重点) · [接口月结](#6-技术与接口视角) · [页面与关账实操](#9-资深顾问实操成本事务与关账) · [专题详解](#10-专题详解)
 
 ## 1. 学习目标与范围
 
@@ -70,7 +70,99 @@ Standard Cost（标准成本）以预设标准计价，实际差异进入采购�
 - 完成采购接收、WIP 生产、发运、开票和 COGS 确认的全链追溯。
 - 为月结设计数量、价值、会计三层对账表。
 
-## 9. 专题详解
+## 9. 资深顾问实操：成本事务与关账
+
+### 9.1 库存与制造成本流程图
+
+```mermaid
+flowchart LR
+    PO[PO / Receiving\n采购与接收] --> INV[Inventory Transactions\n库存事务]
+    INV --> WIP[WIP Material / Resource\n在制品材料与资源]
+    WIP --> FG[Assembly Completion\n完工入库]
+    FG --> SHIP[Shipping\n发运]
+    SHIP --> COGS[COGS Recognition\n销售成本确认]
+    PO --> COST[Cost Processor\n成本处理]
+    INV --> COST
+    WIP --> COST
+    COGS --> COST
+    COST --> SLA[Create Accounting\n子账会计]
+    SLA --> GL[General Ledger\n总账]
+    GL --> REC[Inventory/WIP/COGS\nReconciliation]
+```
+
+### 9.2 页面剧本：查询物料事务与会计
+
+**常见职责与导航**：`Inventory（库存） → Transactions（事务处理） → Material Transactions（物料事务）`；账户分配可从 Tools/View Accounting 或 Cost Management 的 Material Account Distribution 查询。
+
+1. 按 Organization、Item、Transaction Date/Type、Source 或 Transaction ID 限定查询。
+2. 核对数量、UOM、Subinventory/Locator、Transfer Organization 和 Transaction Action。
+3. 查看 Costed Flag/成本状态、Actual Cost、Variance 和 Accounting Line。
+4. 记录 `transaction_id`，追踪到成本分配、SLA Event 和 GL Journal。
+5. 若数量已更新但成本未完成，检查 Cost Manager、事务处理器、期间和错误表；不要补录杂项事务抵消未知错误。
+
+### 9.3 页面剧本：查看和更新标准成本
+
+**常见导航**：`Cost Management → Item Costs → Item Costs` 查询；标准成本更新通常从 `Item Costs → Standard Cost Update` 相关菜单执行。
+
+1. 选择 Inventory Organization、Cost Type 和 Item，查看 Material/Overhead/Resource/OSP 等成本要素。
+2. 区分 Frozen（冻结）成本与 Pending/Simulation 成本；记录成本来源、BOM/Routing 和费率版本。
+3. 运行 Cost Rollup（成本卷积）并审阅异常、零成本和大幅波动。
+4. 在非生产环境执行 Standard Cost Update，验证库存重估和差异账户。
+5. 生产更新前冻结业务窗口、保存更新前后成本、库存数量/价值和控制总额；更新后立即对账。
+
+标准成本更新会影响现有库存价值和差异，必须有财务批准与回退/补偿方案，不能只由成本维护人员独立执行。
+
+### 9.4 页面剧本：库存期间关闭
+
+**常见职责与导航**：`Inventory → Accounting Close Cycle（会计关账周期） → Inventory Accounting Periods（库存会计期间）`。
+
+1. 选择目标 Organization 和 Open Period，点击 Pending 查看待处理活动。
+2. 清理必须解决项：未处理物料事务、未计成本事务、待处理 WIP 成本事务。
+3. 评估建议解决项：Receiving Interface、Material Interface、Shop Floor Move 等；关闭后这些旧日期事务可能无法处理。
+4. 运行 Period Close Diagnostics、Material Account Distribution、WIP Account Distribution 和库存价值报表。
+5. 完成 AP/Purchasing 截止及接收应计；对账库存/WIP/接收/在途与 GL。
+6. 提交 Create Accounting - Cost Management，并确认无错误且已传 GL。
+7. 选择 Change Status → Closed；关闭不可逆，必须在执行前取得签核。
+8. 运行 Period Close Reconciliation，保存期间、组织、请求 ID、差异和批准。
+
+### 9.5 待处理事务状态图
+
+```mermaid
+stateDiagram-v2
+    [*] --> Interface
+    Interface --> TransactionTemp: Validation passed
+    Interface --> InterfaceError: Validation failed
+    TransactionTemp --> MaterialTransaction: Transaction Manager
+    TransactionTemp --> ProcessingError: Processing failed
+    MaterialTransaction --> Costed: Cost Processor
+    MaterialTransaction --> Uncosted: Waiting or error
+    Costed --> Accounted: Create Accounting
+    Accounted --> GL: Transfer and posting
+    InterfaceError --> Interface: Correct and resubmit
+    ProcessingError --> TransactionTemp: Correct and reprocess
+    Uncosted --> Costed: Resolve cost issue
+```
+
+不同层的失败必须使用对应的标准管理器或接口恢复。直接修改状态标志会破坏数量、成本和会计的一致性。
+
+### 9.6 WIP 差异分析
+
+关闭工单前核对标准/实际材料、资源、外协、制造费用、完工和废品。差异按 Usage（用量）、Rate（费率）、Efficiency（效率）、Method/Configuration 等业务原因解释，并映射到责任部门；不能只按 GL 差异科目汇总。
+
+### 9.7 资深顾问的三层对账
+
+| 层 | 对账对象 | 关键问题 |
+| --- | --- | --- |
+| 数量 | On-hand、在途、WIP 数量、发运数量 | 是否存在未处理/追溯/负库存交易 |
+| 价值 | 库存价值、WIP 价值、接收应计、COGS | 成本方法、成本层和截止是否一致 |
+| 会计 | 事务分配、XLA、GL 控制账户 | 是否未会计、未传输、手工 GL 或账户错误 |
+
+### 9.8 官方操作依据
+
+- [Oracle Cost Management User's Guide — Period Close](https://docs.oracle.com/cd/E26401_01/doc.122/e48829/T372621T378953.htm)
+- [Oracle Inventory User's Guide — Accounting Periods](https://docs.oracle.com/cd/E26401_01/doc.122/e48820/T291651T292307.htm)
+
+## 10. 专题详解
 
 
 <!-- source: docs/06-cost/README.md -->

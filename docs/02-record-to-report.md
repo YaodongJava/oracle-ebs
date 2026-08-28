@@ -4,7 +4,7 @@
 
 ## 阅读导航
 
-- [会计链](#2-端到端会计链) · [总账设计](#3-总账核心设计) · [月结](#4-月结控制顺序) · [功能视角](#5-功能顾问检查点) · [技术视角](#6-技术顾问检查点) · [差异诊断](#7-高频差异诊断) · [专题详解](#9-专题详解)
+- [会计链](#2-端到端会计链) · [总账设计](#3-总账核心设计) · [月结](#4-月结控制顺序) · [功能视角](#5-功能顾问检查点) · [技术视角](#6-技术顾问检查点) · [差异诊断](#7-高频差异诊断) · [页面与关账实操](#9-资深顾问实操页面会计与关账) · [专题详解](#10-专题详解)
 
 ## 1. 学习目标与边界
 
@@ -85,7 +85,89 @@ Journal Source（日记账来源）标识系统来源，Journal Category（日�
 - 为外币应收设计交易换算、期末重估和报告折算案例。
 - 制作一个包含子账完成、接口清理、重估、合并和签核的月结运行表。
 
-## 9. 专题详解
+## 9. 资深顾问实操：页面、会计与关账
+
+### 9.1 日记账生命周期时序图
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant SRC as 子账或来源系统
+    participant SLA as Subledger Accounting
+    participant GI as GL Interface / Journal Import
+    participant JE as GL Journal
+    participant POST as Posting
+    participant REP as Balance / Report
+
+    SRC->>SLA: 产生业务交易与会计事件
+    SLA->>SLA: Create Accounting
+    SLA->>GI: Transfer to GL
+    GI->>JE: Journal Import
+    JE->>JE: Review / Approval
+    JE->>POST: Submit Posting
+    POST->>REP: 更新 GL Balances
+    REP-->>SRC: 子账—SLA—GL 对账
+```
+
+任一步失败都要保留上一层成功主键和下一层缺失证据。资深顾问应能回答：事件是否存在、是否 Final Accounted、是否已传 GL、Journal Import 是否生成日记账、日记账是否批准和过账、余额是否进入正确期间与币种。
+
+### 9.2 页面剧本：录入并过账手工日记账
+
+**常见职责与导航**：`General Ledger Super User → Journals（日记账） → Enter（录入）`。
+
+**前置检查**：Ledger/Data Access Set、期间状态、Journal Source/Category、币种与汇率、账户组合、审批和单据序列。
+
+1. 在 Find Journals 或 Enter Journals 窗口新建 Batch（批），填写可追溯的批名、期间和说明。
+2. 新建 Journal Header（头），确认 Ledger、Category、Currency、Accounting Date 和 Conversion 信息。
+3. 录入 Journal Lines（行）：账户、借/贷金额、说明和必要 DFF；总借方必须等于总贷方。
+4. 若启用 Budgetary Control（预算控制），执行 Check Funds/Reserve Funds，并查看失败账户和金额。
+5. 保存后执行 Journal Approval（如启用）；不得由录入人绕过审批直接过账。
+6. 在 `Journals → Post` 查询批次，复核期间、总额和审批状态后提交 Posting。
+7. 在请求窗口记录 Posting Request ID，确认批状态为 Posted；使用 Account Inquiry 或报表验证余额。
+
+**审计证据**：业务批准、批/日记账名称、来源与类别、附件、审批历史、Posting 请求 ID、过账日期和余额验证。
+
+### 9.3 页面剧本：打开或关闭 GL 期间
+
+**常见职责与导航**：`General Ledger Super User → Setup → Open/Close（打开/关闭期间）`。
+
+1. 查询目标 Ledger 与期间，确认状态是 Never Opened、Future Entry、Open、Closed 或 Permanently Closed。
+2. 开期前确认上一期间状态和未来可录入期间配置；关闭前确认所有子账已签核。
+3. 清理未过账批、Suspense（暂记）和 Import Error；核对接口与 Create Accounting 请求。
+4. 完成重估、折算、分摊、公司间和必要的调整日记账。
+5. 运行 Trial Balance、Account Analysis 和关键控制账户对账，记录参数和输出。
+6. 由授权角色把期间改为 Closed；Permanently Closed（永久关闭）应作为独立高风险操作审批。
+7. 验证下一期间、报表和接口日期，并保存关账签核。
+
+### 9.4 页面剧本：从 GL 反查子账
+
+1. 在 `Journals → Inquiry → Journal` 按 Ledger、期间、Source、Batch 或 Document Number 查询。
+2. 打开 Journal Lines，查看 Reference、Description、GL Import References 或 Drilldown（下钻）入口。
+3. 下钻到 SLA Journal Entry，核对 Event Class、Event Type、Accounting Class、Entered/Accounted Amount。
+4. 继续进入来源交易页面；记录交易头、分配行和会计事件主键。
+5. 若无法下钻，确认来源是否导入了 Reference、Summary/Detail Transfer 设置、数据权限及自定义接口是否保留来源键。
+
+### 9.5 资深顾问的关账控制台
+
+| 阶段 | 退出条件 | 关键证据 | 失败处理 |
+| --- | --- | --- | --- |
+| 子账完成 | 未处理/未会计交易清零或获批 | 子账异常报表、请求 ID | 回到来源单据或接口修复 |
+| SLA | Final Accounted 且无错误 | Create Accounting 输出 | 按事件/分配修复，不补手工 GL |
+| GL 导入 | Interface 无错误、日记账完整 | Import Execution Report | 修正来源/接口并受控重跑 |
+| 过账 | 所有批准批已 Posted | Posting 日志、未过账清单 | 查期间、账户、审批和并发日志 |
+| 期末处理 | 重估/折算/分摊/抵销完成 | 参数、汇率、批次和复核 | 冲销或重跑前评估已过账结果 |
+| 报表签核 | 控制账户和报表一致 | TB、FSG、对账与签字 | 差异落到业务键、账户和期间 |
+
+### 9.6 高级场景：多账簿与多准则
+
+对 Primary/Secondary Ledger 和 Reporting Currency 分别列出会计准则、COA、日历、币种、转换级别、事件来源和延迟。测试同一业务事件在各 Ledger 的会计日期、账户、金额和过账状态，并建立“主账簿分录—二级账簿分录—报告余额”的相关键。不要只比较期末净额。
+
+### 9.7 官方操作依据
+
+- [Oracle General Ledger Implementation Guide](https://docs.oracle.com/cd/E26401_01/doc.122/e48747/)
+- [Oracle General Ledger User's Guide — Journal Entry](https://docs.oracle.com/cd/E26401_01/doc.122/e48748/T312864T451269.htm)
+
+## 10. 专题详解
 
 
 <!-- source: docs/04-gl/README.md -->

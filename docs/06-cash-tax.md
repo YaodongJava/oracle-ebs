@@ -4,7 +4,7 @@
 
 ## 阅读导航
 
-- [范围](#1-学习目标与边界) · [现金主链](#2-银行与现金主链) · [银行对账](#3-银行流水接口与对账) · [资金管理](#4-现金头寸与资金管理) · [税务确定](#5-e-business-tax-税务确定) · [会计技术](#6-会计和对账) · [专题详解](#9-专题详解)
+- [范围](#1-学习目标与边界) · [现金主链](#2-银行与现金主链) · [银行对账](#3-银行流水接口与对账) · [资金管理](#4-现金头寸与资金管理) · [税务确定](#5-e-business-tax-税务确定) · [会计技术](#6-会计和对账) · [页面与税务实操](#9-资深顾问实操银行对账与税务) · [专题详解](#10-专题详解)
 
 ## 1. 学习目标与边界
 
@@ -62,7 +62,111 @@ CE、IBY、AP、AR 与 ZX 跨模块关联时，以银行账户、支付/收款�
 
 建议完成一笔 AP 付款至银行清算、一笔 AR Lockbox 至对账，以及一笔含可抵扣/不可抵扣税的采购交易。
 
-## 9. 专题详解
+## 9. 资深顾问实操：银行对账与税务
+
+### 9.1 银行对账时序图
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant APAR as AP / AR / Treasury
+    participant CE as Cash Management
+    participant BANK as Bank
+    participant SLA as SLA / GL
+
+    APAR->>CE: Payment, Receipt or Cashflow
+    APAR->>SLA: Initial cash/clearing accounting
+    BANK->>CE: Bank statement file
+    CE->>CE: Load and validate statement
+    CE->>CE: AutoReconciliation matching
+    alt Unique match
+        CE->>APAR: Clear source transaction
+        CE->>SLA: Clearing accounting
+    else No or multiple match
+        CE->>CE: Exception / Manual reconciliation
+    end
+    CE->>SLA: Reconciliation and cash reporting
+```
+
+### 9.2 页面剧本：导入银行流水
+
+**常见职责与导航**：`Cash Management（现金管理） → Bank Statements（银行对账单） → Bank Statement Interface/Import`，也可通过 Standard Request Submission 提交银行流水导入程序。
+
+1. 接收文件时验证文件名、银行账户、Statement Number/Date、币种、行数、借贷金额和控制总额。
+2. 把文件载入 Bank Statement Open Interface；记录文件 ID、接口批次和原始文件哈希。
+3. 提交 Bank Statement Import，检查请求日志、接口错误和成功生成的 Statement Header/Lines。
+4. 查询 Bank Statement，核对 Opening/Closing Balance、Control Total、行数和 Bank Transaction Code。
+5. 对失败行修正映射或主数据；重跑前排除已成功导入的 Statement/Line。
+
+银行为一个文件提供多个账户时，EBS 通常按账户和对账单日期分别建立 Statement。接口设计不要仅用文件名作为唯一键。
+
+### 9.3 页面剧本：自动与手工对账
+
+1. 在 `Bank Statements → Reconcile Bank Statements` 查询账户和 Statement。
+2. 先运行 AutoReconciliation，记录规则、日期/金额容差和请求 ID。
+3. 复核 Matched、Unmatched 和多重候选；检查 Transaction Number、Amount、Currency、Date 和 Bank Transaction Code。
+4. 对唯一且证据充分的异常行执行 Manual Reconciliation；选择 AP Payment、AR Receipt、Cashflow、Payroll、GL Journal 或 Open Interface Transaction。
+5. 需要建立 Miscellaneous Transaction 时，使用批准的 Receivable Activity/账户和原因，不用杂项行掩盖未知差异。
+6. 完成后运行对账报表，核对银行余额、账面余额、未达项和 GL Cash/Clearing。
+
+### 9.4 银行异常恢复状态图
+
+```mermaid
+stateDiagram-v2
+    [*] --> Imported
+    Imported --> Matched: Auto/manual match
+    Imported --> Exception: No match or duplicate
+    Matched --> Reconciled: Confirm reconciliation
+    Reconciled --> Unreconciled: Authorized undo
+    Exception --> Matched: Resolve mapping/reference
+    Exception --> Miscellaneous: Approved bank-only item
+    Miscellaneous --> Reconciled
+    Reconciled --> Accounted
+    Accounted --> [*]
+```
+
+撤销对账前评估源交易 Clearing 状态、SLA/GL 分录、下游现金头寸和已发布报表。银行已结算但 EBS 未识别时，先建立调查项，不应直接重建付款或收款。
+
+### 9.5 页面剧本：设置税率
+
+**常见职责与导航**：`Tax Managers（税务经理） → Tax Configuration（税务配置） → Tax Regimes（税制）`，从 Regime to Rate Flow（税制到税率流程）进入 Tax、Status、Jurisdiction 和 Rate。
+
+1. 选择 Configuration Owner、Tax Regime、Tax 和 Tax Status，确认适用法人/配置所有者。
+2. 新增 Tax Rate Code，选择 Percentage/Quantity 等 Rate Type，输入税率和有效期。
+3. 若为辖区税率，选择 Tax Jurisdiction；确认币种、舍入和税包含/不含价规则。
+4. 配置 Recovery Rate/Rule（抵扣率/规则）和 Reporting Type（报告类型，如适用）。
+5. 不覆盖历史有效记录；用新生效日期管理税率变化，并评估未完成交易。
+6. 在 AP 与 AR 各测试一笔标准、免税/零税率、贷项和跨有效期交易，核对税行、会计和税务报表。
+
+### 9.6 税务确定诊断树
+
+```mermaid
+flowchart TD
+    A[Tax result incorrect\n税务结果不正确] --> B{Tax applicable?}
+    B -- No --> C[Check regime/tax applicability\nand configuration owner]
+    B -- Yes --> D{Rate/status correct?}
+    D -- No --> E[Check status, rate, jurisdiction,\neffective dates and rules]
+    D -- Yes --> F{Party/product/location data correct?}
+    F -- No --> G[Correct registration, fiscal class,\nship/bill locations or product class]
+    F -- Yes --> H{Recovery/accounting correct?}
+    H -- No --> I[Check recovery rules, tax accounts\nand SLA]
+    H -- Yes --> J[Check manual override, rounding,\nexternal tax engine and patches]
+```
+
+### 9.7 资深顾问控制重点
+
+- 银行主数据变更实行双人审批、账号脱敏和生效日期控制。
+- 对账规则按唯一性优先于自动率设计；多候选不自动匹配。
+- 税率变更保留旧有效记录，提前测试未完成 PO、发票、订单和贷项。
+- 外部税引擎需记录请求/响应、超时、降级和重放策略；禁止日志泄露敏感信息。
+- 现金与税务月结分别建立 CE-GL、银行-CE、ZX 子账-税务报表-GL 对账。
+
+### 9.8 官方操作依据
+
+- [Oracle Cash Management User Guide — Bank Reconciliation](https://docs.oracle.com/cd/E26401_01/doc.122/e48900/T359831T359834.htm)
+- [Oracle E-Business Tax User Guide — Tax Regimes and Rates](https://docs.oracle.com/cd/E26401_01/doc.122/e48751/T439959T439962.htm)
+
+## 10. 专题详解
 
 
 <!-- source: docs/07-ce-tax/README.md -->

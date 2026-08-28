@@ -4,7 +4,7 @@
 
 ## 阅读导航
 
-- [分析框架](#1-通用分析框架) · [流程地图](#2-核心流程地图) · [跨模块主键](#3-跨模块相关键) · [会计追溯](#4-会计追溯标准) · [状态重跑](#5-状态与重跑) · [故障定位](#7-故障定位顺序) · [流程专题](#10-流程专题与实现细节)
+- [分析框架](#1-通用分析框架) · [流程地图](#2-核心流程地图) · [跨模块主键](#3-跨模块相关键) · [会计追溯](#4-会计追溯标准) · [状态重跑](#5-状态与重跑) · [故障定位](#7-故障定位顺序) · [跨模块实战](#10-资深顾问实战跨模块追溯与恢复) · [流程专题](#11-流程专题与实现细节)
 
 ## 1. 通用分析框架
 
@@ -69,7 +69,97 @@
 - 从 GL 日记账行反向定位到来源单据，并记录每层关联键。
 - 制作跨模块月结依赖图，标注可并行任务和阻塞条件。
 
-## 10. 流程专题与实现细节
+## 10. 资深顾问实战：跨模块追溯与恢复
+
+### 10.1 业务、会计与现金三链合一
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant UP as Upstream System
+    participant SUB as EBS Subledger
+    participant SLA as Subledger Accounting
+    participant GL as General Ledger
+    participant CASH as Payment/Receipt/Bank
+    participant REP as Reconciliation/Report
+
+    UP->>SUB: Business document + source key
+    SUB->>SUB: Validate / approve / complete
+    SUB->>SLA: Accounting event
+    SLA->>GL: Account, transfer, import, post
+    SUB->>CASH: Pay or collect
+    CASH->>GL: Cash/clearing accounting
+    GL->>REP: Balances and journals
+    CASH->>REP: Bank settlement evidence
+    REP-->>UP: Quantity, amount and status tie-back
+```
+
+资深顾问必须同时回答三件事：业务是否履行、会计是否完整、现金是否真实结算。只证明其中一条链成功，不能关闭端到端问题。
+
+### 10.2 页面驱动的双向追溯方法
+
+**从业务到 GL**：
+
+1. 在子账 Workbench 查询单据，记录 Header/Line/Distribution、状态、OU、金额、会计日期。
+2. 通过 View Accounting 查看 Event、XLA Header/Line、Accounting Class 和账户。
+3. 确认 Transfer to GL、Journal Import 和 Posting，记录 GL Batch/Header/Line。
+4. 在 Account Inquiry/FSG/控制报表验证余额和期间。
+
+**从 GL 到业务**：
+
+1. 在 GL Journal Inquiry 按 Ledger、Period、Source、Category、Batch 查询。
+2. 从 Journal Line/Import Reference 下钻 SLA。
+3. 通过 Distribution Link 找到子账分配，再打开来源业务页面。
+4. 若下钻丢失，检查自定义接口 Reference 字段、Summary Transfer、数据权限和归档。
+
+### 10.3 跨模块故障分诊 UML
+
+```mermaid
+flowchart TD
+    A[业务报告问题] --> B{来源单据存在且完成?}
+    B -- No --> C[业务配置/审批/接口]
+    B -- Yes --> D{会计事件与 XLA 完成?}
+    D -- No --> E[SLA 事件/规则/期间]
+    D -- Yes --> F{GL 已导入并过账?}
+    F -- No --> G[Transfer / Journal Import / Posting]
+    F -- Yes --> H{银行或履约完成?}
+    H -- No --> I[IBY/CE/Shipping/外部回执]
+    H -- Yes --> J{报表与对账一致?}
+    J -- No --> K[口径/币种/截止/数据刷新]
+    J -- Yes --> L[问题已证实关闭]
+```
+
+### 10.4 部分成功恢复剧本
+
+1. 冻结批次，不让源系统自动重发。
+2. 用业务唯一键把记录分为未接收、接口错误、业务成功、会计成功、下游成功五组。
+3. 对每组统计数量、金额和税额，验证合计等于来源控制总额。
+4. 仅重放未成功且满足幂等条件的记录；业务已成功但回执丢失时补发回执，不重建交易。
+5. 若已产生付款、收款、发运或 GL 过账，使用标准撤销/冲销/补偿，不删除业务数据。
+6. 重跑后再次完成业务、会计、现金三链对账并解除冻结。
+
+### 10.5 跨期事故演练
+
+假设来源系统在子账关期后发送旧会计日期交易：
+
+- 明确接口是拒绝、自动顺延到下一开放期间，还是进入人工审批队列。
+- 同时记录原交易日期、原会计日期、实际会计日期和汇率日期。
+- 评估税务、收入/费用截止、重估、合并和管理报表影响。
+- 需要重开期间时执行影响清单：子账、SLA、GL、重估/折算、报表和签核全部重跑。
+- 形成 Root Cause（根因）和预防措施：截止协议、监控、接口校验或源端日历同步。
+
+### 10.6 端到端验收包
+
+| 证据 | 必含信息 |
+| --- | --- |
+| 流程证据 | 页面状态、审批、业务主键、责任角色 |
+| 接口证据 | 批次、唯一键、控制总额、错误与重跑 |
+| 会计证据 | Event、XLA、GL Journal、期间、币种 |
+| 现金/履约证据 | 银行 ACK/Settlement、清算或发运/验收 |
+| 对账证据 | 来源 = 成功 + 拒绝；子账 = GL；账面 = 银行 |
+| 审计证据 | 参数、Request ID、时间、版本、批准和例外 |
+
+## 11. 流程专题与实现细节
 
 
 <!-- source: docs/08-e2e/README.md -->
