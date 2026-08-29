@@ -14,6 +14,7 @@
 - [信用到收款（C2C）](docs/04-credit-to-cash.md)
 - [技术架构、开发与集成](docs/10-technical.md)
 - [中英文术语与统一参考](docs/90-reference.md)
+- [模块数据字典与名词解释](docs/data-dictionary.md)
 - [成本管理 8 周纸面实训](learning/cost-management-8-week/README.md)
 - [2026-08-29 官方资料复核报告](REVIEW-2026-08-29.md)
 

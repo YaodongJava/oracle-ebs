@@ -19,6 +19,7 @@
 | 技术模块 | [10-technical.md](10-technical.md) | 架构、数据、接口、并发、Workflow、OAF、Forms、ADOP 和死锁排查 |
 | 实施与运维 | [11-implementation-operations.md](11-implementation-operations.md) | 蓝图、迁移、测试、切换、运行、补丁、克隆和灾备 |
 | 统一参考 | [90-reference.md](90-reference.md) | 中英术语、表、接口、程序、Profile、Lookup、报表和错误 |
+| 模块数据字典 | [data-dictionary.md](data-dictionary.md) | 各模块核心对象、关键字段、状态和名词解释 |
 | 历史归档 | [99-archive.md](99-archive.md) | 历史追溯和废弃资料 |
 
 ## 按角色进入
