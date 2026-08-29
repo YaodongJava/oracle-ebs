@@ -6,6 +6,70 @@
 
 - [会计链](#2-端到端会计链) · [总账设计](#3-总账核心设计) · [月结](#4-月结控制顺序) · [功能视角](#5-功能顾问检查点) · [技术视角](#6-技术顾问检查点) · [差异诊断](#7-高频差异诊断) · [页面与关账实操](#9-资深顾问实操页面会计与关账) · [专题详解](#10-专题详解)
 
+## 模块业务架构与核心 ER 图
+
+### R2R 业务架构图
+
+```mermaid
+flowchart LR
+    S[Subledgers / External Sources\n子账与外部来源] --> E[Accounting Events\n会计事件]
+    E --> A[Create Accounting\n创建会计]
+    A --> X[XLA Entries\nSLA 分录]
+    X --> I[Transfer / Journal Import\n传送与导入]
+    I --> J[GL Journals\n总账日记账]
+    J --> P[Posting / Balances\n过账与余额]
+    P --> R[Revaluation / Translation / Consolidation\n重估/折算/合并]
+    R --> F[Financial Reports\n财务报告]
+```
+
+### R2R 核心 ER 图
+
+```mermaid
+erDiagram
+    LEDGER ||--o{ XLA_TRANSACTION_ENTITY : accounts
+    XLA_TRANSACTION_ENTITY ||--o{ XLA_EVENT : raises
+    XLA_EVENT ||--o{ XLA_AE_HEADER : produces
+    XLA_AE_HEADER ||--o{ XLA_AE_LINE : contains
+    XLA_AE_LINE ||--o{ GL_IMPORT_REFERENCE : transfers
+    GL_IMPORT_REFERENCE }o--|| GL_JE_HEADER : references
+    GL_JE_HEADER ||--o{ GL_JE_LINE : contains
+    GL_JE_LINE }o--|| GL_BALANCE : updates
+    LEDGER {
+        string ledger_id PK
+        string currency_code
+        string calendar_name
+    }
+    XLA_EVENT {
+        string event_id PK
+        string entity_id FK
+        string event_type
+        string event_status
+        date event_date
+    }
+    XLA_AE_HEADER {
+        string ae_header_id PK
+        string event_id FK
+        string accounting_status
+        string transfer_status
+    }
+    GL_JE_HEADER {
+        string je_header_id PK
+        string je_batch_id FK
+        string source
+        string category
+        string posting_status
+    }
+    GL_JE_LINE {
+        string je_line_id PK
+        string je_header_id FK
+        string code_combination_id
+        number entered_dr
+        number entered_cr
+    }
+```
+
+`XLA_*`、`GL_*` 为常见 R12 对象族；接口或 FAH 来源应通过业务键和 `GL_IMPORT_REFERENCES` 保留来源关系，具体关联列以目标实例验证。
+
 ## 1. 学习目标与边界
 
 应能完成 Ledger 与日记账控制设计，理解 SLA、Financials Accounting Hub（财务会计中心，FAH）、Advanced Global Intercompany System（高级全球公司间系统，AGIS）、预算控制、重估、折算、合并和关账，并能从 GL 反向追溯到来源交易。
@@ -819,7 +883,7 @@ SELECT gjl.je_line_num, gjl.code_combination_id,
 
 <!-- source: docs/04-gl/reporting-interfaces.md -->
 <a id="src-docs-04-gl-reporting-interfaces"></a>
-### FSG、Smart View、Web ADI 与日记账导入
+### FSG、Report Manager、Smart View、Web ADI 与日记账导入
 
 
 > `GL_INTERFACE`、批次平衡、Journal Import 提交和结果对账代码见 [GL 接口实现案例](#src-docs-04-gl-interfaces)。
@@ -828,7 +892,8 @@ SELECT gjl.je_line_num, gjl.code_combination_id,
 #### 报表与接口
 
 - **FSG**：Row Set 定义账户/计算行，Column Set 定义期间/金额/计算列，Content Set 按段拆分，Row Order 定义排序，Display Set 控制显示。
-- **Smart View**：通过已配置数据源在 Excel 查询/钻取 GL 余额，权限仍受 EBS/GL 数据访问控制。
+- **Report Manager/FSG**：EBS 原生提交和财务报表路径；按职责、Data Access Set 和报表定义控制范围。
+- **Smart View（可选）**：通过已部署的连接器在 Excel 查询/钻取 GL 或外部 EPM/BI 数据；连接器的刷新口径和权限需单独验证，不能默认等同 EBS 原生报表。
 - **Web ADI**：Integrator + Interface + Content + Layout + Mapping 将 Excel 数据验证并上传，GL Journal 最终进入 GL Interface/Import。
 - **Journal Import**：按 Source/Group ID 从 `GL_INTERFACE` 生成 Batch/Header/Lines，错误行留在接口表并带 Status。
 

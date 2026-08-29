@@ -6,6 +6,67 @@
 
 - [范围](#1-学习目标与边界) · [现金主链](#2-银行与现金主链) · [银行对账](#3-银行流水接口与对账) · [资金管理](#4-现金头寸与资金管理) · [税务确定](#5-e-business-tax-税务确定) · [会计技术](#6-会计和对账) · [页面与税务实操](#9-资深顾问实操银行对账与税务) · [专题详解](#10-专题详解)
 
+## 模块业务架构与核心 ER 图
+
+### 现金与税务业务架构图
+
+```mermaid
+flowchart LR
+    AP[AP Payments\n应付付款] --> CLR[Cash Clearing\n现金清算]
+    AR[AR Receipts\n应收收款] --> CLR
+    TR[Treasury\n资金交易] --> CLR
+    BANK[Bank Statement\n银行流水] --> CE[Cash Management\n现金管理]
+    CLR --> CE
+    CE --> REC[Auto/Manual Reconciliation\n自动/手工对账]
+    REC --> GL[Source subledger/SLA/GL\n源子账按模块入账]
+    AP --> TAX[ZX Tax Determination\n税务确定]
+    AR --> TAX
+    TAX --> TAXREP[Tax Register / Regulatory Report\n税务登记簿/申报]
+```
+
+### 现金与税务核心 ER 图
+
+```mermaid
+erDiagram
+    LEGAL_ENTITY ||--o{ BANK_ACCOUNT : owns
+    BANK_ACCOUNT ||--o{ BANK_STATEMENT : receives
+    BANK_STATEMENT ||--o{ BANK_STATEMENT_LINE : contains
+    BANK_STATEMENT_LINE ||--o{ RECONCILIATION : matches
+    RECONCILIATION }o--|| CASH_TRANSACTION : clears
+    CASH_TRANSACTION }o--o{ XLA_AE_LINE : accounted_by
+    TAX_REGIME ||--o{ TAX : contains
+    TAX ||--o{ TAX_STATUS : classifies
+    TAX_STATUS ||--o{ TAX_RATE : defines
+    TAX_RATE ||--o{ TAX_LINE : calculates
+    TAX_LINE }o--|| SOURCE_TRANSACTION : belongs_to
+    BANK_ACCOUNT {
+        string bank_account_id PK
+        string account_number_masked
+        string currency_code
+        string status
+    }
+    BANK_STATEMENT {
+        string statement_id PK
+        string statement_number
+        date statement_date
+        number control_total
+    }
+    BANK_STATEMENT_LINE {
+        string statement_line_id PK
+        string bank_transaction_code
+        number amount
+        string match_status
+    }
+    TAX_LINE {
+        string tax_line_id PK
+        string tax_code
+        number tax_amount
+        number recoverable_amount
+    }
+```
+
+银行账户号在知识库和日志中应脱敏；税务实体名称是逻辑模型，具体 ZX/CE 表及清算关系必须按版本、本地化和外部银行格式确认。
+
 ## 1. 学习目标与边界
 
 应能设计集中式银行账户、AP/AR 与 CE 的清算链、银行流水接口和自动对账；理解现金预测、内部转账和资金产品边界；能够解释 ZX 税务确定流程、恢复税和税务报告。
@@ -75,17 +136,17 @@ sequenceDiagram
     participant SLA as SLA / GL
 
     APAR->>CE: Payment, Receipt or Cashflow
-    APAR->>SLA: Initial cash/clearing accounting
+    APAR->>SLA: Source-module accounting (AP/AR/Treasury)
     BANK->>CE: Bank statement file
     CE->>CE: Load and validate statement
     CE->>CE: AutoReconciliation matching
     alt Unique match
         CE->>APAR: Clear source transaction
-        CE->>SLA: Clearing accounting
+    CE->>SLA: CE accounting only for applicable cash events
     else No or multiple match
         CE->>CE: Exception / Manual reconciliation
     end
-    CE->>SLA: Reconciliation and cash reporting
+    CE->>CE: Reconciliation status and cash reporting
 ```
 
 ### 9.2 页面剧本：导入银行流水
@@ -344,6 +405,8 @@ Configuration Owner / Legal Entity / OU
 
 EBTax 是一套中央税引擎。应用产品（AP/AR/PO/OM）传入交易日期、法人/OU、交易业务类别、产品财政分类、交易方税务分类、Ship From/To/Bill From/To 等确定因素；规则按优先级确定 Applicable Tax、Place of Supply、Status、Rate、Taxable Basis、Recovery 等。
 
+范围边界必须写入方案：Oracle E-Business Tax 不提供 Payables 代扣税服务，也不覆盖 Latin American Receivables 与 India transaction taxes 等本地化税务功能。需要这些场景时，应按目标国家/地区的本地化产品、补丁和法定申报方案单独设计，不能把“代扣税”直接当作通用 EBTax 规则测试项。
+
 <a id="src-docs-07-ce-tax-ebtax--配置"></a>
 #### 配置
 
@@ -447,7 +510,7 @@ CREATE TABLE xxce_bank_files (
 <a id="src-docs-07-ce-tax-interfaces--3-bank-statement-open-interface"></a>
 #### 3. Bank Statement Open Interface
 
-Oracle 官方接口由 `CE_STATEMENT_HEADERS_INT` 和 `CE_STATEMENT_LINES_INTERFACE` 组成。官方说明 Header 必填项包括 Statement Number、Bank Account Number、Statement Date 和 Org ID；使用 Loader 时 `ORG_ID` 可由程序填充。
+Oracle 官方接口由 `CE_STATEMENT_HEADERS_INT` 和 `CE_STATEMENT_LINES_INTERFACE` 组成。Header 的关键字段包括 Statement Number、Bank Account Number 和 Statement Date。多组织自定义装载器可提供 `ORG_ID`；标准 Bank Statement Loader 会根据银行账户填充组织，因此不要把 `ORG_ID` 写成所有场景都必须由调用方传入。
 
 <a id="src-docs-07-ce-tax-interfaces--31-写入对账单头"></a>
 ##### 3.1 写入对账单头
@@ -694,7 +757,8 @@ UPDATE ra_interface_lines_all
 - [Oracle Cash Management User Guide: Bank Statement Open Interface](https://docs.oracle.com/cd/E26401_01/doc.122/e48900/T359831T359835.htm)
 - [Oracle Cash Management User Guide: Bank Statement Validation](https://docs.oracle.com/cd/E26401_01/doc.122/e48900/T359831T359836.htm)
 - [Oracle Cash Management User Guide R12.2](https://docs.oracle.com/cd/E26401_01/doc.122/e48900/)
-- [Oracle E-Business Tax User Guide R12.2](https://docs.oracle.com/cd/E26401_01/doc.122/e48750/)
+- [Oracle E-Business Tax Implementation Guide R12.2](https://docs.oracle.com/cd/E26401_01/doc.122/e48750/)
+- [Oracle E-Business Tax User Guide R12.2](https://docs.oracle.com/cd/E26401_01/doc.122/e48751/)
 
 
 <!-- source: docs/07-ce-tax/tables.md -->
@@ -806,7 +870,7 @@ Legal Entity / Registration / Party Tax Profile
 #### 实施清单
 
 - 每个法人/登记主体明确税号、注册地址、税务管辖、有效期、开票主体和报表责任人。
-- 对标准、免税、零税率、反向计税、自行计税、代扣税、可抵扣/不可抵扣和复合税建立可测试的业务矩阵。
+- 对标准、免税、零税率、反向计税、自行计税、可抵扣/不可抵扣和复合税建立可测试的 EBTax 矩阵；代扣税及国家/地区本地化税务另建产品专项矩阵。
 - 外部税引擎或本地化适配器应设计超时/不可用时的业务策略、版本控制、审计请求/响应摘要和日终对账。
 - 税务申报前按交易、税行、税率、登记、会计期间和 GL 口径交叉核对；由税务负责人签字确认。
 

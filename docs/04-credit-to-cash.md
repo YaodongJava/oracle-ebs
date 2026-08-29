@@ -6,6 +6,66 @@
 
 - [范围](#1-学习目标与范围) · [业务主链](#2-业务主链) · [对象与状态](#3-关键对象与状态) · [功能设计](#4-功能设计重点) · [会计对账](#5-会计与对账) · [接口排错](#6-技术与接口视角) · [页面与收款实操](#9-资深顾问实操开票收款与信用) · [专题详解](#10-专题详解)
 
+## 模块业务架构与核心 ER 图
+
+### C2C 业务架构图
+
+```mermaid
+flowchart LR
+    C[Customer / Credit\n客户与信用] --> O[Order / Fulfillment\n订单与履约]
+    O --> AI[AutoInvoice\n自动开票]
+    AI --> AR[Receivables Transaction\n应收交易]
+    AR --> AG[Aging / Collections\n账龄/催收]
+    AR --> R[Receipt / Lockbox\n收款/自动收款箱]
+    R --> APP[Application\n核销]
+    APP --> REM[Remittance / Clearing\n汇款/清算]
+    AR --> SLA[SLA / GL]
+    REM --> CE[CE Bank Reconciliation\n现金对账]
+```
+
+### C2C 核心 ER 图
+
+```mermaid
+erDiagram
+    PARTY ||--o{ CUSTOMER_ACCOUNT : owns
+    CUSTOMER_ACCOUNT ||--o{ CUSTOMER_SITE : has
+    CUSTOMER_SITE ||--o{ AR_TRANSACTION : bills
+    AR_TRANSACTION ||--o{ AR_TRANSACTION_LINE : contains
+    AR_TRANSACTION ||--o{ AR_PAYMENT_SCHEDULE : schedules
+    CUSTOMER_ACCOUNT ||--o{ AR_RECEIPT : pays
+    AR_RECEIPT ||--o{ AR_APPLICATION : applies
+    AR_APPLICATION }o--|| AR_PAYMENT_SCHEDULE : settles
+    AR_RECEIPT ||--o{ REMITTANCE : remitted
+    AR_TRANSACTION_LINE }o--o{ XLA_AE_LINE : accounted_by
+    PARTY {
+        string party_id PK
+        string party_name
+        string tax_identifier
+        string party_type
+    }
+    CUSTOMER_ACCOUNT {
+        string customer_account_id PK
+        string party_id FK
+        string credit_profile
+        string status
+    }
+    AR_TRANSACTION {
+        string customer_trx_id PK
+        string transaction_type
+        date gl_date
+        string complete_flag
+        string currency_code
+    }
+    AR_RECEIPT {
+        string cash_receipt_id PK
+        string receipt_number
+        number amount
+        string receipt_status
+    }
+```
+
+该逻辑模型把 TCA、交易、付款计划、收款核销和会计连接起来；客户账户与 Party 的实际表关系及本地化字段须以目标实例核对。
+
 ## 1. 学习目标与范围
 
 应能区分 TCA 客户模型、Credit Management（信用管理）、Receivables（应收，AR）、Advanced Collections（高级催收）、iReceivables（客户自助应收）、Order Management（订单管理，OM）与 CE 的边界，并能设计 AutoInvoice、Lockbox（自动收款箱）、收款核销和 AR-GL 对账。
@@ -22,7 +82,7 @@
 
 TCA 中 Party（参与方）是现实主体，Customer Account（客户账户）是商业关系，Account Site/Site Use（账户地点/用途）承载 Bill-to、Ship-to 等用途。Transaction Type（交易类型）影响会计、余额和后续处理；Receipt Class/Method（收款分类/方法）控制确认、汇款和清算路径。
 
-收款不能简单分为“已收/未收”。需区分 Unidentified（未识别）、Unapplied（未核销）、On-account（挂账户）、Applied（已核销）、Remitted（已汇款）和 Cleared（已清算）等业务状态，并以目标实例定义为准。
+收款不能简单分为“已收/未收”，也不能把核销状态和银行处理状态串成一条状态链。`AR_CASH_RECEIPTS_ALL.STATUS` 反映客户余额/核销维度（如 `UNID`、`UNAPP`、`APP`、`REV`、`NSF`、`STOP`）；`AR_CASH_RECEIPT_HISTORY_ALL.STATUS` 反映收款生命周期（如 `APPROVED`、`CONFIRMED`、`REMITTED`、`CLEARED`、`REVERSED`）。`APP` 还可能表示全部转为 On-account；部分核销后通常仍为 `UNAPP`。两类状态应分别查询和解释。
 
 ## 4. 功能设计重点
 
@@ -97,8 +157,8 @@ sequenceDiagram
     CUST->>BANK: Payment
     BANK->>AR: Lockbox / Receipt
     AR->>AR: Apply, Unapply or On-account
-    AR->>CE: Remit and Clear
-    CE->>SLA: Cash clearing accounting
+    AR->>CE: Receipt/remittance data for reconciliation
+    AR->>SLA: Receipt/remittance/clearing accounting
 ```
 
 ### 9.2 页面剧本：创建应收交易
@@ -133,24 +193,30 @@ sequenceDiagram
 5. 对生成交易抽样检查 Grouping Rule、Transaction Number、Tax、AutoAccounting、Complete 状态和会计日期。
 6. 用来源数量/金额/税额 = 成功交易 + 拒绝记录建立批次平衡。
 
-### 9.5 收款状态 UML
+### 9.5 收款的两个状态维度
 
 ```mermaid
-stateDiagram-v2
-    [*] --> Entered: Enter or import receipt
-    Entered --> Unidentified: Customer unknown
-    Entered --> Unapplied: Customer known
-    Unapplied --> Applied: Apply to transaction
-    Unapplied --> OnAccount: Place on account
-    Applied --> Unapplied: Unapply
-    Applied --> Remitted: Remittance
-    Remitted --> Cleared: Bank clears
-    Remitted --> Reversed: Reject or reverse
-    Cleared --> Reversed: Returned payment process
-    Cleared --> [*]
+flowchart LR
+    subgraph A[客户余额与核销维度 AR_CASH_RECEIPTS_ALL.STATUS]
+      UNID[UNID 未识别] --> UNAPP[UNAPP 未核销或部分核销]
+      UNAPP --> APP[APP 全额核销或全部 On-account]
+      APP --> UNAPP
+      UNID --> REV[REV / NSF / STOP 等终止状态]
+      UNAPP --> REV
+      APP --> REV
+    end
+    subgraph B[收款生命周期 AR_CASH_RECEIPT_HISTORY_ALL.STATUS]
+      APPROVED[APPROVED] --> CONFIRMED[CONFIRMED]
+      CONFIRMED --> REMITTED[REMITTED]
+      REMITTED --> CLEARED[CLEARED]
+      APPROVED --> REVERSED[REVERSED]
+      CONFIRMED --> REVERSED
+      REMITTED --> REVERSED
+      CLEARED --> REVERSED
+    end
 ```
 
-实际状态受 Receipt Class、Method、确认/汇款方式和本地化影响。逆向处理前必须判断银行是否已清算、会计是否已过账及下游催收/退款是否已发生。
+两条轴可以并行变化：收款可在未完全核销时进入汇款/清算流程，并不要求先变为 `APP`。实际生命周期受 Receipt Class、Method、确认/汇款方式和本地化影响；逆向处理前必须同时判断核销、银行清算、会计过账及下游催收/退款状态。
 
 ### 9.6 信用与催收高级控制
 
@@ -784,13 +850,13 @@ Oracle 官方以 Open Interface `RAXMTR` 作为 REST 示例。管理员在 Integ
 curl --fail-with-body \
   --request POST \
   --url 'https://ebs.example.com/webservices/rest/<alias>/<operation>/' \
+  --user '<EBS_USER>' \
   --header 'Content-Type: application/json' \
-  --header 'Authorization: Bearer <token>' \
   --header 'X-Correlation-ID: BILLING-20260822-0001' \
   --data @autoinvoice-line.json
 ```
 
-不在命令行历史、源码或日志中保存密码/Token。Open Interface REST 只负责写入接口数据，仍需调用 AutoInvoice Concurrent Program 完成业务导入。
+示例采用 ISG 原生支持的 HTTPS Basic Authentication，`curl` 会交互提示密码；不要把密码写入命令行历史、源码或日志。也可调用 Login Service 取得 EBS Security Token，并按官方方式作为会话 Cookie 传递；它不是 OAuth Bearer Token。应用上下文参数须以当前实例 WADL 的 `RESTHeader` 定义为准。Open Interface REST 只负责写入接口数据，仍需调用 AutoInvoice Concurrent Program 完成业务导入。
 
 <a id="src-docs-03-ar-interfaces--7-关联文档"></a>
 #### 7. 关联文档
@@ -806,6 +872,7 @@ curl --fail-with-body \
 - [Oracle Receivables User Guide: AutoInvoice](https://docs.oracle.com/cd/E26401_01/doc.122/f10570/T355475T382065.htm)
 - [Oracle Receivables User Guide: AutoLockbox](https://docs.oracle.com/cd/E26401_01/doc.122/f10570/T355475T382159.htm)
 - [ISG Developer's Guide: Open Interface REST Services](https://docs.oracle.com/cd/E26401_01/doc.122/e20927/T511473T669558.htm)
+- [ISG Implementation Guide: Authentication Types](https://docs.oracle.com/cd/E26401_01/doc.122/e20925/T511175T513091.htm)
 
 
 <!-- source: docs/03-ar/process.md -->

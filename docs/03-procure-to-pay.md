@@ -6,6 +6,69 @@
 
 - [产品边界](#1-学习目标与产品边界) · [业务会计主链](#2-业务与会计主链) · [关键控制](#3-关键控制设计) · [功能实施](#4-功能顾问实施顺序) · [接口设计](#5-技术与接口设计) · [月结排错](#6-月结与对账) · [页面与支付实操](#9-资深顾问实操发票匹配与支付) · [专题详解](#10-专题详解)
 
+## 模块业务架构与核心 ER 图
+
+### P2P 业务架构图
+
+```mermaid
+flowchart LR
+    R[Requisition\n请购] --> PO[Purchase Order\n采购订单]
+    PO --> RC[Receipt / Return\n收货/退货]
+    RC --> AC[Accrual\n应计]
+    PO --> INV[AP Invoice\n应付发票]
+    RC --> INV
+    INV --> V[Validation / Approval\n验证/审批]
+    V --> PAY[PPR / IBY\n付款处理]
+    PAY --> BANK[Bank ACK / Settlement\n银行回执/结算]
+    V --> SLA[SLA / GL]
+    BANK --> CE[CE Reconciliation\n现金对账]
+    CE --> SLA
+```
+
+### P2P 核心 ER 图
+
+```mermaid
+erDiagram
+    SUPPLIER ||--o{ SUPPLIER_SITE : has
+    SUPPLIER_SITE ||--o{ PO_HEADER : services
+    PO_HEADER ||--o{ PO_LINE : contains
+    PO_LINE ||--o{ PO_DISTRIBUTION : allocates
+    PO_LINE ||--o{ RECEIPT_TRANSACTION : received
+    SUPPLIER ||--o{ AP_INVOICE : billed
+    AP_INVOICE ||--o{ AP_INVOICE_LINE : contains
+    AP_INVOICE_LINE ||--o{ AP_INVOICE_DISTRIBUTION : accounts
+    AP_INVOICE ||--o{ PAYMENT_SCHEDULE : schedules
+    PAYMENT_SCHEDULE ||--o{ PAYMENT : paid_by
+    AP_INVOICE_DISTRIBUTION }o--o{ XLA_AE_LINE : accounted_by
+    PO_HEADER {
+        string po_header_id PK
+        string operating_unit
+        string approval_status
+        string currency_code
+    }
+    RECEIPT_TRANSACTION {
+        string receipt_transaction_id PK
+        string po_line_id FK
+        number quantity
+        string transaction_type
+    }
+    AP_INVOICE {
+        string invoice_id PK
+        string supplier_id FK
+        string invoice_number
+        string validation_status
+        string payment_status
+    }
+    PAYMENT {
+        string payment_id PK
+        string payment_instruction_id
+        string bank_status
+        string clearing_status
+    }
+```
+
+实体关系用于解释三单匹配和付款链；实际实现还需加入税行、预付款、费用报销、IBY 指令和 CE 清算对象。
+
 ## 1. 学习目标与产品边界
 
 应能解释 Purchasing（采购，PO）、Receiving（接收，RCV）、Payables（应付，AP）、E-Business Tax（电子商务税务，ZX）、Payments（支付，IBY）和 Cash Management（现金管理，CE）的职责边界，设计三单匹配、付款审批、接口幂等和月结对账。

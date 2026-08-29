@@ -4,7 +4,64 @@
 
 ## 阅读导航
 
-- [架构](#2-r122-架构心智模型) · [扩展与数据](#3-扩展方案优先级) · [接口 API](#5-接口与-api-设计) · [并发与页面](#6-concurrent-processing) · [ADOP 发布](#8-adop-发布周期) · [性能安全](#9-性能与故障证据包) · [技术专题](#12-技术专题详解)
+- [架构](#2-r122-架构心智模型) · [扩展与数据](#3-扩展方案优先级) · [接口 API](#5-接口与-api-设计) · [并发与页面](#6-concurrent-processing) · [ADOP 发布](#8-adop-发布周期) · [性能安全](#9-性能与故障证据包) · [死锁排查](#11-死锁排查与解决方法) · [技术专题](#13-技术专题详解)
+
+## 技术架构图与技术对象 ER 图
+
+### R12.2 三层及发布架构
+
+```mermaid
+flowchart TB
+    U[Browser / Forms Client\n浏览器/Forms 客户端] --> WEB[OHS / WebLogic\nWeb 入口与应用服务]
+    WEB --> OAF[OAF / Forms / Workflow\n页面、表单、工作流]
+    OAF --> CM[Concurrent Managers\n并发管理器]
+    OAF --> APPS[APPS Schema / Product Schemas\n应用与产品 Schema]
+    CM --> APPS
+    APPS --> DB[Oracle Database\n业务表、XLA、GL、锁]
+    ADOP[ADOP prepare/apply/finalize/cutover\n在线补丁] -.-> PATCH[Patch File System / EBR Edition\n补丁文件系统/版本]
+    PATCH -.-> WEB
+    PATCH -.-> APPS
+```
+
+### 技术对象 ER 图
+
+```mermaid
+erDiagram
+    FND_USER ||--o{ FND_CONCURRENT_REQUEST : submits
+    FND_RESPONSIBILITY ||--o{ FND_CONCURRENT_REQUEST : scopes
+    FND_CONCURRENT_PROGRAM ||--o{ FND_CONCURRENT_REQUEST : runs
+    FND_CONCURRENT_MANAGER ||--o{ FND_CONCURRENT_PROCESS : owns
+    FND_CONCURRENT_REQUEST }o--|| FND_CONCURRENT_PROCESS : assigned_to
+    FND_CONCURRENT_REQUEST ||--o{ FND_LOG_MESSAGE : logs
+    FND_CONCURRENT_REQUEST }o--o{ BUSINESS_INTERFACE_BATCH : processes
+    FND_USER {
+        string user_id PK
+        string user_name
+        string active_flag
+    }
+    FND_CONCURRENT_REQUEST {
+        string request_id PK
+        string phase_code
+        string status_code
+        datetime requested_start
+        string argument_text
+    }
+    FND_CONCURRENT_PROCESS {
+        string process_id PK
+        string manager_type
+        string node_name
+        string db_session_id
+    }
+    FND_LOG_MESSAGE {
+        string log_id PK
+        string request_id FK
+        string module
+        string severity
+        string message_text
+    }
+```
+
+该 ER 图用于并发、日志和权限追溯；具体列、状态值和 OAM 页面字段须以目标 R12.2 补丁级别确认。
 
 ## 1. 学习目标
 
@@ -82,14 +139,221 @@ Workflow（工作流）处理业务流程和通知；Approvals Management Engine
 - 输入验证、绑定变量、输出编码和文件路径白名单。
 - 生产变更需批准、测试、备份/回退和审计记录。
 
-## 11. 建议练习
+## 11. 死锁排查与解决方法
+
+### 11.1 死锁与普通阻塞的区别
+
+`ORA-00060: deadlock detected while waiting for resource` 表示数据库检测到会话之间形成循环等待。Oracle 会回滚触发错误的那条语句（不是自动回滚整个业务事务），并在诊断 trace 中记录涉及的事务和资源；应先保留 trace，再判断是否需要重试。官方错误说明要求检查 trace 文件以确认冲突事务和资源，见 [Oracle Database Error Help — ORA-00060](https://docs.oracle.com/en/error-help/db/ora-00060/?r=19c)。
+
+| 类型 | 典型形态 | 处理重点 |
+| --- | --- | --- |
+| 普通阻塞（blocking） | 一个会话持有锁，其他会话排队等待；提交/回滚后通常可继续 | 找出 blocker、业务负责人和预计结束时间；不要把所有等待都判定为死锁 |
+| 死锁（deadlock） | A 等 B 持有的锁，同时 B 等 A 持有的锁，形成闭环 | 保留 ORA-00060 trace、请求日志和 SQL；修复锁顺序、触发器、索引或并发调度 |
+| 长事务（long transaction） | 没有循环，但锁持有时间过长，导致大量等待 | 缩小批次和事务范围，调整提交边界，优化 SQL 与批处理窗口 |
+
+死锁不等于“某个会话很慢”。如果只有一个 blocker、没有等待环，优先按阻塞事件处理；如果日志中出现 ORA-00060 或 trace 显示循环资源，再进入死锁流程。
+
+### 11.2 EBS 常见死锁模型
+
+EBS 中的锁通常由标准 API、并发程序、Forms/OAF 页面、Workflow 活动、定制触发器或直接 SQL 共同产生。最常见的根因是两个程序以相反顺序更新同一业务对象的父子行、跨模块分配行或接口批次行。
+
+```mermaid
+sequenceDiagram
+    participant A as Concurrent A
+    participant B as Concurrent B
+    participant DB as Oracle DB
+    A->>DB: 锁定发票/父表行
+    B->>DB: 锁定付款/子表行
+    A->>DB: 请求付款/子表行
+    B->>DB: 请求发票/父表行
+    DB-->>A: 检测循环等待，返回 ORA-00060
+    DB-->>B: 保留会话，继续等待或由运维终止
+```
+
+常见模型包括：
+
+- AP 发票验证、付款选择或自定义更新同时触碰发票、付款计划和分配行。
+- AR AutoInvoice、收款核销、客户余额更新与自定义客户/订单触发器锁定顺序不一致。
+- Inventory/WIP 成本处理、GL 导入和报表抽取同时更新接口批次或汇总控制行。
+- 自定义触发器在更新主表时反查或更新另一张业务表，隐式改变锁顺序。
+- 父表被更新/删除而子表外键无索引，导致更大范围的 TM 表锁等待；这可能表现为阻塞，也可能放大死锁概率。
+- RAC（Real Application Clusters，集群）跨实例访问同一对象，出现全局缓存等待；必须记录实例号，不能只看单节点会话。
+
+### 11.3 现场证据收集（先保留证据）
+
+发生生产事件时先建立时间线，记录时区、数据库实例/节点、业务批次和最近发布。除非已经确认业务影响且完成最小证据采集，不要立即杀会话、重启数据库或盲目重跑。
+
+1. 记录错误原文、首次/最近发生时间、用户、职责、模块、业务单号、批次号和影响数量。
+2. 记录 Concurrent Request ID、程序名/短名、参数、父请求、请求集、Manager、节点、日志和输出文件路径。
+3. 保存数据库会话的 `SID`、`SERIAL#`、实例号、`SQL_ID`、模块（`MODULE`）和动作（`ACTION`），以及 ORA-00060 trace/alert 日志位置。
+4. 在 EBS 页面打开 **System Administrator → Concurrent → Requests**，按 Request ID 查看阶段/状态、日志和输出；必要时通过 OAM 的并发请求监控查看运行会话与诊断信息。R12.2 并发请求生命周期和 OAM 入口可参考 [Oracle E-Business Suite Setup Guide](https://docs.oracle.com/cd/E26401_01/doc.122/e22953/T174296T575591.htm) 与 [Oracle E-Business Suite Maintenance Guide](https://docs.oracle.com/cd/E26401_01/doc.122/e22954/T202991T221119.htm)。
+5. 保存最近一次 ADOP、配置、触发器、索引、并发调度或接口版本变更，避免只根据单次重跑结果下结论。
+
+### 11.4 只读诊断 SQL
+
+以下 SQL 仅用于诊断，使用绑定变量并限制时间/对象范围。`GV$` 视图需要相应数据库权限；单实例可改用 `V$`。不同补丁级别的列可能略有差异，执行前用数据字典确认。不要把诊断 SQL 直接改造成生产 DML。
+
+**1）当前等待与阻塞会话**
+
+```sql
+select s.inst_id,
+       s.sid,
+       s.serial#,
+       s.username,
+       s.status,
+       s.event,
+       s.seconds_in_wait,
+       s.blocking_instance,
+       s.blocking_session,
+       s.sql_id,
+       s.module,
+       s.action
+  from gv$session s
+ where s.blocking_session is not null
+    or s.event like 'enq: TX%'
+    or s.event like 'enq: TM%';
+```
+
+`enq: TX` 常与行级事务锁相关，`enq: TM` 常与表级 DML 锁相关；等待事件本身不能证明已经形成死锁。
+
+**2）锁模式与持有时间**
+
+```sql
+select l.inst_id,
+       l.sid,
+       l.type,
+       l.id1,
+       l.id2,
+       l.lmode,
+       l.request,
+       l.ctime,
+       l.block,
+       s.serial#,
+       s.sql_id
+  from gv$lock l
+  join gv$session s
+    on s.inst_id = l.inst_id
+   and s.sid = l.sid
+ where l.request > 0
+    or l.block = 1
+ order by l.inst_id, l.ctime desc;
+```
+
+将 `ID1/ID2`、对象和会话对应起来，再回到业务单号和并发请求；不要只凭 `SID` 猜测业务归属。
+
+**3）关联 EBS 并发请求**
+
+```sql
+select r.request_id,
+       r.phase_code,
+       r.status_code,
+       r.concurrent_program_id,
+       r.argument_text,
+       r.oracle_session_id
+  from fnd_concurrent_requests r
+ where r.request_id in (:p_request_id_1, :p_request_id_2);
+```
+
+`ORACLE_SESSION_ID` 在部分环境可能为空或受配置影响；应结合 OAM、请求日志和数据库会话时间交叉确认，而不是把空值当成“没有数据库会话”。
+
+**4）数据库级 blocker/waiter 快照**
+
+```sql
+select holding_session, mode_held
+  from dba_blockers;
+select waiting_session, holding_session, lock_type,
+       mode_requested
+  from dba_waiters;
+```
+
+这两个视图需要 DBA 权限，且主要反映当前快照；死锁已结束后应以 trace、ASH（如已授权）和应用日志为主。
+
+**5）短时间历史（需确认许可与保留期）**
+
+```sql
+select sample_time,
+       session_id,
+       session_serial#,
+       sql_id,
+       event,
+       blocking_session
+  from v$active_session_history
+ where sample_time >= systimestamp - interval '15' minute
+   and event like 'enq:%'
+ order by sample_time;
+```
+
+ASH/AWR/SQL Monitor 的可用性、许可和保留时间需由 DBA 确认；不能因为查询不到历史就认定事件没有发生。
+
+### 11.5 解决决策树
+
+```mermaid
+flowchart TD
+    S[发现锁等待或 ORA-00060] --> E{是否有 ORA-00060/循环等待证据?}
+    E -- 否 --> B[按普通阻塞处理：识别 blocker 与业务负责人]
+    E -- 是 --> T[保存 trace、请求日志、SQL_ID、实例和业务批次]
+    T --> O{是否能复现相同 SQL/相同锁顺序?}
+    O -- 是 --> L[统一锁顺序：父表→子表→分配/汇总]
+    O -- 否 --> C{是否存在定制触发器/直接 DML?}
+    C -- 是 --> X[改用公开 API/接口，审查触发器并移除隐式更新]
+    C -- 否 --> I{是否存在未索引外键或大范围扫描?}
+    I -- 是 --> K[评估外键索引、执行计划和批量范围]
+    I -- 否 --> R{是否为并发请求重叠或长事务?}
+    R -- 是 --> Q[调整冲突域/专用 Manager、批次和提交边界]
+    R -- 否 --> D[用 trace、对象映射和最小复现继续定位]
+    L --> V[回归测试、压力测试、灰度发布与监控]
+    X --> V
+    K --> V
+    Q --> V
+    D --> V
+```
+
+### 11.6 生产止血与恢复
+
+- 先判断影响范围和是否仍在扩大：暂停冲突的接口/请求集，保留请求日志和数据库证据。
+- 由业务负责人和 DBA 共同确认 blocker；需要取消或终止请求时，优先使用 **Requests** 窗口的 `Cancel`/`Terminate`，并记录审批、Request ID 和回滚耗时。不要按用户名或 SID 随机终止会话。
+- RAC 环境先确认实例，再在正确节点处理；跨实例锁等待不能只重启单个应用节点。
+- 终止会话后等待 Oracle 回滚完成，再核对接口批次、控制总额、会计状态和下游回执；不要直接删除接口行或手工改状态。
+- 重跑前确认程序是否幂等、失败语句是否只回滚了语句、业务事务是否已提交部分结果，并使用原业务唯一键防止重复单据。
+- 数据库重启不是首选止血手段；只有在 DBA 按灾备/变更流程评估后才可使用。
+
+### 11.7 根因修复与预防
+
+1. **统一锁顺序**：为每个定制事务写明对象顺序（例如父表、明细、分配、汇总），所有 API、触发器和批处理遵守同一顺序。
+2. **缩短事务**：缩小批次、减少无关查询和外部调用，设置合理提交边界；不要在通用 API 内部擅自 `COMMIT`，由事务所有者决定提交。
+3. **优先标准入口**：使用公开 API、Open Interface、业务事件或标准并发程序；直接 DML 可能绕过校验、锁顺序和 SLA。
+4. **审查触发器与索引**：识别隐式更新链；对经常参与父子更新/删除的外键评估索引，并用执行计划验证实际效果。
+5. **调整并发调度**：为互斥程序设置 Incompatibility/Conflict Domain 或专用 Manager，避免同一业务键同时被多个请求处理；调度规则要能解释并可审计。
+6. **设计可控重试**：只对可证明幂等的事务做有限次数、指数退避重试；每次重试记录原 Request ID、尝试次数和最终状态，禁止无限重试掩盖根因。
+7. **按 ADOP 发布**：触发器、索引、PL/SQL、并发定义等变更纳入 R12.2 Online Patching/EBR 流程，在测试环境完成并发压力和回滚验证。
+8. **建立监控基线**：监控 ORA-00060 次数、`enq: TX/TM` 等待、请求重试率、长事务时长和特定业务键冲突，设置阈值与责任人。
+
+### 11.8 复盘模板
+
+| 字段 | 应记录内容 |
+| --- | --- |
+| incident_id / 时间 | 事件编号、首次/恢复时间、时区、实例/节点 |
+| 请求与会话 | Request ID、程序/短名、参数、SID/SERIAL#、SQL_ID、模块/动作 |
+| 冲突对象 | 表/索引/事务资源、父子关系、锁模式、trace 文件 |
+| 业务影响 | 单据/批次、数量、会计状态、接口状态、是否重复或漏处理 |
+| 止血措施 | 暂停请求、取消/终止、回滚完成时间、数据核对结果 |
+| 根因与修复 | 锁顺序、触发器、外键索引、长事务、调度冲突或产品缺陷 |
+| 验证与预防 | 重现脚本、压力测试、发布版本、监控指标、责任人与截止日期 |
+
+### 11.9 官方依据
+
+- [Oracle Database Error Help — ORA-00060](https://docs.oracle.com/en/error-help/db/ora-00060/?r=19c)
+- [Oracle E-Business Suite Setup Guide — Concurrent Processing](https://docs.oracle.com/cd/E26401_01/doc.122/e22953/T174296T575591.htm)
+- [Oracle E-Business Suite Maintenance Guide — OAM 与会话监控](https://docs.oracle.com/cd/E26401_01/doc.122/e22954/T202991T221119.htm)
+
+## 12. 建议练习
 
 - 追踪一个 Concurrent Request 从提交到数据库会话和日志。
 - 为 AP 发票接口设计状态、幂等键、部分成功恢复和监控指标。
 - 把一个数据库对象和并发程序按 R12.2 ADOP 方式打包并在测试环境验证。
 - 从业务单据追溯 XLA/GL，再从 GL 反查来源。
 
-## 12. 技术专题详解
+## 13. 技术专题详解
 
 
 <!-- source: docs/09-technical/README.md -->
@@ -692,13 +956,13 @@ END;
 curl --fail-with-body \
   --request POST \
   --url 'https://ebs.example.com/webservices/rest/<service-alias>/<operation>/' \
+  --user '<EBS_USER>' \
   --header 'Content-Type: application/json' \
-  --header 'Authorization: Bearer <access-token>' \
   --header 'X-Correlation-ID: P2P-20260822-000001' \
   --data @request.json
 ```
 
-REST Endpoint、资源路径、Context Header 和 Payload 必须从已部署服务的 WADL/XSD 获得。Token、密码和 Cookie 不写脚本、Git 或 Concurrent Log；Basic Authentication 只通过 HTTPS 使用。
+REST Endpoint、资源路径、Context Header 和 Payload 必须从已部署服务的 WADL/XSD 获得。示例使用 ISG 支持的 HTTPS Basic Authentication，`curl` 会交互提示密码；也可按实例配置使用 EBS Security Token Cookie。Token、密码和 Cookie 不写脚本、Git 或 Concurrent Log。
 
 <a id="src-docs-09-technical-interfaces--43-带退避的客户端示例"></a>
 ##### 4.3 带退避的客户端示例
@@ -718,7 +982,7 @@ for attempt in 1 2 3 4 5; do
     --request POST \
     --url "$endpoint" \
     --header 'Content-Type: application/json' \
-    --header "Authorization: Bearer ${EBS_ACCESS_TOKEN:?}" \
+    --user "${EBS_USER:?}" \
     --header "X-Correlation-ID: $correlation_id" \
     --data "@$payload_file")"
 

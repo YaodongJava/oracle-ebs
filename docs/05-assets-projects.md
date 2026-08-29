@@ -6,6 +6,69 @@
 
 - [范围](#1-学习目标与边界) · [核心链路](#2-两条核心链路) · [固定资产](#3-fixed-assets-设计重点) · [项目](#4-projects-设计重点) · [会计对账](#5-会计和对账) · [技术排错](#6-技术视角) · [页面与资本化实操](#9-资深顾问实操资产项目与资本化) · [专题详解](#10-专题详解)
 
+## 模块业务架构与核心 ER 图
+
+### 资产与项目业务架构图
+
+```mermaid
+flowchart TB
+    SRC[AP / PO / Projects 来源成本] --> PA[Project Costing\n项目成本]
+    PA --> CAP{Capitalizable?\n可资本化?}
+    CAP -- Yes --> PAL[Project Asset Line\n项目资产线]
+    PAL --> MA[FA Mass Additions\n固定资产批量增加]
+    MA --> FA[Asset Book / Workbench\n资产账簿/工作台]
+    CAP -- No --> EXP[Project Expense\n项目费用]
+    FA --> DEP[Depreciation / Retirement\n折旧/退休]
+    PA --> BILL[Project Billing\n项目开票]
+    BILL --> AR[Receivables / Cash\n应收/现金]
+    FA --> GL[FA SLA / GL]
+    EXP --> GL
+    AR --> GL
+```
+
+### 资产与项目核心 ER 图
+
+```mermaid
+erDiagram
+    PA_PROJECT ||--o{ PA_TASK : contains
+    PA_TASK ||--o{ PA_EXPENDITURE_ITEM : receives
+    PA_EXPENDITURE_ITEM ||--o{ PA_COST_DISTRIBUTION : allocates
+    PA_PROJECT ||--o{ PA_ASSET_LINE : capitalizes
+    PA_ASSET_LINE }o--|| FA_MASS_ADDITION : interfaces
+    FA_MASS_ADDITION }o--|| FA_ASSET : creates
+    FA_ASSET ||--o{ FA_BOOK : depreciates_in
+    FA_ASSET ||--o{ FA_DISTRIBUTION : assigned_to
+    FA_ASSET ||--o{ FA_TRANSACTION : changes
+    PA_PROJECT {
+        string project_id PK
+        string project_type
+        string status
+        string capital_flag
+    }
+    PA_EXPENDITURE_ITEM {
+        string expenditure_item_id PK
+        string task_id FK
+        string expenditure_type
+        number raw_cost
+        string cost_status
+    }
+    FA_ASSET {
+        string asset_id PK
+        string asset_number
+        string category
+        date placed_in_service
+    }
+    FA_BOOK {
+        string asset_id FK
+        string book_type
+        string depreciation_method
+        number cost
+        number reserve
+    }
+```
+
+项目资产线到 FA Mass Addition 是关键接口边界；金额、日期、类别、账簿和来源行必须可回溯，实际表关系以 Projects/Assets eTRM 为准。
+
 ## 1. 学习目标与边界
 
 应能解释 Asset Book（资产账簿）、类别、折旧、资产交易和 FA-GL 对账；理解 Projects Foundation、Project Costing（项目成本）、Project Billing（项目开票）和资本化；区分 Property Manager、iAssets、EAM、Grants 等可选产品。
@@ -461,9 +524,12 @@ BEGIN
     asset_category_id,
     book_type_code,
     date_placed_in_service,
+    accounting_date,
+    depreciate_flag,
     fixed_assets_cost,
     payables_cost,
     payables_units,
+    fixed_assets_units,
     payables_code_combination_id,
     expense_code_combination_id,
     location_id,
@@ -472,7 +538,6 @@ BEGIN
     posting_status,
     queue_name,
     invoice_number,
-    vendor_number,
     created_by,
     creation_date,
     last_updated_by,
@@ -486,8 +551,11 @@ BEGIN
     :p_asset_category_id,
     :p_book_type_code,
     :p_date_placed_in_service,
+    :p_accounting_date,
+    'YES',
     :p_asset_cost,
     :p_asset_cost,
+    1,
     1,
     :p_asset_clearing_ccid,
     :p_deprn_expense_ccid,
@@ -497,7 +565,6 @@ BEGIN
     'NEW',
     'NEW',
     :p_external_document_number,
-    :p_supplier_number,
     fnd_global.user_id,
     SYSDATE,
     fnd_global.user_id,
@@ -511,7 +578,7 @@ END;
 /
 ```
 
-`FA_MASS_ADDITIONS` 的列和必填规则会受来源、Book、功能和补丁影响。上线前使用目标实例 eTRM/`ALL_TAB_COLUMNS` 复核列，并用一条标准 AP/Projects 生成的 Mass Addition 作为字段映射样本。
+示例把 `PAYABLES_UNITS` 与 `FIXED_ASSETS_UNITS` 设为相同值，并在进入 Post 阶段前提供 `ACCOUNTING_DATE`、`DEPRECIATE_FLAG` 等关键属性。Oracle 明确不应使用 `VENDOR_NUMBER`；若业务需要供应商追溯，应按目标实例规则使用 `PO_VENDOR_ID`。`FA_MASS_ADDITIONS` 的列和必填规则会受来源、Book、功能和补丁影响，上线前须用目标实例 eTRM/`ALL_TAB_COLUMNS` 复核，并以标准 AP/Projects 生成的 Mass Addition 作为字段映射样本。
 
 <a id="src-docs-05-fa-interfaces--42-运行前核对目标列"></a>
 ##### 4.2 运行前核对目标列
@@ -737,7 +804,7 @@ Project / Task / Expenditure Item
 select fma.mass_addition_id,
        fma.asset_number,
        fma.description,
-       fma.asset_cost,
+       fma.fixed_assets_cost,
        fma.posting_status,
        fma.queue_name,
        fma.creation_date
@@ -770,6 +837,71 @@ select fab.asset_id,
 
 - [Oracle Projects Documentation](https://docs.oracle.com/cd/E26401_01/nav/projects.htm)
 - [Oracle Assets Documentation](https://docs.oracle.com/cd/E26401_01/nav/financials.htm)
+
+
+<a id="src-docs-05-projects-costing-standard-flow"></a>
+### Project Costing 标准处理链
+
+Project Costing 负责把已批准/导入的 Expenditure Item 归集到 Project/Task，计算 Raw/Burden/Burdened Cost，生成成本分配和会计事件；它不等同于 FA 资本化。
+
+```text
+Source Transaction / Approved Expenditure
+  → Transaction Import / Validation
+  → Raw Cost Distribution
+  → Burden Cost Distribution（如启用）
+  → Generate Cost Accounting Events
+  → Create Accounting
+  → Transfer / Journal Import / GL Posting
+```
+
+关键控制：
+
+1. 每笔支出追溯 Project、Task、Expenditure Type、组织、日期、数量、币种和来源业务键。
+2. 接口拒绝在来源或标准接口层修正，不直接更新 Projects 业务表或状态列。
+3. 按来源运行适用的 Distribute Labor/Usage/Miscellaneous/Supplier Costs 程序；Burdening 按有效 Burden Schedule 计算。
+4. 生成会计事件前确认成本分配无错误、GL Date 有效且 PA/GL 期间开放；生产会计使用 Final 模式。
+5. 已分配或已会计的支出通过标准调整生成反向行和新行，不能覆盖原分配。
+
+| 阶段 | 典型含义 | 恢复方式 |
+| --- | --- | --- |
+| Imported but Uncosted | 已生成支出项但未分配成本 | 修正成本规则/费率/期间后重跑分配 |
+| Cost Distributed | 已有 Raw/Burden 分配行 | 复核金额、账户、币种和 GL Date |
+| Event Generated but Unaccounted | 已有事件但 SLA 未成功 | 修正账户/期间/SLA 后重跑 Create Accounting |
+| Accounted but Not Posted | SLA 完成但 GL 未过账 | 完成 Transfer、Journal Import 和 Posting |
+
+对账至少满足：来源金额 = Projects 成功 + 拒绝 + 未处理；Raw Cost + Burden Cost = Burdened Cost；Projects 分配 = PA 事件 = SLA = GL 过账（统一期间、币种和汇率口径）。
+
+<a id="src-docs-05-projects-billing-standard-flow"></a>
+### Project Billing 标准处理链
+
+Draft Revenue 与 Draft Invoice 是两条独立链路。“收入已确认”不等于“发票已生成”，发票接口成功也不等于 AR 会计已完成。
+
+Revenue 链：
+
+```text
+Approved Budget/Funding + Eligible Expenditure/Event
+  → Generate Draft Revenue → Review → Release
+  → Generate Revenue Accounting Events → Create Accounting → GL
+```
+
+Invoice 链：
+
+```text
+Agreement/Funding + Billable Expenditure/Event
+  → Generate Draft Invoice → Review/Adjust → Approve → Release
+  → Interface Draft Invoice to Receivables → AutoInvoice
+  → Tieback → AR Create Accounting → GL
+```
+
+实施时分别复核 Project Customer、Agreement/Funding、Billing Method、Distribution Rule、Bill Through Date、币种、付款条款、税务属性和 AutoAccounting。释放后的发票不能直接改写；通过 Credit Invoice/Credit Memo 或取消/重开形成审计调整。重跑接口前区分“未送 AR”“AutoInvoice 拒绝”和“AR 成功但 Tieback 待完成”，避免重复开票。
+
+至少建立三组对账：Projects Released Revenue = Revenue Events = PA SLA = GL Revenue；Projects Released Invoice = AR Interface Success = AR Transaction = Tieback Success；AR Transaction = AR SLA = GL 应收控制账户。Revenue 与 Invoice 可在不同批次产生，不要求同期相等。
+
+#### 官方依据
+
+- [Oracle Project Costing User Guide — Overview](https://docs.oracle.com/cd/E26401_01/doc.122/e48918/T188094T188096.htm)
+- [Oracle Project Billing User Guide — Overview and Accounting](https://docs.oracle.com/cd/E26401_01/doc.122/e49079/T178714T178716.htm)
+- [Oracle Project Billing User Guide — Invoicing and Receivables](https://docs.oracle.com/cd/E26401_01/doc.122/e49079/T178714T178721.htm)
 
 
 <!-- source: docs/05-fa/setup.md -->

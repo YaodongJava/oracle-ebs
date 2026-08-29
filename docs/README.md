@@ -16,7 +16,7 @@
 | 成本会计 | [07-cost-accounting.md](07-cost-accounting.md) | Receiving、Inventory、WIP、Costing、LCM 和 COGS |
 | 报表与治理 | [08-reporting-governance.md](08-reporting-governance.md) | FSG、BI Publisher、ECC、内控、审计和本地化 |
 | 端到端流程 | [09-end-to-end.md](09-end-to-end.md) | 跨模块状态、主键、会计、接口、对账和关账依赖 |
-| 技术模块 | [10-technical.md](10-technical.md) | 架构、数据、接口、并发、Workflow、OAF、Forms 和 ADOP |
+| 技术模块 | [10-technical.md](10-technical.md) | 架构、数据、接口、并发、Workflow、OAF、Forms、ADOP 和死锁排查 |
 | 实施与运维 | [11-implementation-operations.md](11-implementation-operations.md) | 蓝图、迁移、测试、切换、运行、补丁、克隆和灾备 |
 | 统一参考 | [90-reference.md](90-reference.md) | 中英术语、表、接口、程序、Profile、Lookup、报表和错误 |
 | 历史归档 | [99-archive.md](99-archive.md) | 历史追溯和废弃资料 |
@@ -40,3 +40,4 @@
 - 示例会计分录用于理解业务，实际结果以项目 SLA 配置和测试为准。
 - 可选产品、本地化和数据库诊断能力需确认许可证及安装范围。
 - 生产写入和数据修复必须遵守 [生产安全边界](00-guide.md#src-docs-00-guide-safety-and-production-boundaries)。
+- 本次官方资料核对结果见 [2026-08-29 复核报告](../REVIEW-2026-08-29.md)。

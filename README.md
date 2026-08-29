@@ -14,6 +14,8 @@
 - [信用到收款（C2C）](docs/04-credit-to-cash.md)
 - [技术架构、开发与集成](docs/10-technical.md)
 - [中英文术语与统一参考](docs/90-reference.md)
+- [成本管理 8 周纸面实训](learning/cost-management-8-week/README.md)
+- [2026-08-29 官方资料复核报告](REVIEW-2026-08-29.md)
 
 ## 模块文件
 
@@ -29,7 +31,7 @@
 | 07 | [供应链财务与成本](docs/07-cost-accounting.md) | PO/RCV、INV、WIP、CST、OPM、LCM、COGS 与 SLA/GL |
 | 08 | [报表、关账与治理](docs/08-reporting-governance.md) | FSG、BI Publisher、Web ADI、ECC、内控、审计和本地化 |
 | 09 | [端到端业务流程](docs/09-end-to-end.md) | R2R、P2P、O2C、资产、项目、成本、税务、公司间和外部子账 |
-| 10 | [技术架构、开发与集成](docs/10-technical.md) | R12.2 架构、数据模型、接口、Concurrent、Workflow、OAF、Forms、ADOP/EBR |
+| 10 | [技术架构、开发与集成](docs/10-technical.md) | R12.2 架构、数据模型、接口、Concurrent、Workflow、OAF、Forms、ADOP/EBR、死锁排查 |
 | 11 | [实施与运维生命周期](docs/11-implementation-operations.md) | 评估、蓝图、配置、迁移、测试、切换、Hypercare、补丁、克隆和灾备 |
 | 90 | [统一参考资料](docs/90-reference.md) | 术语、表、API、并发程序、Profile、Lookup、报表、状态和错误索引 |
 | 99 | [历史归档](docs/99-archive.md) | 已迁移、已废弃或仅供历史追溯的资料 |

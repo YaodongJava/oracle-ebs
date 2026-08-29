@@ -6,9 +6,69 @@
 
 - [工具选型](#2-报表工具选型) · [报表治理](#3-报表治理最小模型) · [关账内控](#4-关账与对账治理) · [架构性能](#6-报表架构开发与性能) · [对账矩阵](#7-关账日历与对账设计) · [审计排错](#8-审计数据保留与隐私) · [验证练习](#10-验证清单) · [页面与关账实操](#13-资深顾问实操报表与关账)
 
+## 模块业务架构与核心 ER 图
+
+### 报表与治理业务架构图
+
+```mermaid
+flowchart LR
+    TX[Subledger Transactions\n子账交易] --> SLA[SLA / GL Balances\n会计与总账余额]
+    SLA --> SEM[Semantic Definitions\n口径/维度/期间]
+    SEM --> FSG[FSG / GL native reports\n财务分析]
+    FSG -. optional external connection .-> SV[Smart View Office add-in]
+    SEM --> BIP[BI Publisher / RXi\n运营与法定报表]
+    SEM --> ECC[ECC Dashboards\n运营看板]
+    FSG --> CTRL[Control Total / Sign-off\n控制总额/签核]
+    BIP --> CTRL
+    ECC --> CTRL
+    CTRL --> AUD[Audit / Retention\n审计/保留]
+```
+
+### 报表治理核心 ER 图
+
+```mermaid
+erDiagram
+    REPORT_DEFINITION ||--o{ REPORT_RUN : executes
+    REPORT_DEFINITION ||--o{ REPORT_TEMPLATE : renders
+    REPORT_DEFINITION ||--o{ REPORT_ACCESS : grants
+    REPORT_RUN }o--|| LEDGER : scopes
+    REPORT_RUN ||--o{ CONTROL_TOTAL : validates
+    REPORT_DEFINITION }o--o{ DATA_SOURCE : reads
+    DATA_SOURCE }o--|| GL_BALANCE : derives
+    REPORT_RUN ||--o{ AUDIT_EVIDENCE : stores
+    REPORT_DEFINITION {
+        string report_id PK
+        string report_name
+        string owner_role
+        string semantic_version
+    }
+    REPORT_RUN {
+        string request_id PK
+        string period
+        string parameter_hash
+        string status
+        datetime run_time
+    }
+    REPORT_TEMPLATE {
+        string template_id PK
+        string language
+        string format
+        string version
+    }
+    CONTROL_TOTAL {
+        string control_id PK
+        string request_id FK
+        number source_amount
+        number report_amount
+        string reconciliation_status
+    }
+```
+
+报表定义、数据模型、模板、请求和控制总额应分别治理；这些名称是逻辑实体，不等同于所有 EBS 版本中的具体 FSG/BI Publisher/ECC 表。
+
 ## 1. 学习目标
 
-应能根据实时性、数据粒度、交互方式、审计要求和用户规模选择 FSG、BI Publisher、RXi、Smart View、Web ADI 或 Enterprise Command Center（企业指挥中心，ECC）；能够建立报表目录、口径字典、访问控制、关账签核和变更治理。
+应能根据实时性、数据粒度、交互方式、审计要求和用户规模选择 FSG、BI Publisher、RXi、Web ADI 或 Enterprise Command Center（企业指挥中心，ECC），并把 Smart View 作为需单独部署和授权的数据连接插件评估；能够建立报表目录、口径字典、访问控制、关账签核和变更治理。
 
 ## 2. 报表工具选型
 
@@ -17,9 +77,9 @@
 | FSG | 财务报表生成器；基于 GL 余额的法定/管理报表 | 与 GL 维度紧密、口径稳定 | Row/Column Set、Content Set、期间和币种 |
 | BI Publisher | BI 发布器；像素级模板、批量输出和分发 | 多数据源、多格式、调度 | Data Model、模板版本、数据权限、输出敏感性 |
 | RXi | 可扩展报表交换；部分 EBS 标准报表布局 | 标准程序集成 | 属性集、版本和产品适用性 |
-| Smart View | Excel 智能视图；分析和钻取 | 财务用户熟悉、交互强 | 连接、成员选择、刷新口径和本地文件安全 |
+| Smart View（可选） | Office 插件；连接已部署的数据源进行分析和钻取 | 财务用户熟悉、交互强 | 不属于 EBS 原生报表；连接、成员选择、刷新口径和本地文件安全需单独治理 |
 | Web ADI | Web 应用桌面集成器；Excel 上传/下载 | 受控批量录入 | Integrator、验证、上传权限和错误回滚 |
-| ECC | 企业指挥中心；运营搜索和可视化 | 近实时运营洞察 | 数据加载、补丁依赖、访问角色、索引新鲜度 |
+| ECC | 企业指挥中心；运营搜索和可视化 | 取决于数据加载计划的运营洞察 | Full/Incremental/Push 加载、补丁依赖、访问角色、索引新鲜度 |
 
 工具选择先问：数据来自余额还是交易？需要实时还是批处理？是否需写回？是否含敏感明细？谁负责口径和签核？
 
@@ -198,7 +258,7 @@ stateDiagram-v2
 
 | 变更 | 必查对象 | 回归重点 |
 | --- | --- | --- |
-| 科目值/层级 | FSG、Smart View、接口映射、预算 | 历史比较、父值汇总、权限 |
+| 科目值/层级 | FSG、已连接的 Smart View 数据源、接口映射、预算 | 历史比较、父值汇总、权限 |
 | Ledger/OU | Data Access Set、MOAC、报表参数 | 应见/不应见数据、默认值 |
 | SLA 账户规则 | 子账报表、GL 控制账户、对账 | 新旧事件、冲销、跨期 |
 | BI Publisher 模板 | Data Model、并发程序、Bursting | 多语言、分页、敏感分发 |
@@ -210,6 +270,14 @@ stateDiagram-v2
 - 子账对账通过但 FSG 不符：核对余额类型、币种、Summary Account、Row/Content Set 和未过账日记账。
 - ECC 与交易页面不符：先核对最后加载时间和增量请求，再检查安全与索引，不直接修改交易数据。
 - 敏感报表误发：停止分发、保留审计证据、按事件响应处理，不通过删除日志掩盖事故。
+
+## 11. 官方依据与边界
+
+- [Oracle General Ledger User's Guide R12.2](https://docs.oracle.com/cd/E26401_01/doc.122/e48748/toc.htm)：FSG、余额和 GL 报表。
+- [Oracle E-Business Suite Report Manager User's Guide R12.2](https://docs.oracle.com/cd/E26401_01/doc.122/e22006/toc.htm)：EBS 原生报表提交、查看和安全。
+- [Oracle E-Business Suite Concepts — BI Publisher](https://docs.oracle.com/cd/E26401_01/doc.122/e22949/T120505T120508.htm)：BI Publisher 在 EBS 中的集成边界。
+- [Oracle Enterprise Command Center Framework Administrator's Guide](https://docs.oracle.com/cd/E26401_01/doc.122/f34732/toc.htm)：数据加载和 ECC 管理。
+- [Oracle Enterprise Command Center Framework Implementation Guide](https://docs.oracle.com/cd/E26401_01/doc.122/f21671/T673609T673614.htm)：Full/Incremental/Push 加载模式。
 
 <!-- 兼容旧版目录与学习材料的定位锚点；正文已按主题重编。 -->
 <a id="src-docs-08-reporting-governance-audit-and-data-retention-readme"></a>

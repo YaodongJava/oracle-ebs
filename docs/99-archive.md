@@ -6,6 +6,37 @@
 
 - [归档条件](#1-进入归档的条件) · [记录要求](#2-归档记录要求) · [使用原则](#3-使用原则)
 
+## 归档治理 ER 图
+
+```mermaid
+erDiagram
+    ARCHIVE_ITEM }o--|| MODULE : originated_from
+    ARCHIVE_ITEM }o--|| EBS_VERSION : applies_to
+    ARCHIVE_ITEM }o--|| ARCHIVE_REASON : classified_by
+    ARCHIVE_ITEM ||--o{ REPLACEMENT_LINK : replaced_by
+    ARCHIVE_ITEM ||--o{ REVIEW_RECORD : reviewed
+    ARCHIVE_ITEM {
+        string archive_id PK
+        string original_path
+        string title
+        date archived_date
+        string safety_status
+    }
+    REPLACEMENT_LINK {
+        string link_id PK
+        string target_path
+        string migration_note
+    }
+    REVIEW_RECORD {
+        string review_id PK
+        string reviewer
+        date review_date
+        string decision
+    }
+```
+
+归档资料必须能找到替代正文和复核记录；涉及生产 SQL、补丁或数据修复的历史内容默认禁止直接执行。
+
 ## 1. 进入归档的条件
 
 - 已被新版模块正文合并或替代。

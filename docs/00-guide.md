@@ -6,6 +6,66 @@
 
 - [知识库使用方法](#1-本知识库怎样使用) · [学习与验证闭环](#2-学习方法与验证闭环) · [安全与版本](#3-安全与版本边界) · [深入指南](#5-深入指南)
 
+## 知识库业务架构与 ER 图
+
+### 知识架构图
+
+```mermaid
+flowchart TB
+    A[Oracle EBS R12.2 财务知识库] --> B[业务域]
+    A --> C[技术域]
+    A --> D[交付与治理]
+    B --> B1[公共基础 / Ledger / COA]
+    B --> B2[R2R / P2P / C2C]
+    B --> B3[资产 / 项目 / 现金 / 税务 / 成本]
+    C --> C1[架构 / 数据 / API]
+    C --> C2[Concurrent / Workflow / OAF]
+    C --> C3[ADOP / EBR / 性能 / 安全]
+    D --> D1[端到端流程与对账]
+    D --> D2[实施 / 测试 / 切换]
+    D --> D3[参考 / 术语 / 归档]
+```
+
+### 知识资产 ER 图
+
+```mermaid
+erDiagram
+    MODULE ||--o{ TOPIC : contains
+    TOPIC ||--o{ PAGE_PLAYBOOK : explains
+    TOPIC ||--o{ DIAGRAM : visualizes
+    TOPIC ||--o{ TERM : defines
+    TOPIC ||--o{ SOURCE_REFERENCE : cites
+    MODULE ||--o{ ROLE_PATH : supports
+    ROLE_PATH }o--o{ TOPIC : recommends
+    SOURCE_REFERENCE }o--|| EBS_VERSION : applies_to
+    MODULE {
+        string module_id PK
+        string module_name
+        string owner_role
+        string lifecycle
+    }
+    TOPIC {
+        string topic_id PK
+        string module_id FK
+        string business_key
+        string evidence_level
+    }
+    PAGE_PLAYBOOK {
+        string playbook_id PK
+        string topic_id FK
+        string responsibility
+        string verification
+    }
+    DIAGRAM {
+        string diagram_id PK
+        string topic_id FK
+        string diagram_type
+        string version_scope
+    }
+```
+
+该 ER 图描述知识库治理对象，不是 EBS 业务表。新增内容应绑定模块、主题、角色、版本和来源，避免同一概念在多个模块重复维护。
+
 ## 1. 本知识库怎样使用
 
 ### 1.1 先建立完整链路
@@ -1055,7 +1115,7 @@ GL 汇总最终会计、余额与财务报告
 | BI Publisher / XML Publisher | BI 发布工具/XML 发布工具 | 模板化报表、eText、分发 | 数据定义、模板、字体、OPP 和安全共同影响结果 |
 | RXi | Report eXchange，报表交换 | 可配置财务报表输出 | 与普通 BI Publisher 模板治理不同 |
 | Web ADI | Web Applications Desktop Integrator，Web 应用桌面集成器 | Excel 录入/上传和部分配置迁移 | 模板、Integrator、权限和版本需控制 |
-| Smart View | 智能视图 | Office 中的查询和财务分析 | 可用性取决于部署组件与配置 |
+| Smart View（可选） | Oracle Smart View Office 插件 | 连接已部署的 EBS/Oracle Analytics/EPM 数据源进行查询和分析 | 不是 EBS GL 的原生报表引擎；连接、成员选择、刷新口径和本地文件安全需单独治理 |
 | ECC（可选） | Enterprise Command Center，企业指挥中心 | 运营看板和数据发现 | 数据加载、职责安全和产品版本需确认 |
 
 入口：[报表与治理](08-reporting-governance.md#src-docs-08-reporting-governance-readme)
@@ -1134,8 +1194,8 @@ GL 汇总最终会计、余额与财务报告
 | [Oracle Financials Concepts Guide](https://docs.oracle.com/cd/E26401_01/doc.122/e48836/toc.htm) | 企业结构、Ledger、Financials 共享概念和跨产品关系 |
 | [Oracle Financials Implementation Guide](https://docs.oracle.com/cd/E26401_01/doc.122/e48783/toc.htm) | 公共财务设置、账簿、银行、税务等实施主题入口 |
 | [Oracle Subledger Accounting Implementation Guide](https://docs.oracle.com/cd/E26401_01/doc.122/e48771/title.htm) | SLA 会计事件、AMB、账户派生、会计方法和 GL 传输 |
-| [Oracle E-Business Suite Multiple Organizations Implementation Guide](https://docs.oracle.com/cd/E26401_01/index.htm) | 多组织、OU、安全配置和 MOAC；从总库按书名进入 |
-| [Oracle Trading Community Architecture Guides](https://docs.oracle.com/cd/E26401_01/index.htm) | Party、Customer/Supplier 共享身份、关系、接口和数据质量 |
+| [Oracle E-Business Suite Multiple Organizations Implementation Guide](https://docs.oracle.com/cd/E26401_01/doc.122/e48833/toc.htm) | 多组织、OU、安全配置和 MOAC |
+| [Oracle Trading Community Architecture Administration Guide](https://docs.oracle.com/cd/E26401_01/doc.122/e48940/toc.htm) / [Reference Guide](https://docs.oracle.com/cd/E26401_01/doc.122/e48941/toc.htm) | Party、Customer/Supplier 共享身份、关系、接口和数据质量 |
 | [Financials 产品页](https://docs.oracle.com/cd/E26401_01/nav/financials.htm) | 查找 AP、AR、GL、FA、CE、Payments、EBTax、AGIS、FAH 的 User/Implementation Guide |
 
 阅读顺序：Concepts Guide（概念）→ Implementation Guide（配置）→ User Guide（交易/操作）→ Technical/Reference Guide（接口/数据）→ Release Notes/MOS（版本差异）→ 实例验证。
@@ -1594,7 +1654,7 @@ Assessment → Blueprint → Build → Test → Cutover → Hypercare → BAU
 | --- | --- | --- |
 | 低 | 有主键/组织/日期限制的只读查询、查看日志和标准报表 | 具备授权、避免敏感数据扩散、确认性能影响 |
 | 中 | 重提并发请求、重新导入已拒绝批次、修改配置、启停调度 | 明确幂等/重复风险、测试、审批、前后验证 |
-| 高 | ADOP Cutover、期间重开、批量主数据/余额迁移、证书切换 | 变更窗口、业务/技术负责人、回退/补偿、完整对账 |
+| 高 | ADOP Cutover、受支持产品的期间更正、批量主数据/余额迁移、证书切换 | 变更窗口、业务/技术负责人、回退/补偿、完整对账；Inventory 期间正式关闭后不可重开 |
 | 极高 | Datafix、直接数据库数据修复、大批量冲销、灾备切换 | Oracle Support/正式设计依据、备份、演练、双人复核和管理层批准 |
 
 <a id="src-docs-00-guide-safety-and-production-boundaries--数据写入优先级"></a>

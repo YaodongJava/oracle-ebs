@@ -6,6 +6,63 @@
 
 - [阶段门](#1-生命周期与阶段门) · [项目工作流](#2-贯穿项目的五条工作流) · [切换](#3-cutover切换设计) · [上线支持](#4-上线与-hypercare) · [稳态运维](#5-稳态运维) · [交付物](#7-交付物检查表) · [生命周期专题](#9-生命周期专题)
 
+## 交付业务架构与治理 ER 图
+
+### 实施到运维业务架构图
+
+```mermaid
+flowchart LR
+    S[Assess / Scope\n评估与范围] --> B[Blueprint / Design\n蓝图与设计]
+    B --> C[Configure / Develop\n配置与开发]
+    C --> T[SIT / UAT / Regression\n集成/验收/回归]
+    T --> M[Migrate / Cutover\n迁移与切换]
+    M --> H[Hypercare\n上线支持]
+    H --> O[BAU Operations\n稳态运维]
+    O --> CH[Incident / Problem / Change\n事件/问题/变更]
+    CH --> B
+```
+
+### 交付治理核心 ER 图
+
+```mermaid
+erDiagram
+    PROJECT ||--o{ REQUIREMENT : contains
+    REQUIREMENT ||--o{ CONFIGURATION_ITEM : realized_by
+    CONFIGURATION_ITEM ||--o{ TEST_CASE : verified_by
+    TEST_CASE ||--o{ TEST_RESULT : produces
+    TEST_CASE ||--o{ DEFECT : may_raise
+    DEFECT }o--|| CHANGE_REQUEST : resolved_by
+    CHANGE_REQUEST }o--|| RELEASE : included_in
+    RELEASE ||--o{ CUTOVER_TASK : executes
+    CUTOVER_TASK ||--o{ EVIDENCE : records
+    PROJECT {
+        string project_id PK
+        string phase
+        string version_baseline
+        string owner
+    }
+    REQUIREMENT {
+        string requirement_id PK
+        string process_area
+        string acceptance_criteria
+        string approval_status
+    }
+    TEST_CASE {
+        string test_id PK
+        string scenario
+        string expected_accounting
+        string result_status
+    }
+    CHANGE_REQUEST {
+        string change_id PK
+        string risk_level
+        string rollback_plan
+        string approval_status
+    }
+```
+
+交付物之间以可追溯关系连接：需求 → 配置/开发 → 测试 → 缺陷/变更 → 发布 → 切换证据。这样才能证明上线内容与批准范围一致。
+
 ## 1. 生命周期与阶段门
 
 | 阶段 | 关键问题 | 最低退出条件 |
@@ -42,7 +99,7 @@
 
 ## 3. Cutover（切换）设计
 
-Cutover Plan 按分钟/小时列出任务、依赖、执行人、验证人、输入、输出、最长耗时和回退点。关键内容包括业务冻结、接口停启、期初/未结数据、用户与职责、并发程序、银行/税务连接、控制总额、烟雾测试和业务开放。
+Cutover Plan 按分钟/小时列出任务、依赖、执行人、验证人、输入、输出、最长耗时和回退点。关键内容包括业务冻结、接口停启、期初/未结数据、用户与职责、并发程序、银行/税务连接、控制总额、冒烟测试和业务开放。
 
 回退不是一句“恢复备份”。必须说明回退决策时点、数据补偿、外围系统处理、已发生业务交易和沟通。超过不可逆点时采用前滚修复而非假定可回退。
 
@@ -81,6 +138,13 @@ Incident（事件）恢复服务，Problem（问题）消除根因，Change（�
 - 演练一次恢复，证明备份可用且业务对账通过。
 
 ## 9. 生命周期专题
+
+### 官方实施与运维依据
+
+- [Oracle E-Business Suite Concepts Guide R12.2](https://docs.oracle.com/cd/E26401_01/doc.122/e22949/toc.htm)：企业结构、应用安全和集成边界。
+- [Oracle E-Business Suite Developer's Guide R12.2](https://docs.oracle.com/cd/E26401_01/doc.122/e22961/toc.htm)：自定义 schema、APPS_INITIALIZE 和开发约束。
+- [Oracle E-Business Suite Maintenance Guide R12.2](https://docs.oracle.com/cd/E26401_01/doc.122/e22954/toc.htm)：补丁、维护和应用层运维。
+- [Oracle E-Business Suite Integrated SOA Gateway Implementation Guide](https://docs.oracle.com/cd/E26401_01/doc.122/e20925/toc.htm)：服务部署、认证和授权。
 
 
 <!-- source: docs/11-implementation-operations/README.md -->

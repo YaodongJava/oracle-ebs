@@ -6,6 +6,66 @@
 
 - [分析框架](#1-通用分析框架) · [流程地图](#2-核心流程地图) · [跨模块主键](#3-跨模块相关键) · [会计追溯](#4-会计追溯标准) · [状态重跑](#5-状态与重跑) · [故障定位](#7-故障定位顺序) · [跨模块实战](#10-资深顾问实战跨模块追溯与恢复) · [流程专题](#11-流程专题与实现细节)
 
+## 企业业务架构与跨模块 ER 图
+
+### EBS 财务业务架构图
+
+```mermaid
+flowchart TB
+    MD[Master Data\nTCA / Supplier / Item / COA] --> P2P[Procure to Pay\n采购到付款]
+    MD --> C2C[Credit to Cash\n信用到收款]
+    MD --> A2R[Assets / Projects\n资产与项目]
+    P2P --> CE[Cash / Bank\n现金与银行]
+    C2C --> CE
+    A2R --> CE
+    P2P --> SLA[SLA / GL\n子账与总账]
+    C2C --> SLA
+    A2R --> SLA
+    CE --> SLA
+    SLA --> REP[Reporting / Close / Governance\n报表/关账/治理]
+```
+
+### 跨模块核心 ER 图
+
+```mermaid
+erDiagram
+    SOURCE_TRANSACTION ||--o{ SUBLEDGER_DISTRIBUTION : allocates
+    SUBLEDGER_DISTRIBUTION ||--o{ ACCOUNTING_EVENT : raises
+    ACCOUNTING_EVENT ||--o{ SLA_ENTRY : creates
+    SLA_ENTRY ||--o{ GL_JOURNAL_LINE : transfers
+    GL_JOURNAL_LINE }o--|| GL_BALANCE : updates
+    SOURCE_TRANSACTION ||--o{ INTERFACE_BATCH : delivered_by
+    INTERFACE_BATCH ||--o{ CONCURRENT_REQUEST : processed_by
+    CASH_TRANSACTION ||--o{ BANK_STATEMENT_LINE : reconciles
+    CASH_TRANSACTION }o--|| SOURCE_TRANSACTION : settles
+    SOURCE_TRANSACTION {
+        string source_system
+        string source_key PK
+        string document_number
+        string business_status
+    }
+    SUBLEDGER_DISTRIBUTION {
+        string distribution_id PK
+        string source_key FK
+        number amount
+        string accounting_date
+    }
+    ACCOUNTING_EVENT {
+        string event_id PK
+        string event_type
+        string event_status
+    }
+    GL_JOURNAL_LINE {
+        string journal_line_id PK
+        string ledger_id
+        string account_combination
+        number debit
+        number credit
+    }
+```
+
+用 `source_key`、批次和请求号连接跨模块对象，避免依赖描述、金额或日期的模糊匹配。实现时把业务键落在接口、分配、XLA 和 GL 引用中。
+
 ## 1. 通用分析框架
 
 对每条流程制作一张“七列流程表”：步骤、责任角色、EBS 产品、业务单据/主键、状态、会计事件、控制证据。跨系统时再加入接口批次、相关号、控制总额和重跑规则。
@@ -145,7 +205,7 @@ flowchart TD
 - 明确接口是拒绝、自动顺延到下一开放期间，还是进入人工审批队列。
 - 同时记录原交易日期、原会计日期、实际会计日期和汇率日期。
 - 评估税务、收入/费用截止、重估、合并和管理报表影响。
-- 需要重开期间时执行影响清单：子账、SLA、GL、重估/折算、报表和签核全部重跑。
+- 只有在产品文档明确支持且经批准时才评估期间重开；Inventory 期间正式关闭后不能重开，应在当前开放期间走更正/调整流程。任何获准的期间更正都要评估子账、SLA、GL、重估/折算、报表和签核影响。
 - 形成 Root Cause（根因）和预防措施：截止协议、监控、接口校验或源端日历同步。
 
 ### 10.6 端到端验收包
@@ -520,7 +580,8 @@ SELECT business_flow,
 
 - [Oracle E-Business Suite Integrated SOA Gateway Developer's Guide](https://docs.oracle.com/cd/E26401_01/doc.122/e20927/)
 - [Oracle E-Business Suite Concepts: Integration Repository](https://docs.oracle.com/cd/E26401_01/doc.122/e22949/T120505T120507.htm)
-- [Oracle Workflow Developer's Guide R12.2](https://docs.oracle.com/cd/E26401_01/doc.122/e22008/)
+- [Oracle Workflow Administrator's Guide R12.2](https://docs.oracle.com/cd/E26401_01/doc.122/e22008/)
+- [Oracle Workflow Developer's Guide R12.2](https://docs.oracle.com/cd/E26401_01/doc.122/e22011/)
 
 
 <!-- source: docs/08-e2e/inventory-wip-cost-gl.md -->

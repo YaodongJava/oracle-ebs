@@ -6,6 +6,61 @@
 
 - [学习目标](#1-学习目标与范围) · [企业结构](#2-企业结构的认知顺序) · [配置顺序](#3-推荐配置顺序) · [COA 与主数据](#4-coa-与主数据治理) · [权限](#5-权限与数据访问) · [诊断与练习](#7-基础问题诊断清单) · [页面与配置实操](#9-资深顾问实操页面与配置) · [专题详解](#10-专题详解)
 
+## 模块业务架构与核心 ER 图
+
+### 基础设置到交易的业务架构
+
+```mermaid
+flowchart LR
+    L[Legal Entity 法人实体] --> G[Ledger 账簿]
+    G --> C[COA / Calendar / Currency\n科目表/日历/币种]
+    G --> O[Operating Unit\n业务实体]
+    O --> M[MOAC / Data Access\n多组织与数据权限]
+    M --> T[AP / AR / PO / FA / PA\n业务交易]
+    T --> X[SLA Accounting Event\n子账会计事件]
+    X --> GL[GL Journal and Balance\n总账日记账与余额]
+```
+
+### 公共基础 ER 图（逻辑模型）
+
+```mermaid
+erDiagram
+    LEGAL_ENTITY ||--o{ OPERATING_UNIT : owns
+    LEDGER ||--o{ OPERATING_UNIT : accounts_for
+    LEDGER }o--|| CHART_OF_ACCOUNTS : uses
+    LEDGER }o--|| ACCOUNTING_CALENDAR : uses
+    LEDGER }o--|| CURRENCY : uses
+    OPERATING_UNIT ||--o{ INVENTORY_ORGANIZATION : services
+    CHART_OF_ACCOUNTS ||--o{ ACCOUNT_COMBINATION : defines
+    ACCOUNT_VALUE ||--o{ ACCOUNT_COMBINATION : forms
+    LEDGER ||--o{ DATA_ACCESS_SET : secured_by
+    OPERATING_UNIT ||--o{ SECURITY_PROFILE : secured_by
+    LEGAL_ENTITY {
+        string legal_entity_id PK
+        string registration_number
+        string tax_regime
+    }
+    LEDGER {
+        string ledger_id PK
+        string name
+        string currency_code
+        string calendar_name
+    }
+    OPERATING_UNIT {
+        string org_id PK
+        string name
+        string ledger_id FK
+    }
+    ACCOUNT_COMBINATION {
+        string code_combination_id PK
+        string balancing_segment
+        string natural_account
+        string enabled_flag
+    }
+```
+
+图中实体为顾问设计层的逻辑对象；实际表名、主键和法人/OU 多对多关系须以目标实例 eTRM 与 Accounting Setup Manager 复核。
+
 ## 1. 学习目标与范围
 
 学完本模块，应能解释企业组织如何映射到 EBS，能够设计 Ledger（账簿）、Chart of Accounts（会计科目表，COA）、日历、币种、Legal Entity（法人实体）、Operating Unit（业务实体）和数据访问，并能判断安全、主数据或 SLA 问题的责任边界。

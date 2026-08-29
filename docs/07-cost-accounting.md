@@ -6,9 +6,76 @@
 
 - [范围](#1-学习目标与范围) · [数量与价值流](#2-数量流与价值流) · [成本方法](#3-成本方法与要素) · [业务会计](#4-关键业务会计) · [功能实施](#5-功能顾问实施重点) · [接口月结](#6-技术与接口视角) · [页面与关账实操](#9-资深顾问实操成本事务与关账) · [专题详解](#10-专题详解)
 
+## 模块业务架构与核心 ER 图
+
+### 成本业务架构图
+
+```mermaid
+flowchart LR
+    ITEM[Item / Cost Setup\n物料与成本设置] --> COST[Cost Type / Element\n成本类型/要素]
+    PO[PO / Receipt] --> MT[Material Transaction\n物料事务]
+    MT --> INV[Inventory Value\n库存价值]
+    MT --> WIP[WIP Transaction\n在制品事务]
+    WIP --> FG[Completion / Close\n完工/关闭]
+    FG --> COGS[Shipment / COGS\n发运/销售成本]
+    COST --> MT
+    INV --> SLA[Cost Accounting / SLA]
+    WIP --> SLA
+    COGS --> SLA
+    SLA --> GL[GL Control Accounts\n总账控制账户]
+```
+
+### 成本核算核心 ER 图
+
+```mermaid
+erDiagram
+    INVENTORY_ORG ||--o{ ITEM : stores
+    ITEM ||--o{ ITEM_COST : has
+    INVENTORY_ORG ||--o{ MATERIAL_TRANSACTION : records
+    MATERIAL_TRANSACTION ||--o{ TRANSACTION_ACCOUNT : distributes
+    WIP_ENTITY ||--o{ WIP_TRANSACTION : records
+    WIP_TRANSACTION ||--o{ WIP_COST : values
+    MATERIAL_TRANSACTION }o--o{ XLA_AE_LINE : accounted_by
+    WIP_TRANSACTION }o--o{ XLA_AE_LINE : accounted_by
+    ITEM {
+        string inventory_item_id PK
+        string item_number
+        string item_type
+        string primary_uom
+    }
+    ITEM_COST {
+        string item_id FK
+        string cost_type
+        string cost_element
+        number unit_cost
+        string frozen_flag
+    }
+    MATERIAL_TRANSACTION {
+        string transaction_id PK
+        string item_id FK
+        string organization_id FK
+        number quantity
+        string cost_status
+    }
+    WIP_ENTITY {
+        string wip_entity_id PK
+        string job_number
+        string status
+        string organization_id FK
+    }
+    TRANSACTION_ACCOUNT {
+        string transaction_id FK
+        string code_combination_id
+        number accounted_dr
+        number accounted_cr
+    }
+```
+
+成本方法、库存组织、成本类型和会计期间共同决定价值结果；图中名称为业务逻辑实体，实际 `MTL_*`、`WIP_*`、`CST_*` 和 XLA 关联需在目标实例确认。
+
 ## 1. 学习目标与范围
 
-应能区分 Standard Costing（标准成本）、Average Costing（平均成本）等成本方法；理解成本要素、物料交易、接收、WIP（在制品）、销售成本/收入匹配、陆运成本及 SLA/GL；能完成库存价值和成本差异对账。
+应能区分 Standard Costing（标准成本）、Average Costing（平均成本）等成本方法；理解成本要素、物料交易、接收、WIP（在制品）、销售成本/收入匹配、到岸成本及 SLA/GL；能完成库存价值和成本差异对账。
 
 ## 2. 数量流与价值流
 
@@ -32,7 +99,7 @@ Standard Cost（标准成本）以预设标准计价，实际差异进入采购�
 - 库存交易：组织/子库存转移、杂项收发、账户别名和在途库存。
 - WIP：材料领退、资源计费、外协、完工、废品和工单关闭差异。
 - 销售成本：发运后暂估 COGS，并按收入确认比例进行 COGS/Revenue Matching（销售成本与收入匹配）。
-- Landed Cost Management（陆运成本管理，LCM）：把运费、关税等附加费用分摊到库存成本。
+- Landed Cost Management（到岸成本管理，LCM）：把运费、关税等附加费用分摊到库存成本。
 
 具体分录取决于组织参数、成本方法和 SLA，示例不可替代实例验证。
 
@@ -161,6 +228,7 @@ stateDiagram-v2
 
 - [Oracle Cost Management User's Guide — Period Close](https://docs.oracle.com/cd/E26401_01/doc.122/e48829/T372621T378953.htm)
 - [Oracle Inventory User's Guide — Accounting Periods](https://docs.oracle.com/cd/E26401_01/doc.122/e48820/T291651T292307.htm)
+- [Oracle Landed Cost Management User's Guide](https://docs.oracle.com/cd/E26401_01/doc.122/e48799/T528387T528392.htm)
 
 ## 10. 专题详解
 
@@ -396,7 +464,7 @@ SELECT resource_id, resource_code, description,
 <a id="src-docs-06-cost-costing-methods--关键原理"></a>
 #### 关键原理
 
-Standard Cost Update 将 Pending 成本更新到 Frozen，对现有库存/WIP 产生重估会计。Average Cost 受负库存、交易顺序和补录日期影响；补录交易可重算后续成本。周期成本是独立的期末计算链，不等于简单查当前 Item Cost。
+Standard Cost Update 将 Pending 成本更新到 Frozen，对现有库存/WIP 产生重估会计。Average Cost 受负库存、交易顺序和补录日期影响；回溯交易会在处理队列中按日期先于尚未处理交易计算，但不会回滚或重处理已经完成的交易。周期成本是独立的期末计算链，不等于简单查当前 Item Cost。
 
 <a id="src-docs-06-cost-costing-methods--sql"></a>
 #### SQL
@@ -839,7 +907,7 @@ SELECT accounting_line_type, reference_account,
 - Period Close 不允许：运行 Pending Transactions 检查，分别处理 MTL Transactions Interface、Pending Material、WIP Move/Cost、Receiving 和未会计交易。
 - Inventory/GL 不平：统一组织、截止时间、Cost Group/Subinventory、Currency，分析未转 GL、手工 GL、补录和负库存。
 - 估值报表负数：按 Item/Subinventory/Locator/Cost Group 查 On-hand、Pending Transaction 和负库存原因。
-- 关期后发现遗漏：不更新 Period/Table；评估标准 Reopen 可行性或在下期用可审计调整处理。
+- 关期后发现遗漏：Inventory 期间一旦正式关闭不能重开；不要直接更新期间表，按批准的更正/调整流程在当前开放期间处理，并保留审计链。
 
 <a id="src-docs-06-cost-period-close-reports--关联"></a>
 #### 关联

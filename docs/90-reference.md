@@ -6,6 +6,34 @@
 
 - [产品前缀](#1-产品前缀速查) · [会计对象](#2-会计追溯对象) · [并发程序](#3-常用并发程序概念索引) · [接口 API](#4-接口与-api-选型检查) · [状态](#5-状态解释原则) · [官方资料](#6-官方资料定位) · [中英文术语](#8-中英文术语与缩略语)
 
+## 参考资料架构与 ER 图
+
+```mermaid
+erDiagram
+    PRODUCT ||--o{ TABLE_OBJECT : exposes
+    PRODUCT ||--o{ PUBLIC_API : publishes
+    PRODUCT ||--o{ CONCURRENT_PROGRAM : provides
+    TABLE_OBJECT ||--o{ COLUMN_DEFINITION : contains
+    PUBLIC_API ||--o{ API_PARAMETER : accepts
+    CONCURRENT_PROGRAM ||--o{ PROGRAM_PARAMETER : accepts
+    REFERENCE_ITEM }o--|| EBS_VERSION : validated_on
+    REFERENCE_ITEM }o--|| OFFICIAL_SOURCE : cites
+    REFERENCE_ITEM {
+        string reference_id PK
+        string english_name
+        string chinese_note
+        string verification_status
+    }
+    OFFICIAL_SOURCE {
+        string source_id PK
+        string document_title
+        string url
+        date checked_date
+    }
+```
+
+参考项应至少关联产品、版本和官方来源；未在目标实例验证的表、API 或状态标记为待验证。
+
 ## 1. 产品前缀速查
 
 | 前缀 | 英文名称 | 中文说明 |
@@ -77,6 +105,18 @@
 ## 7. 参考项维护模板
 
 新增表、程序、API、错误或 MOS 文档时，记录：产品/版本、英文名、中文说明、用途、输入/主键、关键状态、输出、权限/安全、验证环境、官方来源和最后复核日期。没有实例或官方依据的内容标注“待验证”，不要包装成确定事实。
+
+### 7.1 本次复核的官方来源矩阵（2026-08-29）
+
+| 主题 | Oracle 官方资料 |
+| --- | --- |
+| EBS R12.2 总库 | [Release 12.2 Documentation Library](https://docs.oracle.com/cd/E26401_01/index.htm) |
+| 财务公共概念/实施 | [Financials Concepts](https://docs.oracle.com/cd/E26401_01/doc.122/e48836/toc.htm) · [Financials Implementation](https://docs.oracle.com/cd/E26401_01/doc.122/e48783/toc.htm) |
+| GL/SLA | [General Ledger User's Guide](https://docs.oracle.com/cd/E26401_01/doc.122/e48748/toc.htm) · [SLA Implementation](https://docs.oracle.com/cd/E26401_01/doc.122/e48771/title.htm) |
+| AP/AR/CE/EBTax | [Payables User](https://docs.oracle.com/cd/E26401_01/doc.122/e48760/toc.htm) · [Receivables User](https://docs.oracle.com/cd/E26401_01/doc.122/f10570/toc.htm) · [Cash Management](https://docs.oracle.com/cd/E26401_01/doc.122/e48900/toc.htm) · [EBTax Implementation](https://docs.oracle.com/cd/E26401_01/doc.122/e48750/toc.htm) · [EBTax User](https://docs.oracle.com/cd/E26401_01/doc.122/e48751/toc.htm) |
+| Inventory/Cost/WIP | [Inventory User](https://docs.oracle.com/cd/E26401_01/doc.122/e48820/toc.htm) · [Cost Management](https://docs.oracle.com/cd/E26401_01/doc.122/e48829/toc.htm) · [WIP User](https://docs.oracle.com/cd/E26401_01/doc.122/e48905/toc.htm) |
+| Projects/Assets | [Project Costing](https://docs.oracle.com/cd/E26401_01/doc.122/e48918/toc.htm) · [Project Billing](https://docs.oracle.com/cd/E26401_01/doc.122/e49079/toc.htm) · [Assets](https://docs.oracle.com/cd/E26401_01/doc.122/e48755/toc.htm) |
+| 技术/集成 | [ISG Implementation](https://docs.oracle.com/cd/E26401_01/doc.122/e20925/) · [ISG Developer](https://docs.oracle.com/cd/E26401_01/doc.122/e20927/) · [EBS Developer's Guide](https://docs.oracle.com/cd/E26401_01/doc.122/e22961/) · [eTRM User's Guide](https://docs.oracle.com/cd/E26401_01/doc.122/f53031/) |
 
 ## 8. 中英文术语与缩略语
 
