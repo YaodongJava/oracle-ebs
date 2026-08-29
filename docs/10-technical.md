@@ -16,16 +16,109 @@
 
 ```mermaid
 flowchart TB
-    U[Browser / Forms Client\n浏览器/Forms 客户端] --> WEB[OHS / WebLogic\nWeb 入口与应用服务]
-    WEB --> OAF[OAF / Forms / Workflow\n页面、表单、工作流]
-    OAF --> CM[Concurrent Managers\n并发管理器]
-    OAF --> APPS[APPS Schema / Product Schemas\n应用与产品 Schema]
-    CM --> APPS
-    APPS --> DB[Oracle Database\n业务表、XLA、GL、锁]
-    ADOP[ADOP prepare/apply/finalize/cutover\n在线补丁] -.-> PATCH[Patch File System / EBR Edition\n补丁文件系统/版本]
-    PATCH -.-> WEB
-    PATCH -.-> APPS
+    U[Browser / Forms Client\n浏览器/Forms 客户端] --> LB[Load Balancer / WAF\n负载均衡/边界防护]
+    LB --> OHS[Oracle HTTP Server\nWeb Entry Point]
+    OHS --> WLS[WebLogic Domain\nAdminServer + Managed Servers]
+    WLS --> OA[OACORE / OAFM\nOAF、JSP、ISG、集成应用]
+    WLS --> FS[FORMS / FORMS-C4WS\nForms 运行时与 Web Service]
+    WLS --> ISG[Integration Repository / ISG\nSOAP/REST 服务]
+    OA --> DB[Oracle Database\nAPPS、产品 Schema、业务表、XLA、GL]
+    FS --> DB
+    ISG --> DB
+    WLS --> REQ[FND 请求提交\nRequest ID]
+    REQ --> ICM[ICM / GSM / Service Manager\n并发调度]
+    ICM --> CM[Standard / Specialized Managers\n并发管理器]
+    CM --> DB
+    WF[Workflow Engine / Mailer\n工作流与通知] --> DB
+    WF --> EXT[SMTP / LDAP / 外部服务]
+    FS12[fs1 / fs2\nRun/Patch 文件系统] -.-> WLS
+    FSNE[fs_ne\n非版本化数据/日志/输出] -.-> WLS
+    FSNE -.-> CM
+    ADOP[ADOP + EBR\n在线补丁] -.-> FS12
+    ADOP -.-> DB
 ```
+
+### R12.2 整体技术架构分层
+
+R12.2 的“节点角色”由启用的服务组决定，而不是由某台机器上是否安装了文件决定。同一应用层节点可以按需启用 Web、Forms、批处理或其他服务；Web Administration（WebLogic Admin Server）通常只在一个节点启用，其他节点运行受管 Managed Server 或批处理服务。服务组和控制脚本应以 AutoConfig 上下文及目标实例为准，不直接编辑生成后的配置文件。
+
+#### 1. 文件系统与版本边界
+
+| 区域 | 主要内容 | 版本/共享规则 | 典型证据 |
+| --- | --- | --- | --- |
+| `fs1` / `fs2` | APPL_TOP、产品代码、Java/Forms/Reports 文件及相应 INST_TOP | 两套版本化文件系统；当前一套为 Run，另一套为 Patch，每次 ADOP Cutover 后角色互换 | `adop -status`、context 文件、文件系统版本 |
+| `fs_ne` | 跨版本保留的业务文件、导入/导出文件、并发日志与输出、部分运行时数据 | 非版本化；不放应用代码，也不把它当作可随意共享的代码目录 | `s_ne_base`、`APPLCSF`、日志/输出目录 |
+| `APPL_TOP` | EBS 核心技术文件和产品目录；每个 APPL_TOP 对应一个数据库 | R12.2 代码/配置随 fs1/fs2 受 ADOP 管理；禁止只修改 Run 文件系统 | `<EBSapps>/appl`、`*_TOP` 环境变量 |
+| `COMMON_TOP` | 多个产品共用的脚本、模板、帮助和公共文件 | 依实例布局位于应用文件系统，不承担跨版本业务数据职责 | `<EBSapps>/comn`、`COMMON_TOP` |
+| `INST_TOP` | 节点上下文、管理脚本、AutoConfig 及实例配置/日志入口 | 每个应用节点一份；服务脚本位于 `<INST_TOP>/admin/scripts` | `adstrtal.sh`、`adstpall.sh`、AutoConfig 日志 |
+| FMW/Oracle Home | WebLogic、JRF、OHS 和 EBS 部署所需中间件二进制 | 与应用代码、补丁级别和节点克隆保持一致；不得手工覆盖受管文件 | FMW Inventory、OPatch、WLS/OHS 配置 |
+
+`fs1` 和 `fs2` 本身不是固定的“生产”和“补丁”目录；应依据当前 Run/Patch 角色执行维护。并发日志和输出在 R12.2 中必须使用 `APPLCSF` 指向非版本化区域，避免因 Cutover 后路径变化而丢失运行证据。Oracle 对三文件系统的说明见 [EBS Concepts：Dual and Non-Editioned File Systems](https://docs.oracle.com/cd/E26401_01/doc.122/e22949/T120505T120509.htm) 与 [EBS Concepts：File System Implementation](https://docs.oracle.com/cd/E26401_01/doc.122/e22949/T120505T120512.htm)。
+
+#### 2. 中间件、应用服务与服务组
+
+| 服务组 | 服务/组件 | 主要职责 | 典型排错入口 |
+| --- | --- | --- | --- |
+| Root Service | Node Manager | 启停和监控 WebLogic Managed Server | Node Manager 日志、节点状态 |
+| Web Administration | WebLogic Admin Server | 管理 Domain、Managed Server、部署和配置 | WLS Admin Console、AdminServer 日志 |
+| Web Entry Point Services | Oracle HTTP Server（OHS）、OPMN | TLS/虚拟主机、反向代理、静态资源和 Web 入口；R12.2 中 OPMN 主要管理 OHS | OHS access/error 日志、`adapcctl.sh`/`adopmnctl.sh` |
+| Web Application Services | `oacore`、`oafm`、`forms`、`forms-c4ws` | OAF/JSP、FMW 应用、Forms 访问和 Forms Web Service | Managed Server 日志、JVM/线程/数据源 |
+| Batch Processing Services | Applications Listener、Concurrent Manager、Fulfillment Server、ICSM | 并发请求、后台处理、特定 Fulfillment/ICSM 服务 | Listener、ICM/Manager、服务日志 |
+| Other Services | Forms Server、Oracle MWA | 传统 Forms 相关服务和移动仓库终端（启用时） | 对应控制脚本、服务日志 |
+
+R12.2 中 OC4J 已由 WebLogic Server 替代；AutoConfig 仍管理部分 OHS 和应用服务配置，Managed Server 的其余配置应通过 WebLogic/Fusion Middleware 工具维护。常用的总控脚本是 `<INST_TOP>/admin/scripts/adstrtal.sh` 和 `adstpall.sh`；单个 `oacore/oafm/forms/forms-c4ws` 由 `admanagedsrvctl.sh` 或 WLS 控制台管理。服务组清单和脚本见 [EBS Setup Guide：AutoConfig-Managed Service Groups](https://docs.oracle.com/cd/E26401_01/doc.122/e22953/T174296T589913.htm)。
+
+#### 3. 数据库层、连接与共享状态
+
+| 组件 | 作用 | 需要核对的边界 |
+| --- | --- | --- |
+| Oracle Database | 保存 EBS 业务数据、FND 元数据、XLA/GL、Workflow 和接口状态 | 数据库版本、RAC/Data Guard、字符集、时区、补丁、许可证 |
+| `APPS` Schema | EBS 应用访问层和同义词/包入口 | 只授予受控应用权限；不作为终端用户长期直连账号 |
+| Product Schemas | GL、AP、AR、INV、PO、FA、PA 等产品表、包和视图 | 通过 eTRM/`ALL_TAB_COLUMNS` 验证列、状态和对象所有者 |
+| `APPLSYS`/FND | 用户、职责、Profile、并发、菜单、Lookup、Workflow 等共享基础 | 不直接 DML 修复用户、请求或工作流状态 |
+| `EBS_SYSTEM`（适用补丁级别） | R12.2 新增的受控管理账号，用于部分应用 Schema 权限管理 | 是否存在及权限范围以目标 AD/TXK Delta 和安全基线确认 |
+| Listener / TNS / 数据库服务 | 应用层、并发节点和管理工具连接数据库 | Service Name、Failover、连接池、超时和网络 ACL |
+
+应用服务通过数据源/连接池访问数据库；Forms、OAF、ISG 和 Concurrent Manager 可能使用不同的连接生命周期。排查时同时记录用户/职责、`ORG_ID`/Ledger、节点、数据库实例、Session、`MODULE/ACTION` 和 Request ID，不能只凭数据库用户名定位业务请求。
+
+#### 4. 并发处理与后台服务
+
+并发处理的核心对象是“请求 → 队列 → Manager → 进程 → 日志/输出”。用户或接口先在 `FND_CONCURRENT_REQUESTS` 产生 Request ID，Internal Concurrent Manager（ICM）负责全局调度，并通过 Generic Service Management（GSM）在启用并发处理的节点启动 Service Manager（`FNDSM`）；Service Manager 再按工作班次、Specialization Rule、冲突域和目标节点管理 Standard/Specialized Manager。
+
+| 组件 | 功能 | 常见故障表现 |
+| --- | --- | --- |
+| ICM（Internal Concurrent Manager） | 控制其他 Manager、节点和队列 | ICM 不在，其他 Manager 无法正常激活 |
+| Service Manager / GSM | 在节点上启动、停止和监控服务实例 | 节点服务未拉起、FNDSM 注册失败 |
+| Standard Manager | 处理未被专用规则捕获的普通请求 | 队列拥塞、长任务占满进程 |
+| Specialized Manager | 按包含/排除规则处理特定程序或应用 | 请求 Pending/Standby 或被错误队列接收 |
+| Conflict Resolution Manager | 检查不兼容请求，避免冲突并发 | 请求处于待处理/冲突状态 |
+| Transaction Manager | 处理 Forms 等同步事务请求 | Forms 事务等待、响应超时 |
+| Output Post Processor（OPP） | 对 XML/PDF/Excel 等输出执行后处理 | 请求完成但无输出、OPP 队列积压 |
+| Workflow Background Engine/Mailer | 推进 Deferred/Error 活动并发送/接收通知 | Workflow 延迟、邮件未发或回执失败 |
+
+R12.2 的 Parallel Concurrent Processing（PCP）与 GSM 一起工作，可将 Manager 分布到多个应用节点并支持节点故障转移。不要手工更新 `FND_CONCURRENT_REQUESTS`、`FND_CONCURRENT_PROCESSES` 或 `FND_CONCURRENT_QUEUES`；应使用标准管理页面、控制脚本和 Purge Concurrent Requests 程序。架构依据见 [EBS Concepts：Concurrent Processing](https://docs.oracle.com/cd/E26401_01/doc.122/e22949/T120505T120508.htm) 和 [Setup Guide：Parallel Concurrent Processing](https://docs.oracle.com/cd/E26401_01/doc.122/e22953/T174296T575591.htm)。
+
+#### 5. 网络入口与典型请求链路
+
+建议将访问分为浏览器/Forms、系统间入站和 EBS 出站三类，并在防火墙、负载均衡和服务层分别记录证据：
+
+```text
+浏览器/OAF：Browser → Load Balancer/WAF → OHS → oacore/oafm → APPS/产品 Schema → DB
+Forms：Forms Client → OHS/Forms Servlet → forms Managed Server → Forms Runtime → DB
+入站接口：External System → HTTPS/OHS → ISG REST/SOAP → Grant/MOAC → API/Open Interface → DB
+并发任务：页面/API → FND_CONCURRENT_REQUESTS → ICM/GSM → Manager/OPP → DB/日志/输出
+出站服务：业务事件 → Workflow/JBES/SIF → 外部 SOAP/REST/SMTP/LDAP → 回调/回执 → EBS
+```
+
+网络与会话设计至少明确：TLS 终止位置、`s_webentry*` 变量、负载均衡健康检查、会话粘性或可恢复策略、OHS 到 Managed Server 的代理规则、数据库连接超时、外部调用超时和日志关联号。端口号不能从模板照抄；以 AutoConfig context、WLS/OHS 配置和当前防火墙清单为准。Oracle 的服务端口变量清单可参考 [Security Guide：Ports Used by WebLogic Server](https://docs.oracle.com/cd/E26401_01/doc.122/e22952/T156458T659608.htm)。
+
+#### 6. 启停、监控与故障域
+
+1. 启停顺序通常由 `adstrtal.sh`/`adstpall.sh` 和各服务控制脚本统一编排；单独重启前先确认请求、Workflow、Forms 会话和接口是否需要排空。
+2. 配置变更分为 AutoConfig/context、WLS/OHS/FMW、EBS Profile/职责和数据库参数四类，必须由对应工具维护并保留前后差异。
+3. 监控至少覆盖 OHS/WLS/Forms、数据库 Listener/Session、ICM/Manager/OPP、Workflow Mailer、文件系统空间、`fs_ne` 日志增长和外部依赖。
+4. 故障定位按“入口 → 应用服务 → 并发/Workflow → 数据库 → 外部系统”分层，记录时间、节点、Request ID、Session/SQL ID、服务日志和最近 ADOP 变更。
+5. 节点故障、Managed Server 故障、数据库实例故障、共享文件系统故障和外部服务故障分别定义恢复动作；不要用全栈重启替代证据采集。
 
 ### 技术对象 ER 图
 

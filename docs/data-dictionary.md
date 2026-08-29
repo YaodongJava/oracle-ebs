@@ -331,6 +331,12 @@
 | `FND_UNSUCCESSFUL_LOGINS` | 失败登录记录 | 用户、时间、失败次数、来源线索 | 账号锁定和安全审计 |
 | `WSDL` / `WADL` | SOAP/REST 服务契约 | Endpoint、操作、参数、认证策略 | 客户端生成与契约测试 |
 | `WF_DEFERRED` / Service Invocation Monitor | 出站服务消息 | Event Key、状态、重试、响应/错误 | EBS 调用外部 Web Service |
+| `fs1` / `fs2` | 版本化应用文件系统 | APPL_TOP、INST_TOP、Run/Patch 角色 | ADOP 在线补丁与代码发布 |
+| `fs_ne` | 非版本化文件系统 | 并发日志/输出、导入导出和跨版本运行数据 | 保存跨 Cutover 的运行数据 |
+| `APPL_TOP` / `COMMON_TOP` / `INST_TOP` | 应用目录层级 | 产品代码、公共文件、节点上下文和管理脚本 | 文件定位与配置排错 |
+| OHS / WebLogic Managed Server | Web 中间件 | Web Entry、`oacore`、`oafm`、`forms`、`forms-c4ws` | OAF、Forms、ISG 服务承载 |
+| ICM / GSM / Service Manager | 并发调度基础 | 队列、节点、工作班次、`FNDSM` | 并发服务启停与故障转移 |
+| OPP / Workflow Mailer | 后台服务 | 输出后处理、通知发送/接收 | 报表输出与工作流通知 |
 
 ### 名词解释
 
@@ -355,6 +361,17 @@
 | Grant | 接口或服务授权；需按用户、职责、方法和数据范围最小化配置 |
 | Correlation ID | 跨系统追踪号；串联传输日志、EBS 请求、业务主键和回执 |
 | MOAC | Multi-Org Access Control；由职责/安全配置决定可访问的组织范围 |
+| Run/Patch File System | Run/Patch 文件系统；`fs1` 与 `fs2` 在 ADOP 周期中交替承担运行和补丁角色 |
+| fs_ne | Non-Editioned File System；跨版本保留并发日志、输出和运行数据，不存放应用代码 |
+| APPL_TOP | EBS 应用顶层目录；包含技术文件、产品目录和环境文件 |
+| COMMON_TOP | 公共目录；多个产品共用的脚本、模板、帮助和公共文件区域 |
+| INST_TOP | 实例顶层目录；保存节点上下文、AutoConfig 和服务管理入口 |
+| OHS | Oracle HTTP Server；EBS Web Entry Point 的 TLS、代理和静态资源入口 |
+| WebLogic Managed Server | WebLogic 受管服务器；承载 `oacore/oafm/forms/forms-c4ws` 等 EBS 应用服务 |
+| GSM | Generic Service Management；按节点和工作班次管理 EBS 后台服务 |
+| ICM | Internal Concurrent Manager；控制并发管理器、Service Manager 和队列调度 |
+| OPP | Output Post Processor；对并发请求输出执行 XML/PDF/Excel 等后处理 |
+| PCP | Parallel Concurrent Processing；将并发管理器分布到多个应用节点并支持故障转移 |
 
 官方基线：[EBS Developer's Guide](https://docs.oracle.com/cd/E26401_01/doc.122/e22961/toc.htm)、[ISG Implementation](https://docs.oracle.com/cd/E26401_01/doc.122/e20925/toc.htm)、[ISG Developer](https://docs.oracle.com/cd/E26401_01/doc.122/e20927/toc.htm)。
 
