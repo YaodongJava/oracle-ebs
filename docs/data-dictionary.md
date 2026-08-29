@@ -337,6 +337,15 @@
 | OHS / WebLogic Managed Server | Web 中间件 | Web Entry、`oacore`、`oafm`、`forms`、`forms-c4ws` | OAF、Forms、ISG 服务承载 |
 | ICM / GSM / Service Manager | 并发调度基础 | 队列、节点、工作班次、`FNDSM` | 并发服务启停与故障转移 |
 | OPP / Workflow Mailer | 后台服务 | 输出后处理、通知发送/接收 | 报表输出与工作流通知 |
+| `APPLCSF` / `NE_BASE` | 日志、输出和非版本化路径 | Context 变量、实例目录、`logs/appl/conc` | 跨 Cutover 保存并发/接口证据 |
+| Context File / AutoConfig | 实例配置来源 | 节点、端口、路径、服务状态、模板 | 生成配置和环境一致性 |
+| WebLogic Domain / Node Manager | 中间件运行域 | AdminServer、Managed Server、JRF、启动控制 | 应用服务启停和集群治理 |
+| `FND_EXECUTABLES` / `FND_REQUEST_SETS` | 并发执行定义 | 执行方法、文件名、Stage、Link | 程序注册和请求集编排 |
+| Value Set / `FND_FLEX_VALUE_SETS` | 并发参数和字段值验证 | 格式、验证类型、独立值/表验证 | 参数校验和职责级配置 |
+| XDO Data Definition / Template | BI Publisher 报表 | XML 数据、RTF/Excel 模板、语言/地区 | OPP 后处理和输出分发 |
+| XML Gateway / AQ | B2B 消息与队列 | Message Map、Trading Partner、ECX 队列 | XML/EDI 入站、出站和重试 |
+| EDI Gateway / e-Commerce Gateway | EDI/B2B 交易 | Transaction Type、Trading Partner、Translator/文件 | 标准 EDI 报文交换和对账 |
+| CEMLI 工件 | 定制交付物 | Config/Extension/Modification/Localization/Integration 分类 | 升级、补丁和回退治理 |
 
 ### 名词解释
 
@@ -348,6 +357,8 @@
 | EBR | Edition-Based Redefinition；R12.2 在线补丁依赖的版本化数据库机制 |
 | ADOP | Online Patching Utility；R12.2 在线补丁生命周期工具 |
 | ISG | Integrated SOA Gateway；EBS API、并发程序和开放接口的服务发布框架 |
+| Business Service Object（BSO） | Integration Repository 中可发布的业务服务对象；方法和数据类型以目标实例契约为准 |
+| Business Event System（BES） | Workflow 业务事件发布/订阅框架；支持本地或 Deferred Subscription |
 | OAF/Forms | Oracle Application Framework / Oracle Forms；EBS 页面技术栈 |
 | Workflow | 工作流；Item、活动、通知和结果组成的业务流程引擎 |
 | SSO | Single Sign-On；统一认证入口，不替代 EBS 职责、菜单和 MOAC 授权 |
@@ -372,6 +383,33 @@
 | ICM | Internal Concurrent Manager；控制并发管理器、Service Manager 和队列调度 |
 | OPP | Output Post Processor；对并发请求输出执行 XML/PDF/Excel 等后处理 |
 | PCP | Parallel Concurrent Processing；将并发管理器分布到多个应用节点并支持故障转移 |
+| Service Group | AutoConfig 服务组；按 Root、Web、Batch、Other 等角色启用/停用应用服务 |
+| Managed Server | WebLogic 受管服务器；`oacore`、`oafm`、`forms`、`forms-c4ws` 等服务实例的运行容器 |
+| Node Manager | WebLogic 节点管理器；受管服务器的启动、停止和健康监控代理 |
+| Context File | EBS AutoConfig 上下文文件；保存节点、端口、路径和服务参数，应用层通常位于 `INST_TOP` |
+| AutoConfig | 根据 Context、模板和驱动生成/维护 EBS 配置；生成文件不应长期手工修改 |
+| APPLCSF | Concurrent Processing 日志/输出根目录；R12.2 通常指向 `fs_ne` 的非版本化区域，实际值以 Context 为准 |
+| NE_BASE | `fs_ne` 的环境变量；由 `s_ne_base` Context 变量提供非版本化文件系统路径 |
+| FILE_EDITION | 当前环境文件系统角色标识；维护前确认是 `run` 还是 `patch` |
+| Java Concurrent Program | 并发执行方法之一；由 Concurrent Manager 按参数、日志、输出和完成状态运行 Java 类 |
+| OAF Extension | OAF Controller/AM/VO/EO 的受支持扩展；不等于修改 seeded XML 或 Java 类 |
+| Value Set | 并发参数/字段的值验证定义；决定格式、列表、独立值或表验证 |
+| Request Set | 由多个 Stage/Program 组成的批处理编排；需定义顺序、条件、失败和重启语义 |
+| Data Definition | BI Publisher 数据定义；描述 XML 数据集、参数和输出结构 |
+| XDO/Template | XML Publisher/BI Publisher 的数据与版式工件；模板版本、语言、字体需一并治理 |
+| eText | BI Publisher 文本输出格式；常用于银行 EFT、EDI 或固定宽度文件，需按外部规范校验 |
+| XML Gateway | 基于 Workflow Business Event、Message Map、AQ 和 Transport Agent 的 XML/B2B 集成组件 |
+| Trading Partner | XML Gateway/e-Commerce Gateway 的外部交易伙伴、地址或站点定义 |
+| Message Map | XML Gateway 的 RDBMS↔XML 字段、代码转换和流程控制映射 |
+| Advanced Queuing（AQ） | Oracle 持久化消息队列；XML Gateway、Workflow 等组件可用其传递异步消息 |
+| FNDLOAD | FND Generic Loader；使用 LCT/LDT 下载/上传受支持配置，参数必须按对象类型验证 |
+| WFLOAD | Workflow Loader；迁移 Workflow 定义、活动、消息和相关元数据 |
+| XDOLoader | BI Publisher/XML Publisher Loader；迁移 Data Definition、Template 等报表工件 |
+| Rapid Clone | EBS 克隆工具；源端 `adpreclone.pl`、目标端 `adcfgclone.pl`，完成后需 Context/AutoConfig 和外联隔离 |
+| RAC | Real Application Clusters；数据库多实例架构，需同时考虑 Service Name、全局缓存和许可证 |
+| Data Guard | 数据库备用/灾备能力；切换后要验证应用连接、并发、Workflow、文件和对账 |
+| ETCC | EBS Technology Codelevel Checker；检查数据库/应用技术栈所需补丁和代码级别 |
+| AD/TXK | EBS 应用 DBA 与技术栈补丁组件；提供 ADOP、AutoConfig、文件系统和技术对象更新能力 |
 
 官方基线：[EBS Developer's Guide](https://docs.oracle.com/cd/E26401_01/doc.122/e22961/toc.htm)、[ISG Implementation](https://docs.oracle.com/cd/E26401_01/doc.122/e20925/toc.htm)、[ISG Developer](https://docs.oracle.com/cd/E26401_01/doc.122/e20927/toc.htm)。
 

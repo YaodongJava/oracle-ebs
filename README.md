@@ -32,7 +32,7 @@
 | 07 | [供应链财务与成本](docs/07-cost-accounting.md) | PO/RCV、INV、WIP、CST、OPM、LCM、COGS 与 SLA/GL |
 | 08 | [报表、关账与治理](docs/08-reporting-governance.md) | FSG、BI Publisher、Web ADI、ECC、内控、审计和本地化 |
 | 09 | [端到端业务流程](docs/09-end-to-end.md) | R2R、P2P、O2C、资产、项目、成本、税务、公司间和外部子账 |
-| 10 | [技术架构、开发与集成](docs/10-technical.md) | R12.2 架构、数据模型、接口、Concurrent、Workflow、OAF、Forms、ADOP/EBR、死锁排查 |
+| 10 | [技术架构、开发与集成](docs/10-technical.md) | R12.2 架构/文件系统/中间件、数据库、接口、Concurrent、Workflow、OAF/Forms、报表、Java、ADOP/EBR、安全、高可用和排错 |
 | 11 | [实施与运维生命周期](docs/11-implementation-operations.md) | 评估、蓝图、配置、迁移、测试、切换、Hypercare、补丁、克隆和灾备 |
 | 90 | [统一参考资料](docs/90-reference.md) | 术语、表、API、并发程序、Profile、Lookup、报表、状态和错误索引 |
 | 99 | [历史归档](docs/99-archive.md) | 已迁移、已废弃或仅供历史追溯的资料 |

@@ -4,27 +4,32 @@
 
 ## 阅读导航
 
-- [架构](#2-r122-架构心智模型) · [扩展与数据](#3-扩展方案优先级) · [接口 API](#5-接口与-api-设计) · [并发与页面](#6-concurrent-processing) · [ADOP 发布](#8-adop-发布周期) · [性能安全](#9-性能与故障证据包) · [SSO/密码](#technical-sso) · [死锁排查](#11-死锁排查与解决方法) · [技术专题](#13-技术专题详解)
+- [架构总览](#technical-architecture) · [设计原则](#technical-design) · [安全与身份](#technical-security) · [诊断与死锁](#technical-diagnostics) · [实施案例](#technical-cases) · [详细实施手册](#technical-handbook)
 
 ## 模块数据字典与名词解释
 
 本模块速查见[统一数据字典](data-dictionary.md#dict-10)。
 
-## 技术架构图与技术对象 ER 图
+<a id="technical-architecture"></a>
+## 1. 架构总览（Topology and Runtime）
 
-### R12.2 三层及发布架构
+### 1.1 R12.2 三层及发布架构
 
 ```mermaid
 flowchart TB
     U[Browser / Forms Client\n浏览器/Forms 客户端] --> LB[Load Balancer / WAF\n负载均衡/边界防护]
     LB --> OHS[Oracle HTTP Server\nWeb Entry Point]
     OHS --> WLS[WebLogic Domain\nAdminServer + Managed Servers]
-    WLS --> OA[OACORE / OAFM\nOAF、JSP、ISG、集成应用]
+    WLS --> OA[OACORE / OAFM\nOAF、JSP、FMW 应用]
     WLS --> FS[FORMS / FORMS-C4WS\nForms 运行时与 Web Service]
-    WLS --> ISG[Integration Repository / ISG\nSOAP/REST 服务]
+    WLS --> REST[ISG REST\nEBS WebLogic Managed Server]
+    SOA[SOA Suite WebLogic\n可选 SOAP 集成域] --> SOAP[ISG SOAP\nSOAP Service Provider]
+    IR[Integration Repository\n接口元数据] -.-> REST
+    IR -.-> SOAP
     OA --> DB[Oracle Database\nAPPS、产品 Schema、业务表、XLA、GL]
     FS --> DB
-    ISG --> DB
+    REST --> DB
+    SOAP --> DB
     WLS --> REQ[FND 请求提交\nRequest ID]
     REQ --> ICM[ICM / GSM / Service Manager\n并发调度]
     ICM --> CM[Standard / Specialized Managers\n并发管理器]
@@ -38,11 +43,11 @@ flowchart TB
     ADOP -.-> DB
 ```
 
-### R12.2 整体技术架构分层
+### 1.2 R12.2 整体技术架构分层
 
 R12.2 的“节点角色”由启用的服务组决定，而不是由某台机器上是否安装了文件决定。同一应用层节点可以按需启用 Web、Forms、批处理或其他服务；Web Administration（WebLogic Admin Server）通常只在一个节点启用，其他节点运行受管 Managed Server 或批处理服务。服务组和控制脚本应以 AutoConfig 上下文及目标实例为准，不直接编辑生成后的配置文件。
 
-#### 1. 文件系统与版本边界
+#### 1.2.1 文件系统与版本边界
 
 | 区域 | 主要内容 | 版本/共享规则 | 典型证据 |
 | --- | --- | --- | --- |
@@ -55,7 +60,9 @@ R12.2 的“节点角色”由启用的服务组决定，而不是由某台机�
 
 `fs1` 和 `fs2` 本身不是固定的“生产”和“补丁”目录；应依据当前 Run/Patch 角色执行维护。并发日志和输出在 R12.2 中必须使用 `APPLCSF` 指向非版本化区域，避免因 Cutover 后路径变化而丢失运行证据。Oracle 对三文件系统的说明见 [EBS Concepts：Dual and Non-Editioned File Systems](https://docs.oracle.com/cd/E26401_01/doc.122/e22949/T120505T120509.htm) 与 [EBS Concepts：File System Implementation](https://docs.oracle.com/cd/E26401_01/doc.122/e22949/T120505T120512.htm)。
 
-#### 2. 中间件、应用服务与服务组
+执行维护前先通过 `EBSapps.env RUN` 或 `EBSapps.env PATCH` 选择正确文件系统，并核对 `FILE_EDITION`、`RUN_BASE`、`PATCH_BASE`、`NE_BASE`、`INST_TOP` 和 `APPLCSF`。`INST_TOP` 保存节点上下文、AutoConfig 和管理入口，但 OHS/WebLogic 的全部配置并不都位于 `INST_TOP`；FMW Home、WLS Domain 和 OHS 实例目录仍需用其原生工具及受支持同步机制维护。
+
+#### 1.2.2 中间件、应用服务与服务组
 
 | 服务组 | 服务/组件 | 主要职责 | 典型排错入口 |
 | --- | --- | --- | --- |
@@ -65,10 +72,11 @@ R12.2 的“节点角色”由启用的服务组决定，而不是由某台机�
 | Web Application Services | `oacore`、`oafm`、`forms`、`forms-c4ws` | OAF/JSP、FMW 应用、Forms 访问和 Forms Web Service | Managed Server 日志、JVM/线程/数据源 |
 | Batch Processing Services | Applications Listener、Concurrent Manager、Fulfillment Server、ICSM | 并发请求、后台处理、特定 Fulfillment/ICSM 服务 | Listener、ICM/Manager、服务日志 |
 | Other Services | Forms Server、Oracle MWA | 传统 Forms 相关服务和移动仓库终端（启用时） | 对应控制脚本、服务日志 |
+| 专用 SOAP 集成域（可选） | SOA Suite WebLogic、ISG SOAP Service Provider | SOAP 服务生成、策略、同步/异步回调和服务监控 | SOA Managed Server、WSDL、Service Monitor |
 
-R12.2 中 OC4J 已由 WebLogic Server 替代；AutoConfig 仍管理部分 OHS 和应用服务配置，Managed Server 的其余配置应通过 WebLogic/Fusion Middleware 工具维护。常用的总控脚本是 `<INST_TOP>/admin/scripts/adstrtal.sh` 和 `adstpall.sh`；单个 `oacore/oafm/forms/forms-c4ws` 由 `admanagedsrvctl.sh` 或 WLS 控制台管理。服务组清单和脚本见 [EBS Setup Guide：AutoConfig-Managed Service Groups](https://docs.oracle.com/cd/E26401_01/doc.122/e22953/T174296T589913.htm)。
+R12.2 中 OC4J 已由 WebLogic Server 替代；AutoConfig 仍管理部分 OHS 和应用服务配置，Managed Server 的其余配置应通过 WebLogic/Fusion Middleware 工具维护。常用的总控脚本是 `<INST_TOP>/admin/scripts/adstrtal.sh` 和 `adstpall.sh`；单个 `oacore/oafm/forms/forms-c4ws` 由 `admanagedsrvctl.sh` 或 WLS 控制台管理。ISG REST 直接部署到 EBS WebLogic Managed Server，ISG SOAP 则部署到 SOA Suite WebLogic Managed Server；是否存在专用 SOAP 域以目标实例为准。服务组清单和脚本见 [EBS Setup Guide：AutoConfig-Managed Service Groups](https://docs.oracle.com/cd/E26401_01/doc.122/e22953/T174296T589913.htm)。
 
-#### 3. 数据库层、连接与共享状态
+#### 1.2.3 数据库层、连接与共享状态
 
 | 组件 | 作用 | 需要核对的边界 |
 | --- | --- | --- |
@@ -81,7 +89,7 @@ R12.2 中 OC4J 已由 WebLogic Server 替代；AutoConfig 仍管理部分 OHS �
 
 应用服务通过数据源/连接池访问数据库；Forms、OAF、ISG 和 Concurrent Manager 可能使用不同的连接生命周期。排查时同时记录用户/职责、`ORG_ID`/Ledger、节点、数据库实例、Session、`MODULE/ACTION` 和 Request ID，不能只凭数据库用户名定位业务请求。
 
-#### 4. 并发处理与后台服务
+#### 1.2.4 并发处理与后台服务
 
 并发处理的核心对象是“请求 → 队列 → Manager → 进程 → 日志/输出”。用户或接口先在 `FND_CONCURRENT_REQUESTS` 产生 Request ID，Internal Concurrent Manager（ICM）负责全局调度，并通过 Generic Service Management（GSM）在启用并发处理的节点启动 Service Manager（`FNDSM`）；Service Manager 再按工作班次、Specialization Rule、冲突域和目标节点管理 Standard/Specialized Manager。
 
@@ -98,7 +106,7 @@ R12.2 中 OC4J 已由 WebLogic Server 替代；AutoConfig 仍管理部分 OHS �
 
 R12.2 的 Parallel Concurrent Processing（PCP）与 GSM 一起工作，可将 Manager 分布到多个应用节点并支持节点故障转移。不要手工更新 `FND_CONCURRENT_REQUESTS`、`FND_CONCURRENT_PROCESSES` 或 `FND_CONCURRENT_QUEUES`；应使用标准管理页面、控制脚本和 Purge Concurrent Requests 程序。架构依据见 [EBS Concepts：Concurrent Processing](https://docs.oracle.com/cd/E26401_01/doc.122/e22949/T120505T120508.htm) 和 [Setup Guide：Parallel Concurrent Processing](https://docs.oracle.com/cd/E26401_01/doc.122/e22953/T174296T575591.htm)。
 
-#### 5. 网络入口与典型请求链路
+#### 1.2.5 网络入口与典型请求链路
 
 建议将访问分为浏览器/Forms、系统间入站和 EBS 出站三类，并在防火墙、负载均衡和服务层分别记录证据：
 
@@ -110,9 +118,11 @@ Forms：Forms Client → OHS/Forms Servlet → forms Managed Server → Forms Ru
 出站服务：业务事件 → Workflow/JBES/SIF → 外部 SOAP/REST/SMTP/LDAP → 回调/回执 → EBS
 ```
 
+其中 ISG REST 的请求通常进入 EBS WebLogic Managed Server；ISG SOAP 请求经 SOA Suite WebLogic Managed Server 的 Service Provider，再由 EBS Adapter 访问应用。不要把两类 Endpoint、WSDL/WADL、认证策略和日志位置混为一谈。
+
 网络与会话设计至少明确：TLS 终止位置、`s_webentry*` 变量、负载均衡健康检查、会话粘性或可恢复策略、OHS 到 Managed Server 的代理规则、数据库连接超时、外部调用超时和日志关联号。端口号不能从模板照抄；以 AutoConfig context、WLS/OHS 配置和当前防火墙清单为准。Oracle 的服务端口变量清单可参考 [Security Guide：Ports Used by WebLogic Server](https://docs.oracle.com/cd/E26401_01/doc.122/e22952/T156458T659608.htm)。
 
-#### 6. 启停、监控与故障域
+#### 1.2.6 启停、监控与故障域
 
 1. 启停顺序通常由 `adstrtal.sh`/`adstpall.sh` 和各服务控制脚本统一编排；单独重启前先确认请求、Workflow、Forms 会话和接口是否需要排空。
 2. 配置变更分为 AutoConfig/context、WLS/OHS/FMW、EBS Profile/职责和数据库参数四类，必须由对应工具维护并保留前后差异。
@@ -120,7 +130,7 @@ Forms：Forms Client → OHS/Forms Servlet → forms Managed Server → Forms Ru
 4. 故障定位按“入口 → 应用服务 → 并发/Workflow → 数据库 → 外部系统”分层，记录时间、节点、Request ID、Session/SQL ID、服务日志和最近 ADOP 变更。
 5. 节点故障、Managed Server 故障、数据库实例故障、共享文件系统故障和外部服务故障分别定义恢复动作；不要用全栈重启替代证据采集。
 
-### 技术对象 ER 图
+### 1.3 技术对象 ER 图
 
 ```mermaid
 erDiagram
@@ -160,39 +170,52 @@ erDiagram
 
 该 ER 图用于并发、日志和权限追溯；具体列、状态值和 OAM 页面字段须以目标 R12.2 补丁级别确认。
 
-## 1. 学习目标
+<a id="technical-design"></a>
+## 2. 技术能力地图与设计原则
 
-应能判断请求运行在哪一层，选择标准接口/API/页面扩展方案，设计可重跑集成，定位 Concurrent、Workflow、OAF 和数据库问题，并按 ADOP/EBR 要求安全发布。
+### 2.1 学习与交付目标
 
-## 2. R12.2 架构心智模型
+技术顾问应能从一个业务动作定位到入口、应用服务、数据库会话、并发/Workflow、文件和外部回执；能在标准能力、扩展点和直接开发之间做出可审计的取舍；能按 R12.2 ADOP/EBR 交付、回退并验证。任何表名、列名、状态、API 签名、端口和服务是否启用，都必须以目标实例的补丁级别、产品安装、本地化和许可证为准。
 
-| 层 | 主要组件 | 诊断证据 |
+### 2.2 技术域覆盖矩阵
+
+| 技术域 | 必须掌握的对象/组件 | 最低交付物与证据 |
 | --- | --- | --- |
-| 客户端 | 浏览器、Java Web Start/Forms 客户端（依实例） | 浏览器/Java 日志、URL、用户与职责 |
-| 应用层 | Oracle HTTP Server、WebLogic、OAF、Forms、Concurrent Managers | 服务日志、请求日志、配置、节点状态 |
-| 数据库层 | Oracle Database、APPS schema、产品 schema、EBR editions | 会话、对象、SQL、无效对象、警报日志 |
+| 部署与文件 | `fs1/fs2/fs_ne`、APPL_TOP、COMMON_TOP、INST_TOP、Context、AutoConfig、ADOP/EBR | 拓扑图、文件系统角色、变更包、`adop -status` 和 AutoConfig 日志 |
+| 中间件与入口 | OHS、OPMN、WebLogic Domain、AdminServer、Managed Server、Node Manager、负载均衡/WAF | 服务组矩阵、端口/证书清单、访问日志、健康检查和启停记录 |
+| 数据库与模型 | Oracle Database、APPS/APPLSYS/Product Schema、FND、SLA/XLA、监听器、RAC/Data Guard | eTRM/数据字典核对、SQL 执行计划、会话/SQL ID、备份与恢复证据 |
+| 页面与扩展 | OAF（AM/VO/EO/CO）、Forms、Forms Personalization、CUSTOM.pll、PL/SQL API | 扩展点说明、源码/注册工件、权限矩阵、升级回归和回退脚本 |
+| 批处理与流程 | Concurrent Program/Request Set、ICM/GSM/Manager、OPP、Workflow、AME、Mailer | Request ID、队列/Manager 配置、日志/输出、Item Type/Key 和通知证据 |
+| 集成与消息 | Public API、Open Interface、ISG REST/SOAP、Business Event/SIF、XML Gateway、EDI Gateway、AQ | WSDL/WADL、状态机、幂等键、重试/补偿、对账和回执 |
+| 身份与安全 | `FND_USER`、Responsibility、Menu/Function、Profile、MOAC、SSO/OAM/OID/OUD、密钥 | 认证/授权矩阵、最小 Grant、审计日志、密钥轮换和负向测试 |
+| 运维与质量 | OAM/日志、ETCC、容量、监控、克隆、RMAN/Data Guard、测试流水线 | 运行手册、SLO/阈值、事件时间线、测试报告、灾备演练和变更记录 |
 
-R12.2 使用 Online Patching（在线补丁）和 Edition-Based Redefinition。应用文件系统通常有 run/patch 双文件系统；数据库对象要遵守 editioned/non-editioned 对象规则。不要把传统单文件系统发布方式直接用于 R12.2。
+<a id="technical-design-boundary"></a>
+### 2.3 设计与支持边界
 
-## 3. 扩展方案优先级
+- 写入优先级为：标准页面/配置 → Personalization 或受支持扩展 → Published API/Open Interface → Business Event/ISG/XML Gateway → 客制化程序与对象。只有在没有可行标准入口且完成升级、性能、安全和回退评审后，才新增代码。
+- 不覆盖 Oracle seeded 源码、JAR、Forms、OAF XML 或生成配置；不以直接 DML EBS 业务、会计、FND、Workflow 运行时基表作为常规接口或纠错方式。数据修复应使用标准功能、受支持 API 或 Oracle Support 方案。
+- 每个工件都要有客户前缀、所有者、版本、依赖、部署顺序、权限、监控、回退/补偿和验收断言；把“代码已部署”与“业务已完成/已入账”分开证明。
 
-1. 标准配置、Profile Option（配置文件选项）和 Personalization（个性化）。
-2. 标准 Open Interface、Public API、Business Event 或 Integration Repository 服务。
-3. BI Publisher、FSG、Web ADI 等标准工具。
-4. 受控的 OAF/Forms/Workflow 扩展。
-5. 自定义程序和对象，采用自定义前缀、独立 schema/目录、版本控制和发布包。
+### 2.4 扩展与接口选型决策
 
-禁止直接修改 Oracle 标准代码或直接 DML 业务基表。任何扩展都要说明升级影响、权限、审计、性能、回退和支持边界。
+| 需求 | 首选实现 | 不应直接采用的做法 | 验收重点 |
+| --- | --- | --- | --- |
+| 字段显示/默认/校验 | Forms/OAF Personalization、Profile、Lookup | 修改 seeded XML/Forms 源码 | 页面上下文、职责层级、缓存、升级回归 |
+| 单笔业务写入 | Published PL/SQL API 或产品标准表单 | 直接插入/更新基表 | FND/MOAC 上下文、Message Stack、事务边界 |
+| 大批量导入 | Open Interface + Import + Concurrent | API 单行循环或直接基表 DML | Group/Source、拒绝行、吞吐、重启与对账 |
+| 异步通知 | Business Event/Workflow、XML Gateway | 在触发器中同步调用外部 HTTP | Event Key、Deferred/Error、重试和回执 |
+| 对外服务 | ISG REST/SOAP、Concurrent Program REST | 暴露业务表/诊断包 | Grant、WSDL/WADL、限流、幂等、版本 |
+| 报表/文件 | BI Publisher/OPP、FSG、Web ADI | 生产库临时脚本拼接敏感数据 | 数据定义、模板、字体、权限、输出保留 |
 
-## 4. 数据模型与查询方法
+### 2.5 数据模型、上下文与安全查询
 
-先从业务主键和文档号定位交易，再到分配、会计和 GL；不要从大表无条件扫描。R12 常见 `_ALL` 表含 `ORG_ID`，但数据隔离方式因产品而异。视图可能应用安全上下文；技术诊断要明确是查基表、视图还是公开 API。
+先用业务主键、文档号或 Request ID 收缩范围，再沿“交易 → 分配/履约 → SLA/XLA → GL/回执”追踪。`_ALL`、`_B`、`_TL`、`_VL`、`_F`、`_INTERFACE`、`_TEMP/_GT` 只是常见命名约定，不是跨产品的绝对规则；列、状态和组织语义必须用 eTRM、`ALL_TAB_COLUMNS`、同义词和目标实例数据确认。
 
-安全查询原则：只读、绑定变量、限制 Ledger/OU/期间/主键、先看执行计划、避免在生产高峰运行重查询、输出敏感字段脱敏。表名和列需由目标实例数据字典确认。
+只读诊断应使用绑定变量、显式列、组织/账簿/期间/日期范围和执行计划；应用 API 场景要正确初始化 `FND_GLOBAL.APPS_INITIALIZE` 与 `MO_GLOBAL` 上下文。生产查询要限制并发、脱敏个人/银行/税务字段，记录 SQL ID 和执行时间，不把诊断 SQL 伪装成修复脚本。
 
-## 5. 接口与 API 设计
-
-### 5.1 标准接口状态机
+<a id="technical-interface-lifecycle"></a>
+### 2.6 接口状态、幂等与重放
 
 ```text
 Received → Validated → Staged → Submitted → Imported
@@ -200,44 +223,26 @@ Received → Validated → Staged → Submitted → Imported
 → Accounted → Reconciled → Archived
 ```
 
-接口表、业务导入和会计是不同阶段。设计需包含业务唯一键、批次/行号、控制总额、原始载荷引用、状态、错误码、请求 ID、重试次数和下游业务主键。
+接口表、业务导入、会计和下游回执是不同阶段；至少保存 `Source System + External Key + Version`、Batch/Line、控制总额、Payload Hash、状态、错误码、重试次数、Request ID、EBS 主键和回执时间。连接超时不等于 EBS 未处理：先按幂等键/Request ID 查询结果，再决定有限重试；部分成功只重试失败行，拒绝数据修正后重新提交。
 
-### 5.2 幂等与重放
+<a id="technical-security"></a>
+## 3. 安全、身份与访问控制
 
-Idempotency（幂等）表示同一业务消息重复到达不会产生重复业务结果。使用来源系统 + 来源业务键 + 版本作为唯一性依据；重跑应处理完全失败、部分成功和回执丢失三种情况。不要把清空接口表作为恢复策略。
+### 3.1 分层安全基线
 
-## 6. Concurrent Processing
+| 层次 | EBS 实现 | 关键控制与证据 |
+| --- | --- | --- |
+| 身份（Who） | `FND_USER`、SSO/OAM/OID/OUD、服务账号 | 唯一标识、入离职同步、失效日期、MFA/风险策略、审计 |
+| 认证（How） | 本地密码、SSO、API/服务凭据、TLS 客户端证书 | 密码策略、Token/证书生命周期、失败登录和密钥轮换 |
+| 授权（What） | Responsibility → Menu/Function/Request Group → Profile/MOAC/Data Access Set | 最小职责、SoD、组织/账簿隔离、Grant 快照和负向测试 |
+| 数据（Which rows） | `ORG_ID`、Ledger、Legal Entity、Operating Unit、库存组织、项目/成本中心 | SQL/API 上下文、跨组织测试、输出与接口脱敏 |
+| 传输与边界 | WAF/负载均衡、OHS、WebLogic、数据库 Listener、外部网关 | TLS 终止点、允许来源、端口、超时、证书链和访问日志 |
+| 审计与响应 | FND 登录/职责、应用日志、数据库审计、接口/并发追踪 | Correlation ID、Request ID、变更审批、保留周期、事件时间线 |
 
-Concurrent Program（并发程序）由可执行文件、程序定义、参数、请求组和 Manager 共同运行。排查按请求状态、实际开始/结束时间、Manager、日志/输出、参数、数据库会话和后续请求顺序进行。Pending 不等于程序错误；可能是 Manager 未启用、专业化规则、冲突域或资源等待。
-
-自定义程序应正确设置 completion status，记录批次和关键统计，不在日志输出凭据/完整敏感数据，并支持明确的重跑边界。
-
-## 7. Workflow、AME、OAF 与 Forms
-
-Workflow（工作流）处理业务流程和通知；Approvals Management Engine（审批管理引擎，AME）计算审批规则；Oracle Application Framework（Oracle 应用框架，OAF）构建 HTML 页面；Forms 服务传统表单。排查审批需区分规则未生成审批人、工作流活动错误、通知投递失败和用户权限问题。
-
-个性化应记录页面/功能、触发条件、层级和版本；高复杂逻辑不要堆在 Personalization 中。OAF/Forms 扩展必须验证升级和在线补丁兼容性。
-
-## 8. ADOP 发布周期
-
-典型阶段为 `prepare → apply → finalize → cutover → cleanup`，必要时包含 abort/actualize_all 等受控操作，具体命令和参数以实例运维标准及 Oracle 文档为准。发布前确认补丁文件系统同步、磁盘、无效对象、服务和备份/回退；cutover 是业务影响点，应有窗口、监控和验收。
-
-自定义数据库变更需评估 EBR：editioned 对象、cross-edition trigger、同义词和授权。发布包必须可重复、可审计并区分 run/patch 文件系统。
-
-## 9. 性能与故障证据包
-
-证据至少包括实例/节点、时间、用户/职责、业务主键、请求 ID、错误原文、日志路径、相关 SQL ID/会话、影响数量和最近变更。性能问题先量化响应时间和资源，再判断 SQL、锁、并发配置、应用服务或外部依赖；不要先重启服务掩盖证据。
-
-## 10. 安全基线
-
-- 最小权限、职责分离、凭据集中管理和定期访问复核。
-- 不在代码、参数、日志或仓库保存密码和完整银行/个人信息。
-- 自定义对象授权给受控角色，不直接广泛授权 APPS。
-- 输入验证、绑定变量、输出编码和文件路径白名单。
-- 生产变更需批准、测试、备份/回退和审计记录。
+生产安全最低要求：凭据不进入源码、参数、日志、Git 或截图；APPS/APPLSYS/SYSTEM/WebLogic 管理账号不得共享；自定义 schema 只授予必需对象；输入做白名单和长度校验，SQL 使用 Bind，文件接口限制目录/扩展名/大小。权限和日志策略必须与数据分类、监管要求及客户安全基线联动，不能只依赖 EBS 页面隐藏字段。
 
 <a id="technical-sso"></a>
-### 10.1 单点登录（SSO）与账户映射
+### 3.2 单点登录（SSO）与账户映射
 
 Oracle E-Business Suite R12.2 默认可以使用 `FND_USER` 本地认证。启用单点登录后，认证由 Oracle Access Manager（OAM）配合 Oracle Internet Directory/Oracle Unified Directory（OID/OUD），或由 Oracle Identity Cloud Service（IDCS）等受支持方案完成；第三方 IdP 不能直接绕过桥接组件连接 EBS。SSO 只解决“你是谁”，职责、菜单、请求组和 MOAC 仍由 EBS 负责授权。详见 [Oracle E-Business Suite Security Guide：SSO Integration](https://docs.oracle.com/cd/E26401_01/doc.122/e22952/T156458T580814.htm) 与 [EBS Concepts：Single Sign-On](https://docs.oracle.com/cd/E26401_01/doc.122/e22949/T120505T120515.htm)。
 
@@ -263,7 +268,7 @@ Browser
 SSO 切换建议按“目录同步 → 小范围用户 → 并行验证 → 分批切换 → 回退窗口”执行。必须验证以下场景：首次登录、深链接、多个职责切换、密码在 IdP 侧修改、用户离职、EBS 会话过期但 SSO 会话仍有效、SSO 会话注销但 EBS 页面仍打开，以及 OAM/目录不可用时的运维处置。不要直接修改 `FND_USER` 或手工写入目录密码来“修复”映射。
 
 <a id="technical-password-policy"></a>
-### 10.2 客制化密码规则与本地密码治理
+### 3.3 客制化密码规则与本地密码治理
 
 先区分三类密码：EBS 本地应用用户密码、数据库 Schema/应用凭据、SSO/LDAP 身份源密码。`SIGNON_*` Profile 只约束 EBS 本地应用用户；SSO 用户的密码复杂度、MFA、风险策略应在 IdP 侧实施。数据库 Schema 密码应使用 `AFPASSWD`/受管控的数据库 Profile，不要把数据库 `PASSWORD_VERIFY_FUNCTION` 当成 `FND_USER` 校验器。
 
@@ -316,9 +321,23 @@ public final class CorpPasswordValidation
 
 验收至少覆盖：长度/字符集边界、用户名和员工号包含关系、重复字符、历史密码重用、大小写、失败次数、管理员重置、并发改密、SSO 登录和策略回退。密码策略变更应与用户通知、服务账号轮换、应急账户测试和回退方案一起发布。
 
-## 11. 死锁排查与解决方法
+### 3.4 服务账号、密钥与接口凭据
 
-### 11.1 死锁与普通阻塞的区别
+服务账号按用途拆分为页面登录、ISG 调用、数据库连接、SFTP/银行、SMTP/LDAP、监控和部署账号；每个账号只绑定所需职责、请求组、组织范围或网络来源。账号的创建、Owner、起止日期、轮换周期、最后使用时间和撤销证据应进入配置库。
+
+| 凭据 | 推荐存放 | 轮换/失效 | 验证 |
+| --- | --- | --- | --- |
+| EBS 本地服务用户 | EBS 用户与受控密码库 | 最小职责、起止日期、失败锁定监控 | ISG/Concurrent 调用、无权 OU 测试 |
+| WLS/OHS/数据库账号 | Wallet、Credential Store 或受控密钥系统 | 先更新消费者再失效旧密钥；保留回退窗口 | 连接池、Listener、节点重启 |
+| TLS 私钥/证书 | Keystore/Wallet，权限限于服务账户 | 到期前轮换并验证完整链 | OHS/WLS/SFTP/外部接口握手 |
+| SFTP/银行/税务凭据 | 企业 Secret Manager | 双方窗口切换、禁止写入脚本 | 文件上传/下载、ACK、审计 |
+
+禁止在 `curl` 命令历史、Shell 环境长期变量、Concurrent 参数、日志、WSDL 示例、JAR 或 Git 中保存密码/Token/私钥；异常时返回通用错误并把详细凭据错误留在受限日志。凭据轮换应至少覆盖正常调用、超时重试、节点切换、灾备切换和回退场景。
+
+<a id="technical-diagnostics"></a>
+## 4. 诊断、阻塞与死锁
+
+### 4.1 死锁与普通阻塞的区别
 
 `ORA-00060: deadlock detected while waiting for resource` 表示数据库检测到会话之间形成循环等待。Oracle 会回滚触发错误的那条语句（不是自动回滚整个业务事务），并在诊断 trace 中记录涉及的事务和资源；应先保留 trace，再判断是否需要重试。官方错误说明要求检查 trace 文件以确认冲突事务和资源，见 [Oracle Database Error Help — ORA-00060](https://docs.oracle.com/en/error-help/db/ora-00060/?r=19c)。
 
@@ -330,7 +349,7 @@ public final class CorpPasswordValidation
 
 死锁不等于“某个会话很慢”。如果只有一个 blocker、没有等待环，优先按阻塞事件处理；如果日志中出现 ORA-00060 或 trace 显示循环资源，再进入死锁流程。
 
-### 11.2 EBS 常见死锁模型
+### 4.2 EBS 常见死锁模型
 
 EBS 中的锁通常由标准 API、并发程序、Forms/OAF 页面、Workflow 活动、定制触发器或直接 SQL 共同产生。最常见的根因是两个程序以相反顺序更新同一业务对象的父子行、跨模块分配行或接口批次行。
 
@@ -356,7 +375,7 @@ sequenceDiagram
 - 父表被更新/删除而子表外键无索引，导致更大范围的 TM 表锁等待；这可能表现为阻塞，也可能放大死锁概率。
 - RAC（Real Application Clusters，集群）跨实例访问同一对象，出现全局缓存等待；必须记录实例号，不能只看单节点会话。
 
-### 11.3 现场证据收集（先保留证据）
+### 4.3 现场证据收集（先保留证据）
 
 发生生产事件时先建立时间线，记录时区、数据库实例/节点、业务批次和最近发布。除非已经确认业务影响且完成最小证据采集，不要立即杀会话、重启数据库或盲目重跑。
 
@@ -366,7 +385,7 @@ sequenceDiagram
 4. 在 EBS 页面打开 **System Administrator → Concurrent → Requests**，按 Request ID 查看阶段/状态、日志和输出；必要时通过 OAM 的并发请求监控查看运行会话与诊断信息。R12.2 并发请求生命周期和 OAM 入口可参考 [Oracle E-Business Suite Setup Guide](https://docs.oracle.com/cd/E26401_01/doc.122/e22953/T174296T575591.htm) 与 [Oracle E-Business Suite Maintenance Guide](https://docs.oracle.com/cd/E26401_01/doc.122/e22954/T202991T221119.htm)。
 5. 保存最近一次 ADOP、配置、触发器、索引、并发调度或接口版本变更，避免只根据单次重跑结果下结论。
 
-### 11.4 只读诊断 SQL
+### 4.4 只读诊断 SQL
 
 以下 SQL 仅用于诊断，使用绑定变量并限制时间/对象范围。`GV$` 视图需要相应数据库权限；单实例可改用 `V$`。不同补丁级别的列可能略有差异，执行前用数据字典确认。不要把诊断 SQL 直接改造成生产 DML。
 
@@ -462,7 +481,7 @@ select sample_time,
 
 ASH/AWR/SQL Monitor 的可用性、许可和保留时间需由 DBA 确认；不能因为查询不到历史就认定事件没有发生。
 
-### 11.5 解决决策树
+### 4.5 解决决策树
 
 ```mermaid
 flowchart TD
@@ -485,7 +504,7 @@ flowchart TD
     D --> V
 ```
 
-### 11.6 生产止血与恢复
+### 4.6 生产止血与恢复
 
 - 先判断影响范围和是否仍在扩大：暂停冲突的接口/请求集，保留请求日志和数据库证据。
 - 由业务负责人和 DBA 共同确认 blocker；需要取消或终止请求时，优先使用 **Requests** 窗口的 `Cancel`/`Terminate`，并记录审批、Request ID 和回滚耗时。不要按用户名或 SID 随机终止会话。
@@ -494,7 +513,7 @@ flowchart TD
 - 重跑前确认程序是否幂等、失败语句是否只回滚了语句、业务事务是否已提交部分结果，并使用原业务唯一键防止重复单据。
 - 数据库重启不是首选止血手段；只有在 DBA 按灾备/变更流程评估后才可使用。
 
-### 11.7 根因修复与预防
+### 4.7 根因修复与预防
 
 1. **统一锁顺序**：为每个定制事务写明对象顺序（例如父表、明细、分配、汇总），所有 API、触发器和批处理遵守同一顺序。
 2. **缩短事务**：缩小批次、减少无关查询和外部调用，设置合理提交边界；不要在通用 API 内部擅自 `COMMIT`，由事务所有者决定提交。
@@ -505,7 +524,7 @@ flowchart TD
 7. **按 ADOP 发布**：触发器、索引、PL/SQL、并发定义等变更纳入 R12.2 Online Patching/EBR 流程，在测试环境完成并发压力和回滚验证。
 8. **建立监控基线**：监控 ORA-00060 次数、`enq: TX/TM` 等待、请求重试率、长事务时长和特定业务键冲突，设置阈值与责任人。
 
-### 11.8 复盘模板
+### 4.8 复盘模板
 
 | 字段 | 应记录内容 |
 | --- | --- |
@@ -517,25 +536,107 @@ flowchart TD
 | 根因与修复 | 锁顺序、触发器、外键索引、长事务、调度冲突或产品缺陷 |
 | 验证与预防 | 重现脚本、压力测试、发布版本、监控指标、责任人与截止日期 |
 
-### 11.9 官方依据
+### 4.9 官方依据
 
 - [Oracle Database Error Help — ORA-00060](https://docs.oracle.com/en/error-help/db/ora-00060/?r=19c)
 - [Oracle E-Business Suite Setup Guide — Concurrent Processing](https://docs.oracle.com/cd/E26401_01/doc.122/e22953/T174296T575591.htm)
 - [Oracle E-Business Suite Maintenance Guide — OAM 与会话监控](https://docs.oracle.com/cd/E26401_01/doc.122/e22954/T202991T221119.htm)
 
-## 12. 建议练习
+<a id="technical-cases"></a>
+## 5. 实施案例、练习与交付清单
 
-- 追踪一个 Concurrent Request 从提交到数据库会话和日志。
-- 为 AP 发票接口设计状态、幂等键、部分成功恢复和监控指标。
-- 把一个数据库对象和并发程序按 R12.2 ADOP 方式打包并在测试环境验证。
-- 从业务单据追溯 XLA/GL，再从 GL 反查来源。
+本节用最小可行案例把架构、接口、并发、安全和发布串起来。示例是设计模板，不代表任一客户实例的实际 API 名称、字段或端口。
 
-## 13. 技术专题详解
+### 5.1 案例 A：AP 发票文件到可重启导入
+
+**目标**：外部采购系统每天提交发票文件，EBS 通过接口表、标准导入和会计程序完成入账，并能处理重复、部分成功和超时未知结果。
+
+```text
+SFTP/API Landing（原始不可变）
+  → xx_ap_invoice_stg（External Key/Hash/批次）
+  → 校验与拒绝
+  → AP Open Interface（头/行/分配）
+  → Payables Open Interface Import
+  → Invoice Validation → Create Accounting → Transfer/Post GL
+  → 对账与回执（成功/警告/失败）
+```
+
+| 设计点 | 实现要求 |
+| --- | --- |
+| 幂等 | `source_system + supplier_site + external_invoice_no + version` 唯一；文件重传只增加接收记录，不重复建票 |
+| 上下文 | 用受控服务职责初始化用户、责任和 `ORG_ID`；不要在接口表中伪造组织值 |
+| 事务 | 每批固定行数，单行保存点；标准导入与校验由 Concurrent Request 执行，提交/回滚边界由 Worker 负责 |
+| 失败 | 主数据、税、期间关闭等业务错误进入拒绝表；网络/资源错误有限退避；未知结果先按外部键查询 |
+| 对账 | 输入行数/金额 = 接口成功+拒绝 = EBS 发票/税/会计金额；保存 Request ID 和发票 ID |
+
+验收：正常、重复文件、重复行、无效供应商、跨 OU、税差、期间关闭、导入成功但 ACK 丢失、Worker 中断重启和 GL 对账。
+
+### 5.2 案例 B：ISG REST + Concurrent 异步服务
+
+**目标**：外部系统提交批量订单，不在 HTTP 请求内等待全部业务处理。
+
+1. 在 Integration Repository 选择公开 API/Concurrent Program，确认方向、参数、生命周期和产品补丁说明。
+2. 只发布必要方法，设置专用 Service Alias、HTTPS 认证和最小 Grant；以部署后 WADL/REST Header 为契约。
+3. REST `POST` 接收 `correlationId`、`externalKey` 和业务载荷，提交 Concurrent Request 后立即返回 `202` 与 `requestId/statusUrl`。
+4. 状态服务读取 `FND_CONCURRENT_REQUESTS` 和业务接口状态，把内部 `PHASE_CODE/STATUS_CODE` 映射为 Submitted/Running/Success/Warning/Error。
+5. 调用方只对幂等请求重试；`408/429/5xx` 先查询结果，`4xx` 先修正数据或权限。
+
+```json
+{
+  "correlationId": "ORD-20260829-000001",
+  "externalKey": "SO-EXT-10001",
+  "requestId": 12345678,
+  "status": "SUBMITTED",
+  "statusUrl": "/integrations/orders/ORD-20260829-000001"
+}
+```
+
+### 5.3 案例 C：SSO、职责映射与密码策略切换
+
+```text
+目录同步 → 小范围 FND_USER 映射 → OAM/OID 登录
+→ Responsibility/MOAC 负向测试 → 分批切换
+→ 观察登录失败、会话超时、深链接、登出传播
+→ 回退到本地受限应急账号（双人审批）
+```
+
+实施时把“身份认证”与“EBS 授权”分开验收：SSO 成功不能证明职责、请求组、数据访问集或组织范围正确；服务账号也不能依赖浏览器 SSO 会话。自定义密码规则只作用于本地 EBS 用户，SSO/LDAP 密码策略在身份源实施。
+
+### 5.4 案例 D：并发报表、OPP 与文件分发
+
+1. 定义 PL/SQL/SQL*Plus/Java/Reports 执行文件和 Concurrent Program，绑定 Value Set、请求组、输出格式、Incompatibility 和目标 Manager。
+2. 数据引擎按参数和安全上下文查询；BI Publisher 模板负责版式，OPP 负责 XML/PDF/Excel 后处理。
+3. 日志写入 `FND_FILE`，输出路径由 `APPLCSF`/实例配置决定；不要在代码中硬编码 Run 文件系统路径。
+4. 输出完成后按最小权限分发到页面、打印、SFTP 或邮件；大文件设置保留、清理和失败告警。
+
+验收：参数校验、空数据、超大 XML、字体/语言、OPP 队列、权限隔离、重复运行、输出保留和脱敏。
+
+### 5.5 交付“完成定义”（Definition of Done）
+
+| 类别 | 完成标准 |
+| --- | --- |
+| 功能 | 正常、边界、负向、部分成功和回退场景均有可重复证据 |
+| 代码/配置 | 源码、注册定义、Context/WLS 变更、依赖和版本均可追溯 |
+| 安全 | 最小职责/Grant、组织隔离、凭据注入、日志脱敏和 SoD 通过评审 |
+| 性能 | 数据量、并发数、响应/吞吐、锁等待和资源阈值有基线 |
+| 运维 | 启停、监控、告警、重试、补偿、清理、备份和恢复步骤已演练 |
+| 发布 | ADOP/EBR、迁移顺序、校验 SQL、回退/补偿、业务签字和变更单齐全 |
+| 对账 | 输入、接口、业务单据、SLA/GL、输出和外部 ACK 数量/金额闭环 |
+
+### 5.6 建议练习
+
+- 追踪一个 Concurrent Request 从提交到数据库会话、日志、输出和 OPP。
+- 为 AP 发票或 AR 收款接口设计状态、幂等键、部分成功恢复和监控指标。
+- 把一个数据库对象、并发程序和 FND 注册定义按 R12.2 ADOP 方式打包，在测试环境完成回退。
+- 从业务单据追溯 XLA/GL，再从 GL 反查来源交易、接口批次和外部回执。
+
+<a id="technical-handbook"></a>
+## 6. 详细实施手册
 
 
 <!-- source: docs/09-technical/README.md -->
 <a id="src-docs-09-technical-readme"></a>
-### EBS R12.2 技术、集成与运维
+### 6.1 EBS R12.2 技术、集成与运维
 
 
 本目录覆盖 R12.2 技术开发和生产运行的公共规范。业务模块接口文档描述产品入口；本目录定义接口选型、并发程序、PL/SQL、Workflow、OAF/Forms、迁移、EBR/ADOP、性能、安全和可观测性的共性边界。
@@ -556,10 +657,7 @@ flowchart TD
 <a id="src-docs-09-technical-readme--r122-不可省略的边界"></a>
 #### R12.2 不可省略的边界
 
-1. 定制对象和部署必须遵循 Edition-Based Redefinition 与 Online Patching（ADOP）约束；不得以覆盖 Oracle 标准文件或直接修改标准对象作为常规交付方式。
-2. 支持写入的路径依次为标准页面、公开 API、Open Interface、Integration Repository/ISG 和客户自定义对象；禁止直接 DML EBS 业务基表修复数据。
-3. 接口应具备幂等键、状态机、错误分类、审计相关号、最小权限、监控、重试上限和人工补偿入口。
-4. 性能问题先以并发请求、日志、SQL 执行计划和应用上下文定位；AWR、ASH、SQL Monitor 等能力须确认数据库许可证。
+本专题不再重复列出通用原则；扩展选型、直接 DML 禁止项、接口幂等和诊断许可边界统一见[第 2.3 节设计与支持边界](#technical-design-boundary)及[第 2.6 节接口状态、幂等与重放](#technical-interface-lifecycle)。本节后续内容只保留各专题的实现步骤、SQL、案例和故障处理。
 
 <a id="src-docs-09-technical-readme--官方依据"></a>
 #### 官方依据
@@ -570,7 +668,7 @@ flowchart TD
 
 <!-- source: docs/09-technical/adop-ebr-release.md -->
 <a id="src-docs-09-technical-adop-ebr-release"></a>
-### R12.2 Online Patching、EBR 与发布治理
+### 6.2 R12.2 Online Patching、EBR 与发布治理
 
 
 <a id="src-docs-09-technical-adop-ebr-release--核心原则"></a>
@@ -640,7 +738,7 @@ select owner, table_name, column_name, data_type, data_length
 
 <!-- source: docs/09-technical/concurrent-programs.md -->
 <a id="src-docs-09-technical-concurrent-programs"></a>
-### Concurrent Program、请求集与日志排错
+### 6.3 Concurrent Program、请求集与日志排错
 
 
 <a id="src-docs-09-technical-concurrent-programs--架构"></a>
@@ -707,7 +805,7 @@ SELECT request_id, phase_code, status_code,
 
 <!-- source: docs/09-technical/customization.md -->
 <a id="src-docs-09-technical-customization"></a>
-### PL/SQL、Forms、Personalization 与 OAF 定制
+### 6.4 PL/SQL、Forms、Personalization 与 OAF 定制
 
 
 <a id="src-docs-09-technical-customization--r122-定制原则"></a>
@@ -765,7 +863,7 @@ SELECT lookup_type, lookup_code, meaning, enabled_flag,
 
 <!-- source: docs/09-technical/data-model.md -->
 <a id="src-docs-09-technical-data-model"></a>
-### EBS R12.2 数据模型与常用表
+### 6.5 EBS R12.2 数据模型与常用表
 
 
 <a id="src-docs-09-technical-data-model--建模约定"></a>
@@ -843,7 +941,7 @@ SELECT acc.owner, acc.constraint_name, acc.table_name,
 
 <!-- source: docs/09-technical/integration.md -->
 <a id="src-docs-09-technical-integration"></a>
-### 开放接口、API、报表与数据迁移
+### 6.6 开放接口、API、报表与数据迁移
 
 
 > Concurrent Worker、标准 API 模板、ISG REST、重试与可观测性代码见 [技术接口实现手册](#src-docs-09-technical-interfaces)。
@@ -926,7 +1024,7 @@ SELECT item_type, item_key, process_activity,
 
 <!-- source: docs/09-technical/interfaces.md -->
 <a id="src-docs-09-technical-interfaces"></a>
-### Oracle EBS 技术接口实现手册
+### 6.7 Oracle EBS 技术接口实现手册
 
 
 <a id="src-docs-09-technical-interfaces--1-接口方式选型"></a>
@@ -940,7 +1038,7 @@ SELECT item_type, item_key, process_activity,
 | Concurrent Program REST | 长任务/报表/批处理 | REST 仅 POST，异步返回 Request ID | 参数位置、轮询、超时、并发队列 |
 | Business Event | EBS 业务事件通知 | 本地/Deferred Subscription | Event Key 幂等、Error Queue |
 | Service Invocation Framework | EBS 调外部 SOAP/REST | Workflow BES + Java Deferred Agent | 证书、凭据、回调、Invocation Monitor |
-| XML Gateway/EDI | B2B 标准报文 | Trading Partner、Map、ACK | 版本、字符集、签名、重复报文 |
+| XML Gateway / EDI Gateway | B2B 标准报文 | Trading Partner、Map、ACK | 版本、字符集、签名、重复报文 |
 
 Oracle R12.2 官方说明：PL/SQL API、Concurrent Program、Business Service Object 可暴露为 SOAP/REST；Inbound Open Interface REST 支持 POST/GET/PUT/DELETE；Concurrent Program REST 只支持 POST。自定义 Open Interface 表/视图不能直接作为 Integration Repository 的 Custom Interface 类型发布，应使用自定义 PL/SQL API 或标准接口暂存层。
 
@@ -991,6 +1089,12 @@ CREATE OR REPLACE PACKAGE BODY xxint_worker_pkg AS
     errbuf := NULL;
     retcode := 0;
 
+    IF p_interface_code IS NULL OR p_batch_size IS NULL OR p_batch_size < 1 THEN
+      retcode := 2;
+      errbuf := 'interface_code and positive batch_size are required';
+      RETURN;
+    END IF;
+
     fnd_file.put_line(fnd_file.log,
       'Start interface=' || p_interface_code ||
       ', batch_size=' || p_batch_size);
@@ -1007,6 +1111,8 @@ CREATE OR REPLACE PACKAGE BODY xxint_worker_pkg AS
          WHERE message_id = r.message_id;
 
         -- Router 内部调用 AP/AR/GL/FA/INV 的标准 API 或 Open Interface。
+        l_ebs_transaction_id := NULL;
+        l_request_id := NULL;
         xxint_router.process_message(
           p_message_id         => r.message_id,
           x_ebs_transaction_id => l_ebs_transaction_id,
@@ -1027,7 +1133,6 @@ CREATE OR REPLACE PACKAGE BODY xxint_worker_pkg AS
          WHERE message_id = r.message_id;
 
         l_success_count := l_success_count + 1;
-        COMMIT;
       EXCEPTION
         WHEN OTHERS THEN
           ROLLBACK TO one_message;
@@ -1045,9 +1150,11 @@ CREATE OR REPLACE PACKAGE BODY xxint_worker_pkg AS
                  last_updated_by = fnd_global.user_id
            WHERE message_id = r.message_id;
           l_error_count := l_error_count + 1;
-          COMMIT;
       END;
     END LOOP;
+
+    -- FOR UPDATE 游标在循环内不能逐行 COMMIT；按批次提交可避免游标失效。
+    COMMIT;
 
     IF l_error_count > 0 THEN
       retcode := 1; -- Warning
@@ -1069,6 +1176,8 @@ END xxint_worker_pkg;
 ```
 
 R12.2 自定义数据库对象应放在自定义 Schema/APPS 同义词策略下，并通过 ADOP/Edition-Based Redefinition 合规发布。Worker 使用 `FOR UPDATE SKIP LOCKED` 支持多并发实例，并在达到批次大小后停止领取。
+
+`xxint_router.process_message` 必须明确事务所有权并禁止隐式 `COMMIT`；若调用标准 API，应按其契约传入 `p_commit => fnd_api.g_false`（实际参数以目标 API 为准），否则保存点无法保证单行失败可回滚。
 
 <a id="src-docs-09-technical-interfaces--3-标准-plsql-api-调用模板"></a>
 #### 3. 标准 PL/SQL API 调用模板
@@ -1357,7 +1466,7 @@ SELECT interface_code,
 
 <!-- source: docs/09-technical/operations.md -->
 <a id="src-docs-09-technical-operations"></a>
-### 性能调优、权限审计与 R12.2 生产运维
+### 6.8 性能调优、权限审计与 R12.2 生产运维
 
 
 <a id="src-docs-09-technical-operations--r122-运维边界"></a>
@@ -1366,7 +1475,7 @@ SELECT interface_code,
 - 应用层管理节点、WebLogic/OHS、Forms、Concurrent Processing、Workflow Mailer、OPP 和集成服务。
 - R12.2 使用 Online Patching（adop）的 Prepare、Apply、Finalize、Cutover、Cleanup 周期，并基于 Run/Patch File System 与 EBR。
 - 管理脚本和环境文件必须在正确节点/文件系统执行；不在未确认的环境中混用 run/patch edition。
-- 数据库、中间件、EBS Codelevel/ETCC、Java 和浏览器兼容性应按 Oracle 证证矩阵和 Support 建议维护。
+- 数据库、中间件、EBS Codelevel/ETCC、Java 和浏览器兼容性应按 Oracle 认证矩阵和 Support 建议维护。
 
 <a id="src-docs-09-technical-operations--性能诊断法"></a>
 #### 性能诊断法
@@ -1452,7 +1561,7 @@ SELECT fu.user_name, fpo.user_profile_option_name,
 
 <!-- source: docs/09-technical/tables.md -->
 <a id="src-docs-09-technical-tables"></a>
-### FND、Concurrent、Workflow 与运维常用表结构
+### 6.9 FND、Concurrent、Workflow 与运维常用表结构
 
 
 <a id="src-docs-09-technical-tables--业务说明"></a>
@@ -1564,12 +1673,11 @@ SELECT fcr.request_id,
 #### 官方参考
 
 - [Oracle E-Business Suite eTRM User's Guide R12.2](https://docs.oracle.com/cd/E26401_01/doc.122/f53031/)
-- [Oracle E-Business Suite Concepts R12.2](https://docs.oracle.com/cd/E26401_01/doc.122/e22949/)
 
 
 <!-- source: docs/09-technical/workflow-ame-oaf-governance.md -->
 <a id="src-docs-09-technical-workflow-ame-oaf-governance"></a>
-### Workflow、AME、OAF/Forms 与配置迁移治理
+### 6.10 Workflow、AME、OAF/Forms 与配置迁移治理
 
 
 <a id="src-docs-09-technical-workflow-ame-oaf-governance--分工"></a>
@@ -1625,6 +1733,170 @@ select wias.item_type,
 #### 官方参考
 
 本专题复用本文件“官方依据”中的 Technology Documentation 与 Maintenance Guide；Workflow/OAF 具体资料按专题内的产品链接补充。
+
+<a id="src-docs-09-technical-java-extensions"></a>
+### 6.11 Java、OAF、Forms 与客户端扩展
+
+Java 在 EBS 中既可能是 OAF/FMW 运行时的一部分，也可能作为并发程序、Workflow Java Function、Forms Web Service 或 SIF Deferred Agent 使用。扩展必须依赖目标实例已认证的 JDK、FMW/JRF 和 EBS 类库；“本机能编译”不等于“受支持或可在补丁后运行”。
+
+| 扩展点 | 适用场景 | 实现边界 | 发布/验证 |
+| --- | --- | --- | --- |
+| OAF Controller Extension（CO） | 页面请求、按钮事件、校验和导航 | 只扩展已发布页面/事件；不改 seeded XML、Controller 或 BC4J 类 | OA Extension/源码包、页面上下文、职责和回归 |
+| OAF AM/VO/EO Extension | 查询、业务对象和事务逻辑 | 优先调用公开 API；不要绕过实体校验直接更新基表 | Java 包、数据源、异常、事务和补丁回归 |
+| Forms Personalization | 显示、默认、验证、菜单动作 | 先于 CUSTOM.pll；避免把复杂业务规则塞进客户端触发器 | Function/Form/Level/Sequence、导出配置和负向测试 |
+| `CUSTOM.pll`/Forms Library | Personalization 无法覆盖的通用 Forms 行为 | 使用客户前缀、最小触发器和可回退库；不修改 Oracle 库 | PLL/PLX/FMX、重新生成 JAR、Forms 会话回归 |
+| Java Concurrent Program | 长任务、文件处理或 Java 生态库 | 通过 Concurrent Program 定义参数、日志、输出和完成状态；不要脱离 Manager 自行常驻 | 执行方法/类名、依赖 JAR、Request ID、日志/输出 |
+| Workflow Java Function/Rule | 活动函数、规则或消息转换 | 明确定义同步/Deferred、异常和超时；不在函数内保存明文凭据 | Item Type/Key、活动状态、Error Queue、重试 |
+| `PasswordValidation` | 本地 EBS 用户自定义密码校验 | 纯函数、低延迟、无外部网络；只作用于本地密码 | `SIGNON_PASSWORD_CUSTOM`、消息栈、策略回归 |
+| Java API for Forms / SIF Deferred Agent | Forms Web Service 或 EBS 出站 SOAP/REST | 以 Integration Repository/Workflow 契约为准，不能凭类名猜接口 | WSDL、事件、证书、Invocation Monitor、回执 |
+
+#### OAF Controller 扩展示意
+
+下例只展示扩展边界，不是可直接部署的完整页面。页面路径、Bean ID、事件名和类路径必须从目标实例导出的 XML/Java 元数据确认。
+
+```java
+package xx.oracle.apps.ont.order.webui;
+
+import oracle.apps.fnd.framework.webui.OAControllerImpl;
+import oracle.apps.fnd.framework.webui.OAPageContext;
+import oracle.apps.fnd.framework.webui.OAWebBean;
+
+public class XXOrderCO extends OAControllerImpl {
+  @Override
+  public void processRequest(OAPageContext pageContext, OAWebBean webBean) {
+    super.processRequest(pageContext, webBean);
+    // 只读取/设置已发布 Bean；业务写入交给 AM/API。
+    if (pageContext.getParameter("XX_VALIDATE") != null) {
+      pageContext.putParameter("XX_VALIDATION_MODE", "Y");
+    }
+  }
+
+  @Override
+  public void processFormRequest(OAPageContext pageContext, OAWebBean webBean) {
+    super.processFormRequest(pageContext, webBean);
+    // 复杂业务动作应调用 AM 或公开 API，不在 CO 中直接 DML。
+  }
+}
+```
+
+#### Java 扩展发布步骤
+
+1. 从目标实例导出页面/接口契约，确定 JDK、FMW/JRF、EBS 类库、编译选项和客户包名；记录依赖版本与许可证。
+2. 以独立 Git 工程编译、单元测试和静态扫描；禁止把密码、Token、完整载荷和数据库连接串写入源码。
+3. 将 Java、JAR、OAF 元数据、Forms 库、并发定义和 FNDLOAD 工件纳入 ADOP Patch 文件系统；不直接把文件复制到当前 Run 目录。
+4. 按实例受支持流程更新类路径/注册定义、清理必要缓存并重启最小服务范围；不使用整栈重启掩盖类加载或配置问题。
+5. 回归新建/修改/重置密码、页面深链接、职责/MOAC、并发取消/重跑、Workflow Error Queue、补丁后类加载和节点切换。
+
+Oracle 的并发执行方法包含 Java Concurrent Program；并发程序定义、参数和执行文件需参考 [EBS Setup Guide：Concurrent Programs](https://docs.oracle.com/cd/E26401_01/doc.122/e22953/T174296T575591.htm)。OAF 扩展的工具和类层次参考 [Oracle Application Framework Developer's Guide](https://docs.oracle.com/cd/F21816_01/infoportal/oafdg/1225_OAFDevGuide.pdf)。
+
+<a id="src-docs-09-technical-reporting-file-exchange"></a>
+### 6.12 报表、打印、Web ADI 与文件交换
+
+报表链路要把“数据、版式、生成、分发、保留”分开治理。BI Publisher/XML Publisher 由 Data Definition/数据引擎产生 XML，Template 控制版式，Concurrent Program 负责调度，OPP 负责 PDF/Excel/RTF/eText 等后处理；FSG、Oracle Reports、Web ADI 和外部 BI 工具有不同的安全与生命周期，不能混用配置。
+
+| 能力 | 技术对象 | 适合场景 | 主要风险 |
+| --- | --- | --- | --- |
+| BI Publisher/OPP | Data Definition、Template、XDO、Concurrent、OPP | 像素级 PDF、Excel、RTF、eText、批量分发 | XML 过大、字体/语言、OPP 队列、敏感输出 |
+| FSG/Report Manager | Row/Column Set、Content Set、报表组 | GL 财务报表、钻取和期间报告 | 账簿/期间上下文、列定义和性能 |
+| Oracle Reports | RDF/REP、Concurrent Program | 既有 Reports 报表或兼容性场景 | 旧运行时、字体、生成器版本 |
+| Web ADI | Integrator、Layout、Uploader、API/Open Interface | 受控电子表格批量录入/上传 | Macro/客户端、职责、重复提交和审计 |
+| 文件交换 | `fs_ne`、APPLCSF、DB Directory、SFTP/HTTPS | 银行、税务、EDI、批量导入导出 | 路径、权限、加密、病毒扫描、重复文件 |
+
+#### BI Publisher 报表实现案例
+
+1. **数据定义**：用绑定参数限定 Ledger/OU/期间/状态，显式列出业务主键；把 SQL、数据模型版本和样例 XML 纳入代码库。
+2. **模板**：在 RTF/Excel 模板中定义语言、数字/日期格式、页眉页脚和空数据行为；字体和时区作为部署依赖，不放在个人电脑临时目录。
+3. **注册**：创建 Data Definition、Template、Concurrent Program、Value Set、Request Group 和输出格式；由 OPP 生成目标文件。
+4. **分发**：Bursting/Delivery Channel 使用受控邮件、打印、WebDAV 或 SFTP；凭据从安全存储注入，日志只保留摘要和 Correlation ID。
+5. **验收**：核对输入行数/金额、报表总计、PDF/Excel/eText 内容、语言字体、权限、重复运行、OPP 队列和清理策略。
+
+#### 文件交换控制
+
+- 入站文件先落到隔离 Landing 目录，校验名称、大小、Hash、字符集、签名/加密和来源，再移动到 `fs_ne` 的处理目录；处理完成后移动到成功/拒绝/归档目录。
+- 文件路径由 Context/AutoConfig、`APPLCSF`、数据库 Directory 或实例配置提供；不要硬编码 `fs1`/`fs2`，也不要把 `fs_ne` 当作共享代码目录。
+- 文件处理表保存外部文件名、Hash、批次、行数、金额、状态、Request ID 和归档位置；重复 Hash 只记录重复，不再次导入。
+- 银行、税务、薪资和个人数据文件必须加密、限权、定期清理并审计下载；生产与非生产端点和证书隔离。
+
+BI Publisher 的数据提取、模板和分发能力见 [Oracle XML Publisher Administration and Developer's Guide](https://docs.oracle.com/cd/E26401_01/doc.122/e22953/T174296T206856.htm)；XML Gateway 的消息映射、Trading Partner、AQ 和传输代理见 [Oracle XML Gateway User's Guide](https://docs.oracle.com/cd/E26401_01/doc.122/e20929/)。
+
+<a id="src-docs-09-technical-ha-dr-clone"></a>
+### 6.13 高可用、克隆、备份与灾备
+
+高可用不是简单地“多装几台服务器”，而是每一层都要有故障检测、状态恢复、数据保护和演练证据：
+
+| 层 | 常见方案 | 关键状态/风险 | 验证方式 |
+| --- | --- | --- | --- |
+| 入口 | WAF/负载均衡、健康检查、TLS 证书集群 | 会话粘性、深链接、证书过期、错误摘除 | 节点下线、登录/Forms/下载和回源测试 |
+| 应用 | 多个 OHS/`oacore`/`oafm`/Forms Managed Server、Node Manager | WLS 集群配置、JVM、共享/本地日志、缓存 | 单节点停机、线程/连接池、日志完整性 |
+| 并发 | PCP、多个 Manager/Service Manager、目标节点 | 重复领取、冲突域、GSM/ICM 依赖、未完成请求 | 节点故障、请求转移、长任务和回滚 |
+| 数据库 | RAC（可选）、Data Guard、备份/归档日志 | Service Name、实例切换、应用连接池、许可证 | Switchover/Failover、连接恢复、会计和接口对账 |
+| 文件 | `fs1/fs2`、`fs_ne`、共享或复制存储 | 非版本化数据一致性、空间、权限、延迟 | 读写、切换、日志/输出、备份还原 |
+
+#### Rapid Clone 与环境刷新
+
+官方 Rapid Clone 过程是“源端 `adpreclone.pl` → 复制文件/数据库 → 目标端 `adcfgclone.pl` → 修改 Context/端口 → AutoConfig → 服务和业务验证”。目标环境必须重新隔离外部端点、邮件、SFTP、支付、税务、SSO、证书和计划请求；生产数据的脱敏范围由数据分类和政策确定。
+
+```text
+源环境健康检查/备份
+  → adpreclone（DB + Apps）
+  → 复制 APPL_TOP/FMW/数据库备份
+  → 目标 adcfgclone + 新 Context/Port Pool
+  → AutoConfig（DB → Apps）
+  → 服务、连接池、WLS/OHS、并发/Workflow 验证
+  → 关闭生产外联、替换密钥、脱敏、冒烟和签字
+```
+
+#### 备份与恢复最低清单
+
+1. 数据库：RMAN 全备/增量、归档日志、控制文件、SPFILE、TDE/Wallet（按安全政策）和 Data Guard 状态。
+2. 应用：Run/Patch 文件系统、`fs_ne` 业务文件、Context、AutoConfig 模板/日志、WLS/OHS 配置、证书/Keystore、FND/WF/BI Publisher/接口迁移工件。
+3. 依赖：负载均衡、DNS、SMTP/LDAP、SFTP、税务/银行端点、监控和密钥管理配置；记录版本和负责人。
+4. 演练：测量 RPO/RTO、数据库切换、应用重新连接、并发未完成请求、Workflow Deferred/Error、文件重放、会计和外部回执对账。
+
+Rapid Clone 的源端准备、目标端配置和跨平台边界见 [EBS Concepts：Cloning Tools](https://docs.oracle.com/cd/E26401_01/doc.122/e22949/T120505T120517.htm)。
+
+<a id="src-docs-09-technical-testing-observability"></a>
+### 6.14 测试自动化、可观测性与容量治理
+
+#### 分层测试矩阵
+
+| 测试层 | 目标 | EBS 断言 |
+| --- | --- | --- |
+| 单元/静态 | PL/SQL、Java、SQL、模板和脚本质量 | 编译、Lint、依赖、敏感信息扫描、对象有效性 |
+| API/契约 | ISG WSDL/WADL、XML/JSON Schema、错误码 | 方法、参数、认证、版本兼容和 SOAP Fault |
+| 功能/回归 | 页面、职责、组织、接口、Concurrent、Workflow、SLA/GL | 业务状态、会计分录、数量/金额和权限隔离 |
+| 性能/容量 | OHS/WLS/DB/并发队列/OPP 的吞吐和峰值 | p95/p99、JVM GC、连接池、CPU/IO、队列等待 |
+| 安全 | SSO、密码、最小 Grant、TLS、日志和文件 | 无权职责/OU、过期 Token、证书轮换、脱敏 |
+| 故障/恢复 | 节点、Managed Server、DB、文件、外部依赖故障 | 重连、幂等、重试上限、补偿、RPO/RTO、回执 |
+| 发布/回退 | ADOP/EBR、FNDLOAD/WFLOAD/XDO、配置和数据迁移 | Run/Patch 一致、可回退、旧版本不影响新交易 |
+
+#### 指标与日志关联
+
+至少统一 `Correlation ID`、External Key、Request ID、Workflow Item Type/Key、EBS 主键、用户/职责、ORG_ID/Ledger、节点、实例、Session/SQL ID 和版本号；载荷、Token、密码、银行/税务/个人字段只记录脱敏摘要。
+
+| 层 | 推荐指标 | 告警方向 |
+| --- | --- | --- |
+| OHS/WLS | 请求数、4xx/5xx、p95/p99、线程池、JVM Heap/GC、数据源活动连接 | 延迟、错误率、线程/连接池耗尽 |
+| Forms/OAF | 登录失败、页面响应、会话数、下载/上传失败 | 单节点异常、客户端兼容、超时 |
+| Concurrent | Pending/Running 数、队列等待、Target/Actual Processes、Error/Warning、OPP backlog | 队列拥塞、长任务、无输出 |
+| Workflow/接口 | Deferred/Error、Mailer、AQ、重试、Dead Letter、ACK 延迟 | 堆积、重复、未知结果 |
+| DB | CPU/IO、Session、锁等待、Invalid Objects、表空间、归档 | `enq: TX/TM`、ORA-00060、空间/归档增长 |
+| 文件/外部 | `fs_ne` 空间、文件年龄/Hash、SFTP/SMTP/税务响应 | 未处理文件、重复文件、证书/端点失败 |
+
+#### 轻量发布流水线
+
+```text
+需求/设计评审
+  → 源码与配置版本化、依赖/权限扫描
+  → DEV 单元与对象有效性
+  → TEST API/页面/Concurrent/Workflow/SLA 回归
+  → PERF/安全/故障演练
+  → ADOP 预生产演练与校验
+  → 变更窗口 Cutover、冒烟、对账、监控
+  → 观察期、回退/补偿判定、基线归档
+```
+
+流水线可以自动做 Markdown/SQL/Java 静态检查、工件打包、校验 Hash、契约测试和结果归档，但不能替代 EBS 实例中的职责、组织、会计、并发和页面验证。任何自动化脚本都应支持 dry-run、审计日志、超时和人工批准。
 
 <!-- 兼容旧版目录与学习材料的定位锚点；正文已按主题重编。 -->
 <a id="src-docs-10-technical-adop-and-ebr-readme"></a>

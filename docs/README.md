@@ -16,7 +16,7 @@
 | 成本会计 | [07-cost-accounting.md](07-cost-accounting.md) | Receiving、Inventory、WIP、Costing、LCM 和 COGS |
 | 报表与治理 | [08-reporting-governance.md](08-reporting-governance.md) | FSG、BI Publisher、ECC、内控、审计和本地化 |
 | 端到端流程 | [09-end-to-end.md](09-end-to-end.md) | 跨模块状态、主键、会计、接口、对账和关账依赖 |
-| 技术模块 | [10-technical.md](10-technical.md) | 架构、数据、接口、并发、Workflow、OAF、Forms、ADOP 和死锁排查 |
+| 技术模块 | [10-technical.md](10-technical.md) | 架构/文件系统/中间件、数据库、接口、并发、Workflow、OAF/Forms、报表、Java、ADOP/EBR、安全、高可用和排错 |
 | 实施与运维 | [11-implementation-operations.md](11-implementation-operations.md) | 蓝图、迁移、测试、切换、运行、补丁、克隆和灾备 |
 | 统一参考 | [90-reference.md](90-reference.md) | 中英术语、表、接口、程序、Profile、Lookup、报表和错误 |
 | 模块数据字典 | [data-dictionary.md](data-dictionary.md) | 各模块核心对象、关键字段、状态和名词解释 |
