@@ -62,9 +62,9 @@
 | Enterprise Structure | 企业结构；法人、Ledger、OU、库存组织和安全边界的组合 |
 | Data Access Set | GL 数据访问集；控制 Ledger/平衡段等总账数据范围 |
 | Security Profile | HR/MO 安全配置；控制组织、人员或 OU 可见范围 |
-| KFF | Key Flexfield | 关键弹性域；COA、Item、资产地点等结构化编码 |
-| DFF | Descriptive Flexfield | 描述性弹性域；通过上下文和 `ATTRIBUTE*` 扩展业务属性 |
-| Configuration Owner | 配置所有者 | EBTax 等共享配置的拥有范围，不等于最终交易法人 |
+| KFF | Key Flexfield；关键弹性域；COA、Item、资产地点等结构化编码 |
+| DFF | Descriptive Flexfield；描述性弹性域；通过上下文和 `ATTRIBUTE*` 扩展业务属性 |
+| Configuration Owner | 配置所有者；EBTax 等共享配置的拥有范围，不等于最终交易法人 |
 
 官方基线：[Financials Concepts](https://docs.oracle.com/cd/E26401_01/doc.122/e48836/toc.htm)、[Multiple Organizations](https://docs.oracle.com/cd/E26401_01/doc.122/e48833/toc.htm)、[EBS Security](https://docs.oracle.com/cd/E26401_01/doc.122/e22952/toc.htm)。
 
@@ -125,8 +125,8 @@
 | Accrual | 应计；收货与 AP 发票之间的暂估负债/清算机制 |
 | Invoice Validation | 发票验证；匹配、税、期间、账户、Hold 和审批检查 |
 | Hold | 挂起；阻止验证、付款或会计的业务控制 |
-| PPR | Payment Process Request | 支付流程请求；按模板和选择规则生成付款 |
-| IBY | Oracle Payments | 支付引擎，负责指令、格式、传输和回执 |
+| PPR | Payment Process Request；支付流程请求；按模板和选择规则生成付款 |
+| IBY | Oracle Payments；支付引擎，负责指令、格式、传输和回执 |
 
 官方基线：[Payables User's Guide](https://docs.oracle.com/cd/E26401_01/doc.122/e48760/toc.htm)、[Payables Reference](https://docs.oracle.com/cd/E26401_01/doc.122/e48763/h/uaework/tmp/archive/e48763/toc.htm)。
 
@@ -184,8 +184,8 @@
 | 名词 | 解释 |
 | --- | --- |
 | Asset Book | 资产账簿；定义折旧日历、方法、币种和会计边界 |
-| CIP | Construction in Progress | 在建工程；达到可使用状态前归集的资本项目成本 |
-| DPIS | Date Placed in Service | 投入使用日期；影响折旧起算和期间 |
+| CIP | Construction in Progress；在建工程；达到可使用状态前归集的资本项目成本 |
+| DPIS | Date Placed in Service；投入使用日期；影响折旧起算和期间 |
 | Mass Additions | 资产新增暂存；须 Prepare/Post 后才成为正式资产 |
 | Project Costing | 项目成本；支出验证、Raw/Burden 分配和成本会计 |
 | Draft Revenue | 草稿收入；生成、复核、释放后进入收入会计 |
@@ -214,12 +214,12 @@
 
 | 名词 | 解释 |
 | --- | --- |
-| CE | Cash Management | 现金管理；银行账户、对账单、自动对账和现金控制 |
+| CE | Cash Management；现金管理；银行账户、对账单、自动对账和现金控制 |
 | Bank Statement | 银行对账单；银行提供的账户级流水和余额 |
 | AutoReconciliation | 自动对账；按交易码、参考号、金额/日期容差匹配 |
 | Cash Clearing | 现金清算；源模块现金/清算账户和银行事实之间的过渡 |
-| IBY | Oracle Payments | 支付指令、格式、传输和回执框架 |
-| EBTax/ZX | E-Business Tax | 交易税务确定和税行引擎，不等于全部法定申报 |
+| IBY | Oracle Payments；支付指令、格式、传输和回执框架 |
+| EBTax/ZX | E-Business Tax；交易税务确定和税行引擎，不等于全部法定申报 |
 | Configuration Owner | 配置所有者；控制税务配置适用范围 |
 | Recovery | 税额抵扣/不可抵扣规则；影响税额去向和账户 |
 
@@ -250,9 +250,9 @@
 | Cost Element | 成本要素；Material、Material Overhead、Resource、OSP、Overhead |
 | Frozen/Pending | 冻结/待更新成本版本；Pending 不会自动成为 Frozen |
 | PPV/IPV | Purchase/Invoice Price Variance；采购价差/发票价差 |
-| WIP | Work in Process | 在制品；材料、资源、间接费和完工/关闭差异 |
+| WIP | Work in Process；在制品；材料、资源、间接费和完工/关闭差异 |
 | COGS Matching | 销售成本匹配；发运成本与收入确认协同 |
-| LCM | Landed Cost Management | 到岸成本管理；运费、关税等附加费用分摊 |
+| LCM | Landed Cost Management；到岸成本管理；运费、关税等附加费用分摊 |
 
 官方基线：[Inventory User's Guide](https://docs.oracle.com/cd/E26401_01/doc.122/e48820/toc.htm)、[Cost Management](https://docs.oracle.com/cd/E26401_01/doc.122/e48829/toc.htm)、[WIP User's Guide](https://docs.oracle.com/cd/E26401_01/doc.122/e48905/toc.htm)。
 
@@ -274,14 +274,14 @@
 
 | 名词 | 解释 |
 | --- | --- |
-| FSG | Financial Statement Generator | 基于 GL 余额和行/列集生成财务报表 |
+| FSG | Financial Statement Generator；基于 GL 余额和行/列集生成财务报表 |
 | Report Manager | EBS 原生报表提交/查看框架；与外部 Office 插件不同 |
 | BI Publisher | 模板化报表和批量分发工具 |
-| RXi | Report eXchange | 可配置的标准报表输出框架 |
+| RXi | Report eXchange；可配置的标准报表输出框架 |
 | Smart View | Office 分析插件；需单独部署连接器，不是 EBS 原生 GL 报表引擎 |
-| ECC | Enterprise Command Center | 运营搜索和可视化；新鲜度由加载模式/计划决定 |
-| Control Total | 控制总额 | 来源、子账、SLA、GL 或报表之间的数量/金额校验 |
-| Data Lineage | 数据血缘 | 报表单元格到余额、日记账、SLA、来源交易的追溯链 |
+| ECC | Enterprise Command Center；运营搜索和可视化；新鲜度由加载模式/计划决定 |
+| Control Total | 控制总额；来源、子账、SLA、GL 或报表之间的数量/金额校验 |
+| Data Lineage | 数据血缘；报表单元格到余额、日记账、SLA、来源交易的追溯链 |
 
 官方基线：[General Ledger User's Guide](https://docs.oracle.com/cd/E26401_01/doc.122/e48748/toc.htm)、[Report Manager](https://docs.oracle.com/cd/E26401_01/doc.122/e22006/toc.htm)、[ECC Administrator](https://docs.oracle.com/cd/E26401_01/doc.122/f34732/toc.htm)。
 
@@ -326,6 +326,11 @@
 | `WF_ITEM_ACTIVITY_STATUSES` | Workflow 活动状态 | Item、活动、状态、结果、开始/结束时间 | 节点排错 |
 | `AD_ZD_SESSIONS` / EBR 对象 | 在线补丁会话 | Session、Edition、节点/状态 | ADOP/EBR 维护追踪 |
 | Integration Repository | API/服务元数据 | Internal Name、方法、方向、版本、WADL | ISG/API 契约 |
+| `FND_USER` | EBS 应用用户 | `USER_ID`、`USER_NAME`、起止日期、启用状态 | 本地账户与 SSO 映射 |
+| `FND_PROFILE_OPTIONS` / `FND_PROFILE_OPTION_VALUES` | Profile 定义与设置值 | Profile 名、层级、层级值、运行时最终值 | 密码、会话和功能配置 |
+| `FND_UNSUCCESSFUL_LOGINS` | 失败登录记录 | 用户、时间、失败次数、来源线索 | 账号锁定和安全审计 |
+| `WSDL` / `WADL` | SOAP/REST 服务契约 | Endpoint、操作、参数、认证策略 | 客户端生成与契约测试 |
+| `WF_DEFERRED` / Service Invocation Monitor | 出站服务消息 | Event Key、状态、重试、响应/错误 | EBS 调用外部 Web Service |
 
 ### 名词解释
 
@@ -334,11 +339,22 @@
 | APPS | EBS 应用访问层；不应作为终端用户长期直连授权边界 |
 | Custom Schema | 自定义数据库 Schema；按 Developer's Guide 注册并受控授权 |
 | APPS_INITIALIZE | 初始化用户、职责和应用上下文的公开入口 |
-| EBR | Edition-Based Redefinition | R12.2 在线补丁依赖的版本化数据库机制 |
-| ADOP | Online Patching Utility | R12.2 在线补丁生命周期工具 |
-| ISG | Integrated SOA Gateway | EBS API、并发程序和开放接口的服务发布框架 |
-| OAF/Forms | Oracle Application Framework / Oracle Forms | EBS 页面技术栈 |
-| Workflow | 工作流 | Item、活动、通知和结果组成的业务流程引擎 |
+| EBR | Edition-Based Redefinition；R12.2 在线补丁依赖的版本化数据库机制 |
+| ADOP | Online Patching Utility；R12.2 在线补丁生命周期工具 |
+| ISG | Integrated SOA Gateway；EBS API、并发程序和开放接口的服务发布框架 |
+| OAF/Forms | Oracle Application Framework / Oracle Forms；EBS 页面技术栈 |
+| Workflow | 工作流；Item、活动、通知和结果组成的业务流程引擎 |
+| SSO | Single Sign-On；统一认证入口，不替代 EBS 职责、菜单和 MOAC 授权 |
+| OAM / AccessGate | Oracle Access Manager / EBS AccessGate；将外部身份映射到 EBS 应用会话的桥接组件 |
+| GUID | Globally Unique Identifier；目录与 `FND_USER` 之间的稳定身份关联键 |
+| PasswordValidation | EBS 客制化密码校验 Java 接口；由 `SIGNON_PASSWORD_CUSTOM` 指定实现类 |
+| WSDL / WADL | SOAP / REST 的机器可读服务契约；客户端应以部署后版本为准 |
+| WS-Security | SOAP 消息安全规范；EBS ISG 可按策略使用 UsernameToken 或 SAML |
+| SIF | Service Invocation Framework；EBS 通过 Workflow/JBES 调用外部 SOAP/REST 的框架 |
+| Service Alias | ISG REST 服务别名；用于稳定定位已部署资源，不能与旧 Endpoint 混用 |
+| Grant | 接口或服务授权；需按用户、职责、方法和数据范围最小化配置 |
+| Correlation ID | 跨系统追踪号；串联传输日志、EBS 请求、业务主键和回执 |
+| MOAC | Multi-Org Access Control；由职责/安全配置决定可访问的组织范围 |
 
 官方基线：[EBS Developer's Guide](https://docs.oracle.com/cd/E26401_01/doc.122/e22961/toc.htm)、[ISG Implementation](https://docs.oracle.com/cd/E26401_01/doc.122/e20925/toc.htm)、[ISG Developer](https://docs.oracle.com/cd/E26401_01/doc.122/e20927/toc.htm)。
 
@@ -361,14 +377,14 @@
 
 | 名词 | 解释 |
 | --- | --- |
-| CRP | Conference Room Pilot | 方案演示和早期流程验证 |
-| SIT | System Integration Test | 系统集成测试，覆盖跨模块接口和会计链 |
-| UAT | User Acceptance Test | 业务用户验收测试 |
-| CEMLI | Configuration、Extension、Modification、Localization、Integration | EBS 定制分类 |
-| Cutover | 切换 | 冻结、迁移、增量、验证、Go/No-Go 和业务开放 |
-| Hypercare | 上线强化支持 | 上线后高频监控、缺陷分诊和每日对账阶段 |
-| RCA | Root Cause Analysis | 根因分析；区分触发、根因、修复和预防 |
-| RPO/RTO | Recovery Point/Time Objective | 灾备可接受数据丢失点/恢复时长 |
+| CRP | Conference Room Pilot；方案演示和早期流程验证 |
+| SIT | System Integration Test；系统集成测试，覆盖跨模块接口和会计链 |
+| UAT | User Acceptance Test；业务用户验收测试 |
+| CEMLI | Configuration、Extension、Modification、Localization、Integration；EBS 定制分类 |
+| Cutover | 切换；冻结、迁移、增量、验证、Go/No-Go 和业务开放 |
+| Hypercare | 上线强化支持；上线后高频监控、缺陷分诊和每日对账阶段 |
+| RCA | Root Cause Analysis；根因分析；区分触发、根因、修复和预防 |
+| RPO/RTO | Recovery Point/Time Objective；灾备可接受数据丢失点/恢复时长 |
 
 官方基线：[EBS Concepts](https://docs.oracle.com/cd/E26401_01/doc.122/e22949/toc.htm)、[Maintenance Guide](https://docs.oracle.com/cd/E26401_01/doc.122/e22954/toc.htm)、[EBS Developer's Guide](https://docs.oracle.com/cd/E26401_01/doc.122/e22961/toc.htm)。
 

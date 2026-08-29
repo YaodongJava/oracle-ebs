@@ -4,7 +4,7 @@
 
 ## 阅读导航
 
-- [架构](#2-r122-架构心智模型) · [扩展与数据](#3-扩展方案优先级) · [接口 API](#5-接口与-api-设计) · [并发与页面](#6-concurrent-processing) · [ADOP 发布](#8-adop-发布周期) · [性能安全](#9-性能与故障证据包) · [死锁排查](#11-死锁排查与解决方法) · [技术专题](#13-技术专题详解)
+- [架构](#2-r122-架构心智模型) · [扩展与数据](#3-扩展方案优先级) · [接口 API](#5-接口与-api-设计) · [并发与页面](#6-concurrent-processing) · [ADOP 发布](#8-adop-发布周期) · [性能安全](#9-性能与故障证据包) · [SSO/密码](#technical-sso) · [死锁排查](#11-死锁排查与解决方法) · [技术专题](#13-技术专题详解)
 
 ## 模块数据字典与名词解释
 
@@ -142,6 +142,86 @@ Workflow（工作流）处理业务流程和通知；Approvals Management Engine
 - 自定义对象授权给受控角色，不直接广泛授权 APPS。
 - 输入验证、绑定变量、输出编码和文件路径白名单。
 - 生产变更需批准、测试、备份/回退和审计记录。
+
+<a id="technical-sso"></a>
+### 10.1 单点登录（SSO）与账户映射
+
+Oracle E-Business Suite R12.2 默认可以使用 `FND_USER` 本地认证。启用单点登录后，认证由 Oracle Access Manager（OAM）配合 Oracle Internet Directory/Oracle Unified Directory（OID/OUD），或由 Oracle Identity Cloud Service（IDCS）等受支持方案完成；第三方 IdP 不能直接绕过桥接组件连接 EBS。SSO 只解决“你是谁”，职责、菜单、请求组和 MOAC 仍由 EBS 负责授权。详见 [Oracle E-Business Suite Security Guide：SSO Integration](https://docs.oracle.com/cd/E26401_01/doc.122/e22952/T156458T580814.htm) 与 [EBS Concepts：Single Sign-On](https://docs.oracle.com/cd/E26401_01/doc.122/e22949/T120505T120515.htm)。
+
+```text
+Browser
+  → OHS/WebLogic → OAM/WebGate/AccessGate（或 EBS Asserter）
+  → OID/OUD/企业 IdP 验证身份
+  → EBS 建立应用会话并映射 FND_USER
+  → Responsibility / Menu / MOAC 执行授权
+```
+
+实施时至少完成以下映射和控制：
+
+| 控制点 | 实现要求 | 验证证据 |
+| --- | --- | --- |
+| 身份主键 | 明确 `USER_NAME`、企业登录名和 GUID/唯一标识的映射，统一大小写、空格和失效规则 | 映射表、同步日志、重复账号报告 |
+| 桥接组件 | 配置 OAM/WebGate/AccessGate 或 Asserter，使用 HTTPS、受信证书、正确的回调 URL 和 Cookie 域 | OAM/AccessGate 配置、证书链、登录重定向记录 |
+| 用户供应 | 选择 EBS 或目录作为主数据源；同步 `FND_USER`、员工关联、起止日期和职责，不把 SSO 当作职责分配 | 入职、调岗、离职和回收测试记录 |
+| 会话治理 | 分别设置 EBS 会话、SSO 会话和空闲超时；验证深链、登出传播、超时后重新跳转 | 浏览器网络日志、OHS/OAM/EBS 日志 |
+| 授权隔离 | SSO 登录成功后仍以 Responsibility、菜单、数据访问集和 MOAC 控制数据范围 | 无权职责、无权 OU/Ledger 的负向测试 |
+| 应急账户 | 保留受限的本地管理员/`SYSADMIN` 破窗路径，限制网络来源、双人审批和审计；不得共享账号 | 破窗演练、访问审批、审计记录 |
+
+SSO 切换建议按“目录同步 → 小范围用户 → 并行验证 → 分批切换 → 回退窗口”执行。必须验证以下场景：首次登录、深链接、多个职责切换、密码在 IdP 侧修改、用户离职、EBS 会话过期但 SSO 会话仍有效、SSO 会话注销但 EBS 页面仍打开，以及 OAM/目录不可用时的运维处置。不要直接修改 `FND_USER` 或手工写入目录密码来“修复”映射。
+
+<a id="technical-password-policy"></a>
+### 10.2 客制化密码规则与本地密码治理
+
+先区分三类密码：EBS 本地应用用户密码、数据库 Schema/应用凭据、SSO/LDAP 身份源密码。`SIGNON_*` Profile 只约束 EBS 本地应用用户；SSO 用户的密码复杂度、MFA、风险策略应在 IdP 侧实施。数据库 Schema 密码应使用 `AFPASSWD`/受管控的数据库 Profile，不要把数据库 `PASSWORD_VERIFY_FUNCTION` 当成 `FND_USER` 校验器。
+
+Oracle 内置 Profile 可先满足大部分要求，建议在目标实例按补丁和安全基线确认：
+
+| Profile（内部名） | 建议起点 | 说明 |
+| --- | --- | --- |
+| `SIGNON_PASSWORD_LENGTH` | `8` 或更高 | 最小长度；未设置时默认值较低，按企业标准提高 |
+| `SIGNON_PASSWORD_HARD_TO_GUESS` | `YES` | 至少包含字母和数字，不含用户名，不含重复字符 |
+| `SIGNON_PASSWORD_NO_REUSE` | `180` | 禁止在指定天数内重复使用；需结合业务换密周期 |
+| `SIGNON_PASSWORD_CASE` | `Sensitive` | 新设置的密码区分大小写，切换前安排用户通知和回归 |
+| `SIGNON_PASSWORD_FAILURE_LIMIT` | `5`（需评估） | 连续失败后禁用账号；过低可能被用作拒绝服务，需监控失败登录 |
+| `ICX_SESSION_TIMEOUT` | `30`（分钟，按风险调整） | 控制 EBS 应用会话空闲超时，不等于 SSO 会话超时 |
+| `SIGNON_PASSWORD_CUSTOM` | 客制化类全名 | 仅当内置规则无法表达企业政策时启用 |
+
+R12.2.3 及以后可将本地应用用户密码迁移为不可逆哈希；较新的补丁还提供 Password Security Administration 页面用于管理迁移。哈希迁移、备份和回退应按 [Oracle E-Business Suite Security Guide：Password Management](https://docs.oracle.com/cd/E26401_01/doc.122/e22952/T156458T659601.htm) 与 Maintenance Guide 执行。浏览器 SSO 会话不能代替系统间 Web Service 的服务凭据。
+
+若必须扩展规则，Oracle 支持实现 `oracle.apps.fnd.security.PasswordValidation` Java 接口，并将完整类名设置到 `SIGNON_PASSWORD_CUSTOM`。接口契约包含三个方法；下面是结构示意，实际编译必须以目标 R12.2 补丁级别的接口签名和消息定义为准：
+
+```java
+// 结构示意：禁止在 validate() 中记录明文密码或调用外部网络。
+public final class CorpPasswordValidation
+    implements oracle.apps.fnd.security.PasswordValidation {
+
+  public boolean validate(String user, String password) {
+    return password != null
+        && password.length() >= 12
+        && !password.toLowerCase().contains(user.toLowerCase())
+        && hasRequiredCharacterClasses(password)
+        && !isInLocalDenyList(password);
+  }
+
+  public String getErrorStackMessageName() {
+    return "XX_PWD_POLICY_INVALID";
+  }
+
+  public String getErrorStackApplicationName() {
+    return "XXCUS";
+  }
+}
+```
+
+发布和运维要求：
+
+1. 在自定义 Java 包中编译、代码审查和版本控制；消息名、应用短名、类路径及 JDK 版本按目标实例确认。
+2. 通过受支持的 `loadjava`/应用发布流程装载类，并在非生产环境验证新建用户、改密、管理员重置、SSO 用户和异常消息；不要直接更新 `FND_USER` 密码列。
+3. 规则函数应是确定性的、低延迟的、无外部网络依赖；拒绝名单使用受控的本地版本，避免每次改密访问远程服务。
+4. 记录规则版本和发布包，不记录密码、完整请求或安全问题答案；异常时应返回可理解的消息并保留审计证据。
+5. 若启用 `SIGNON_PASSWORD_FAILURE_LIMIT`，监控 `FND_UNSUCCESSFUL_LOGINS` 和账号解锁流程，防止策略被用于批量锁号。
+
+验收至少覆盖：长度/字符集边界、用户名和员工号包含关系、重复字符、历史密码重用、大小写、失败次数、管理员重置、并发改密、SSO 登录和策略回退。密码策略变更应与用户通知、服务账号轮换、应急账户测试和回退方案一起发布。
 
 ## 11. 死锁排查与解决方法
 
@@ -1000,6 +1080,74 @@ exit 2
 
 客户端只能重试确认幂等的操作。连接超时不代表 EBS 未处理，应先以业务幂等键/Request ID 查询结果；HTTP 4xx 业务/权限错误不应自动重试。
 
+<a id="src-docs-09-technical-interfaces--44-soap-服务发布与调用"></a>
+##### 4.4 SOAP 服务发布与调用
+
+SOAP 服务适合复杂 XML 契约、WS-Security 或同步/异步交互。ISG 的发布链路为“Integration Repository 接口定义 → Generate 生成 WSDL → Deploy 部署服务 → Grant 授权 → 客户端按 WSDL 调用”。SOAP 服务部署在 SOA Suite WebLogic Managed Server，部署后的 WSDL 才是客户端应使用的契约和 Endpoint。
+
+| 阶段 | 实现细节 | 必须留下的证据 |
+| --- | --- | --- |
+| 接口筛选 | 优先选择公开 PL/SQL API、Business Service Object 或标准 Concurrent/Open Interface；核对方法方向、Record/SDO、交互模式和版本 | Integration Repository 接口快照、产品补丁级别 |
+| 生成 | 在接口/方法层选择 Synchronous 或 Asynchronous，Generate 后下载 WSDL；变更接口后必须重新生成并做契约 diff | WSDL 版本、方法清单、兼容性评审 |
+| 安全 | 按服务策略选择 UsernameToken 或 SAML；为调用用户建立最小 Grant，并验证职责、MOAC 和数据访问集 | Grant、认证策略、无权访问测试 |
+| 部署 | Deploy 到受支持的 WebLogic Managed Server，使用部署后的 WSDL 地址；不要把旧版本 WSDL 或内部主机名写死在客户端 | 部署状态、Endpoint、TLS 证书链 |
+| 调用 | 客户端按 WSDL 生成代理，传入业务唯一键、Correlation ID 和接口要求的 Context；解析 SOAP Fault、API Return Status 和业务主键 | 请求/响应摘要、Fault、Request ID、业务回执 |
+
+不要手工猜测命名空间、操作名、认证头或参数顺序。WSDL/WS-Policy 与当前实例的 Integration Repository 为唯一契约来源；SOAP 认证信息放在受控凭据库或运行时注入，不写入源码、脚本、日志和 Git。
+
+<a id="src-docs-09-technical-interfaces--45-客制化接口注册与发布"></a>
+##### 4.5 客制化接口注册与发布
+
+没有可复用标准接口时，采用“客制化 PL/SQL API + Integration Repository/ISG”方式，而不是把业务表或自定义表/视图直接暴露为服务。建议的 API 边界如下：
+
+```sql
+CREATE OR REPLACE PACKAGE xx_order_service AS
+  PROCEDURE submit_order(
+    p_api_version    IN  NUMBER,
+    p_init_msg_list  IN  VARCHAR2,
+    p_commit         IN  VARCHAR2,
+    p_external_key   IN  VARCHAR2,
+    p_org_id         IN  NUMBER,
+    x_return_status  OUT VARCHAR2,
+    x_msg_count      OUT NUMBER,
+    x_msg_data       OUT VARCHAR2,
+    x_order_id       OUT NUMBER
+  );
+END xx_order_service;
+/
+```
+
+这是接口边界示意，不是可直接部署的业务实现。注册和发布时应：
+
+1. 在自定义 schema 使用客户前缀、最小授权和受支持 synonym/grant；包体只调用标准 API/Open Interface，不直接 DML Oracle 业务基表。
+2. 在目标实例 Integration Repository 注册客制化接口，公开稳定的方法和数据类型；对外只发布必要操作，不发布内部诊断/管理方法。
+3. 明确定义 `p_external_key` 幂等规则、`p_commit` 事务所有者、消息栈、错误分类、版本兼容和敏感字段脱敏。
+4. 由 ISG 生成/部署 SOAP 或 REST 服务，建立专用服务用户和 Grant；是否需要 FND/MOAC 上下文初始化以接口类型和实例配置为准，不在包内硬编码用户、职责或 OU。
+5. 用 WSDL/WADL、正向/负向权限、重复消息、部分成功、超时未知结果和回退版本做契约测试，再按 ADOP/EBR 流程迁移。
+
+常见调用模式应先在设计评审中确定：
+
+| 模式 | 适用场景 | 结果处理 |
+| --- | --- | --- |
+| REST 同步 | 查询、轻量单笔写入、移动端 | 解析 HTTP 状态 + EBS 业务状态；仅对幂等请求重试 |
+| SOAP 同步 | 复杂 XML、强契约、WS-Security | 解析 SOAP Fault、API 消息栈和业务主键 |
+| SOAP 异步 | 长事务或需要回调的流程 | 记录消息 ID/Request ID，按回调或状态服务闭环 |
+| Concurrent Program REST | 批处理、报表、长任务 | 先返回 Request ID，轮询 `FND_CONCURRENT_REQUESTS`，不把提交成功当作业务完成 |
+
+<a id="src-docs-09-technical-interfaces--46-调用证据与错误处理"></a>
+##### 4.6 Web Service 调用证据与错误处理
+
+接口调用应能从外部 Correlation ID 追到 OHS/WebLogic 访问日志、ISG 服务、EBS Request/API 消息栈、业务主键和下游会计/回执。建议统一记录以下字段：
+
+| 层次 | 记录内容 | 注意事项 |
+| --- | --- | --- |
+| 传输 | HTTP 方法、Endpoint 别名、状态码、耗时、TLS/证书版本 | 不记录 Authorization、Cookie、完整 Payload |
+| EBS | Service Alias、方法、用户/职责、ORG_ID/Ledger、Request ID | 用户和组织信息按最小范围记录并脱敏 |
+| 业务 | 外部唯一键、EBS 主键、处理阶段、数量/金额控制总额 | 不能只凭 HTTP 200 判定业务成功 |
+| 错误 | SOAP Fault/HTTP 错误、EBS Message Stack、重试次数、最后一次结果 | 4xx 通常先修数据/权限；5xx/超时先查询结果再重试 |
+
+调用方与 EBS 之间应约定版本、超时、限流、重试上限、幂等键和错误码映射。若接口跨越 OHS、WebLogic、SOA Suite、Workflow 或外部网关，排错时按层收集日志，禁止通过关闭 TLS、放宽 Grant 或直接改表来“快速恢复”。
+
 <a id="src-docs-09-technical-interfaces--5-concurrent-program-异步状态-api"></a>
 #### 5. Concurrent Program 异步状态 API
 
@@ -1056,6 +1204,8 @@ END;
 ```
 
 需要先定义 Event、REST Invocation Metadata 和带 Java Rule Function 的 Subscription。不要自行在数据库中保存明文密码或使用不受支持的网络 ACL 绕过框架。
+
+SIF 的 REST/SOAP Invocation Metadata 至少应包含 Endpoint、HTTP/SOAP 操作、认证方式、请求头、Payload 映射、超时、回调、证书/Keystore 和错误处理策略。同步调用要定义返回值映射；单向/异步调用要定义 `Event Key`、重试上限、`WF_DEFERRED`/错误队列处置和回调幂等键。所有出站消息可在 Service Invocation Monitor 追踪，不能只看 Workflow 活动为 Complete 就判定外部服务已成功。
 
 <a id="src-docs-09-technical-interfaces--7-可观测性和错误分类"></a>
 #### 7. 可观测性和错误分类
