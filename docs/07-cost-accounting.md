@@ -391,7 +391,7 @@ select mmt.transaction_id,
 <a id="src-docs-06-cost-advanced-costing-controls--官方参考"></a>
 #### 官方参考
 
-- [Oracle Supply Chain Management Documentation](https://docs.oracle.com/cd/E26401_01/nav/scm.htm)
+本专题复用成本模块总览中的 [Oracle Supply Chain Management Documentation](https://docs.oracle.com/cd/E26401_01/nav/scm.htm)，不再重复维护同一入口。
 
 
 <!-- source: docs/06-cost/cost-elements.md -->

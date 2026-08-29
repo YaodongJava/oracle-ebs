@@ -462,8 +462,7 @@ select owner, table_name, column_name, data_type, data_length
 <a id="src-docs-09-technical-adop-ebr-release--官方参考"></a>
 #### 官方参考
 
-- [Oracle E-Business Suite Maintenance Guide](https://docs.oracle.com/cd/E26401_01/doc.122/e22954/toc.htm)
-- [Oracle E-Business Suite Technology Documentation](https://docs.oracle.com/cd/E26401_01/nav/technology.htm)
+本专题复用本文件“官方依据”中的 Technology Documentation 与 Maintenance Guide，避免在各专题重复维护同一来源清单。
 
 
 <!-- source: docs/09-technical/concurrent-programs.md -->
@@ -1382,8 +1381,7 @@ select wias.item_type,
 <a id="src-docs-09-technical-workflow-ame-oaf-governance--官方参考"></a>
 #### 官方参考
 
-- [Oracle E-Business Suite Technology Documentation](https://docs.oracle.com/cd/E26401_01/nav/technology.htm)
-- [Oracle E-Business Suite Maintenance Guide](https://docs.oracle.com/cd/E26401_01/doc.122/e22954/toc.htm)
+本专题复用本文件“官方依据”中的 Technology Documentation 与 Maintenance Guide；Workflow/OAF 具体资料按专题内的产品链接补充。
 
 <!-- 兼容旧版目录与学习材料的定位锚点；正文已按主题重编。 -->
 <a id="src-docs-10-technical-adop-and-ebr-readme"></a>
