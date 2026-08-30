@@ -395,15 +395,167 @@ Journal Source（日记账来源）标识系统来源，Journal Category（日�
 
 ### 3.2 多币种处理
 
-- **Conversion（换算）**：交易币种按汇率换为账簿币种。
-- **Revaluation（重估）**：期末重估外币货币性余额，通常产生未实现汇兑损益。
-- **Translation（折算）**：把账簿余额折算为报告币种。
+EBS 的多币种设计必须先把“交易币种、账簿币种、报告币种、输入汇率和余额再计量”分开。Conversion、Revaluation、Translation 和 Remeasurement 的对象、时点、汇率来源及损益位置均不同，不能用一个“当前汇率”解释所有结果。
 
-三者对象、时点和会计结果不同。功能方案必须定义汇率类型、日期、科目范围、累计折算差额和冲销策略。
+```mermaid
+flowchart LR
+    T[交易币种<br/>Entered Amount] -->|Conversion Type + Date| D[(GL Daily Rates)]
+    D --> L[账簿币种<br/>Accounted Amount]
+    L --> P[过账更新<br/>GL Balances]
+    P --> RV[Revaluation<br/>外币货币性余额]
+    P --> TR[Translation<br/>账簿余额→报告币种]
+    P --> RM[Remeasurement<br/>时态法再计量]
+    RV --> UG[未实现汇兑损益]
+    TR --> CTA[累计折算调整 CTA]
+    RM --> PL[损益/再计量差额]
+```
+
+#### 3.2.1 币种层次与金额列
+
+| 层次 | 典型字段/对象 | 计算或维护方式 | 不能混淆的点 |
+| --- | --- | --- | --- |
+| Transaction/Entered Currency（交易币种） | Journal `CURRENCY_CODE`、`ENTERED_DR/CR` | 来源单据或日记账输入的原始币种金额 | 不是账簿报表的本位金额；同一日记账行只应有明确的交易币种 |
+| Ledger/Accounted Currency（账簿币种） | Ledger `CURRENCY_CODE`、`ACCOUNTED_DR/CR`、标准余额 | 交易金额乘以选定日汇率并按精度舍入 | GL 过账和余额控制以账簿币种为主；不能拿外币 entered 金额直接和 `GL_BALANCES` 比较 |
+| Reporting Currency（报告币种） | Journal/Balance-level Reporting Currency | 可在日记账级、子账级或余额级转换 | 主要解决报告币种，不自动代表另一套会计政策；转换层级和延迟要单独定义 |
+| Secondary Ledger（次级账簿） | 独立 Ledger、COA、Calendar、Currency、SLA Method | 按另一套会计表示生成或转换 | 用于准则、COA、日历或核算差异；不只是“把金额换成另一币种” |
+| Statistical Currency（统计币种） | FSG/余额的统计量 | 记录数量、人数、面积等非货币统计量 | 不能套用货币汇率；FSG 的默认 Currency 不能设为 `STAT` |
+
+#### 3.2.2 日汇率的主键、方向与公式
+
+`GL_DAILY_RATES` 的业务唯一维度应按“From Currency + To Currency + Conversion Date + Conversion Type”理解。相同币种对、同一天需要维护两套不同口径时，必须使用不同的 Conversion Rate Type；不要覆盖同一类型的历史值来表达不同业务口径。
+
+日汇率在一个 EBS 实例内由 General Ledger 统一维护，通常不按 Ledger 单独存一份；同一 From/To、日期和 Type 会被多个账簿、报告币种及重估/折算流程共享。因此，汇率发布和 Definition Access Set 控制必须从“实例级公共主数据”而不是单个 OU 的局部参数来设计。
+
+```text
+To Amount = From Amount × CONVERSION_RATE
+Inverse Rate = 1 ÷ CONVERSION_RATE（Daily Rates 会生成对应反向行；Profile 决定是否强制两边始终互为倒数）
+Accounted Amount = Entered Amount × Retrieved Rate，随后按币种精度/最小记账单位舍入
+```
+
+示例：EUR→CNY 的汇率为 `7.8000`，外币发票 10,000 EUR，则账簿金额为 78,000 CNY；反向汇率约为 `0.128205` CNY→EUR。若同一日期同时有 Spot `7.80` 和 Corporate `7.75`，两者都可能正确，关键是来源交易、Ledger 选项或报表流程指定了哪一个类型。
+
+#### 3.2.3 Conversion Rate Type 的区别
+
+Oracle General Ledger 预置 Spot、Corporate、User；EMU Fixed 仅适用于欧元与 EMU 固定汇率关系，企业还可以定义自有类型。名称本身不决定用途，必须在 Ledger、子账选项、Revaluation、Translation 和接口规范中明确责任人与使用场景。
+
+| 类型 | 业务含义 | 日汇率维护 | 典型使用 | 控制重点 |
+| --- | --- | --- | --- | --- |
+| **Spot** | 指定日期的市场即期报价 | 在 Daily Rates/Currency Rates Manager 或接口维护 | 交易日换算、即时外币日记账 | 明确报价时间、来源、买入/卖出方向和生效日期 |
+| **Corporate** | 公司统一采用的标准市场/管理汇率 | 按公司汇率日历每日或按日期区间维护 | AP/AR/GL 默认交易换算、跨部门统一口径 | 汇率发布人、审批、生效范围；不能与 Spot 误当成同一数值 |
+| **User** | 录入人在单据/日记账上直接指定的汇率 | 不在 Daily Rates 窗口维护；在 Enter Journals 或产品页面输入 | 合同固定价、特殊交易、历史补录 | 权限、理由、附件和异常阈值；同一批次可能出现不同用户汇率 |
+| **EMU Fixed** | 欧元与关联 EMU 币种的法定固定转换因子 | 由固定关系决定，不能按市场汇率修改 | 欧元/EMU 过渡或固定关系转换 | 仅在满足固定关系时使用，不能作为一般 EUR 汇率 |
+| **Period Average（常用自定义类型）** | 某期间平均口径 | 通常为期间每天或期末代表日维护 | Translation 的收入/费用、预算平均口径 | 先定义统计口径和天数权重；不是把某一天 Spot 直接命名为 Average |
+| **Period End（常用自定义类型）** | 期末资产负债表日口径 | 通常维护期间最后一天汇率 | Translation 的资产/负债、期末余额 | 期末日期缺失时按实例规则回溯；补率后需重新折算 |
+| **Historical（历史汇率/金额）** | 特定科目历史取得日或历史金额 | 在 Historical Rates 中按 Ledger、期间、科目维护 | 权益、非货币性项目、时态法再计量 | 可覆盖 Period End/Average；必须有准则依据和变更审批 |
+| **客户自定义类型** | Treasury、Regulatory、Tax、Budget 等专用口径 | 由汇率接口或受控页面维护 | 监管报告、税务、预算、集团管理报表 | 不能只靠名称猜用途；需写入接口契约、数据字典和报表定义 |
+
+> `Period Average`、`Period End` 在 R12.2 中可以是企业自定义的 Conversion Rate Type；它们是“使用场景/口径”，不是所有实例都同名预置的固定代码。Ledger 创建时要指定期末和期间平均汇率类型，报告/翻译运行时可再按预算等场景覆盖。
+
+#### 3.2.4 各业务过程如何选择汇率
+
+| 过程 | 输入 | 汇率选择 | 结果/凭证 | 主要检查 |
+| --- | --- | --- | --- | --- |
+| 外币日记账/子账交易 | Currency、Conversion Type、Conversion Date | User 直接取行上汇率；其他类型按日汇率查找 | 生成 Entered 与 Accounted 借贷金额 | 日期、类型、方向、精度、期间及缺率报错 |
+| Reporting Currency/次级账簿日记账级转换 | 来源 Journal 的 entered/accounted 金额 | 按目标 Reporting Currency/Secondary Ledger 的转换配置和转换日期换算 | 生成报告币种/次级账簿日记账 | 传送级别、原始请求、汇率来源及四舍五入 |
+| Revaluation | 外币货币性账户余额、Rate Date | Revaluation 定义的类型/日期；可按 Profile Option 回溯近期日汇率 | 生成未实现 Gain/Loss 日记账，需再过账 | 账户范围、币种、Effective Date、Rate Date、损益账户、重复运行 |
+| Translation（权益法） | 已过账 Ledger 余额 | 通常资产负债用 Period End，收入费用用 Period Average，权益用 Historical | 更新报告币种余额，差额进 CTA | 顺序期间、CTA、历史汇率、期间末缺率、Data Access Set |
+| Remeasurement（时态法） | 已过账 Ledger 余额 | 货币性项目期末、非货币性项目历史，收入费用按相关项目 | 再计量差额通常进损益 | 功能币种判断、非货币性历史基础、损益账户 |
+| FSG 外币报告 | Row/Column Set、Ledger/Reporting Currency、Period | 读取已存在的 Ledger/Reporting Currency 余额；FSG 不替代汇率维护 | 按 Row/Column/Content Set 输出余额 | 报表币种、Amount Type、Period Offset、账户安全 |
+
+Oracle 的基本规则是：Conversion 在交易录入时立即把外币金额换为 Ledger Currency；Revaluation 调整汇率变动导致的外币资产/负债账面差异；Translation 把整套账簿余额重述到另一币种；Remeasurement 对非货币性项目使用历史汇率。参见 [Oracle General Ledger User's Guide：Multi-Currency](https://docs.oracle.com/cd/E26401_01/doc.122/e48748/T312864T314328.htm)。
+
+#### 3.2.5 Period End、Period Average、Historical 的实际差异
+
+| 账户/场景 | 常见汇率口径 | 计算示意 | 原因与例外 |
+| --- | --- | --- | --- |
+| 货币性资产/负债 | Period End | 期末外币余额 × 期末汇率 | 反映报告日现时价值；Revaluation 另行生成未实现损益 |
+| 收入/费用（权益法翻译） | Period Average + PTD/YTD 规则 | PTD 余额 × 平均汇率，或 YTD 期末汇率与期初折算余额的差额 | 具体 PTD/YTD 由账户类型和 Ledger/Profile 规则决定 |
+| 权益/投入资本/留存收益 | Historical 或系统衍生历史类型 | 历史金额/取得日汇率 | 历史汇率/金额会覆盖 Period End/Average；留存收益可能产生 Prior/Calculated 类型 |
+| 非货币性资产/负债（时态法） | Historical | 历史取得日汇率 × 外币余额 | 需按 IAS 21/SFAS 52 或本地准则确认适用范围 |
+| 预算余额 | Translation 参数指定的 Period End/Average | 预算金额按报表运行时指定口径折算 | 预算汇率可在 Translation 运行参数中覆盖默认值 |
+| 缺失期末日汇率 | 实例配置允许时，在本期间内向前回溯 | 取期间最后一个可用日汇率 | 不是跨期间无限回溯；若整个期间没有可用率应报错 |
+
+例：本月收入 1,000,000 EUR，期间平均汇率 7.85，则 PTD 翻译值约 7,850,000 CNY；期末应收 500,000 EUR，期末汇率 7.95，则余额翻译值约 3,975,000 CNY；权益历史汇率 7.20，则不应因为本月 7.95 而自动改写历史投入资本的翻译基础。以上数值仅为教学示意，生产规则以会计政策和实例配置为准。
+
+#### 3.2.6 日汇率维护与接口流程
+
+```mermaid
+sequenceDiagram
+    participant SRC as Treasury/央行/人工审批
+    participant IF as GL_DAILY_RATES_INTERFACE
+    participant CRM as Currency Rates Manager/Import
+    participant DR as GL_DAILY_RATES
+    participant GL as Journal/Revaluation/Translation
+    SRC->>IF: 生成币种对、日期、类型、汇率、模式
+    IF->>CRM: 校验币种、日期、类型、正值和权限
+    CRM->>DR: 插入/更新/删除，并维护反向率
+    DR-->>GL: 按 Type + Date + From/To 查找
+    GL-->>SRC: 请求日志、错误行、报表和对账回执
+```
+
+推荐操作顺序：
+
+1. 在 Currencies 窗口启用币种，确认 Precision、Extended Precision、Minimum Accountable Unit 和有效日期。
+2. 在 Conversion Rate Types 窗口定义或查询类型；需要同一日期多个口径时新增类型，不复制覆盖原类型。
+3. 通过 Daily Rates、Currency Rates Manager、受控电子表格或 `GL_DAILY_RATES_INTERFACE` 维护汇率；不要直接更新 `GL_DAILY_RATES`。
+4. 校验 From/To 方向、汇率正数、日期覆盖期间、反向汇率和 Rate Type 的 Definition Access Set 权限。
+5. 在 Accounting Setup Manager 指定 Ledger 的 Period End/Period Average 类型；为 Translation/Reporting Currency 明确历史汇率和 CTA 账户。
+6. 先在测试账簿用一笔外币日记账验证换算，再执行 Revaluation/Translation；已运行翻译后变更期间平均/期末汇率，必须按标准程序重新翻译。
+7. 保存每日汇率来源文件、审批单、接口批次、错误报告、导入请求 ID 和最终查询结果。
+
+```sql
+-- 查指定币种方向、日期和类型的汇率；反向关系是 From/To 交换后的另一行
+SELECT from_currency, to_currency, conversion_date,
+       conversion_type, conversion_rate
+  FROM gl_daily_rates
+ WHERE from_currency = :p_from_currency
+   AND to_currency = :p_to_currency
+   AND conversion_date BETWEEN :p_from_date AND :p_to_date
+   AND conversion_type = :p_conversion_type
+ ORDER BY conversion_date;
+
+-- 查询日汇率接口的错误和未处理行；具体状态/模式以实例版本为准
+SELECT from_currency, to_currency, from_conversion_date,
+       to_conversion_date, user_conversion_type,
+       conversion_rate, mode_flag, error_code
+  FROM gl_daily_rates_interface
+ WHERE error_code IS NOT NULL
+    OR mode_flag IN ('I', 'D', 'X');
+```
+
+`GL_DAILY_RATES_INTERFACE` 中 `MODE_FLAG='I'` 表示插入；如果相同币种对、日期和类型已存在，Oracle 会按新汇率更新该行；`MODE_FLAG='D'` 删除匹配行及其反向行。校验失败的行会保留在接口表并把模式改为 `X`、填充 `ERROR_CODE`，不能在原行上直接重处理，应先删除错误行并以新行修正。日期范围不能超过 366 天；批量导入时只在一行设置 `LAUNCH_RATE_CHANGE='Y'`，避免重复启动汇率变更程序。
+
+#### 3.2.7 多币种实施案例与控制断言
+
+**案例 A：外币 AP 发票**：发票 10,000 EUR，交易日期 2026-08-10，Ledger Currency 为 CNY。若类型为 Corporate、日期为 2026-08-10，系统读取当天 Corporate 7.75，账簿金额为 77,500 CNY；若改为 User 7.80，必须有用户输入和业务理由，不能仅因“希望与 Spot 一致”直接替换。
+
+**案例 B：期末重估**：期初 100,000 EUR 应收按 7.80 记录，期末重估汇率 7.95，理论未实现差额为 15,000 CNY。系统按 Revaluation Definition 的账户范围和损益账户生成标准日记账；若启用 AutoPost，仍要保留 Revaluation Execution Report 和 Posting Request ID。
+
+**案例 C：报告折算**：收入费用使用期间平均口径，资产负债使用期末口径，权益使用历史口径；三者的差额由 CTA/翻译规则平衡。不能用“把所有余额乘同一个 Spot”替代 Translation。
+
+最低控制断言：
+
+- 每一笔外币交易都能回答“使用哪种 Type、哪一天、哪一方向、哪条汇率、谁审批”。
+- `ENTERED_DR/CR` 与 `ACCOUNTED_DR/CR` 的差异可由汇率、精度、舍入或汇兑规则解释。
+- 期间平均/期末类型与 Ledger 配置一致；Historical 账户覆盖关系有清单。
+- 汇率补录后，受影响的 Journal、Revaluation、Translation、Reporting Currency 和 FSG 报表均有重跑/重对账记录。
+- 同一报表不能混用 Ledger Currency、Reporting Currency、Entered Currency 而不在标题和参数中明确标识。
 
 ### 3.3 二级账簿和报告币种
 
-差异来自会计准则、COA、日历或核算级别时评估 Secondary Ledger；主要是币种报告时评估 Reporting Currency。必须明确转换级别（余额、日记账或子账）、延迟容忍度和对账方式。
+| 需求 | 优先考虑 | 设计说明 |
+| --- | --- | --- |
+| 同一会计政策，仅需另一币种报表 | Reporting Currency | 选择日记账级、子账级或余额级转换；定义 Reporting Conversion Type、初始余额和延迟容忍度 |
+| 不同会计准则、COA、日历或会计方法 | Secondary Ledger | 可分配不同 SAM、COA、Calendar、Currency；测试事件级关联和两套余额对账 |
+| 需要外部集团合并 | Translation/Consolidation 或 Secondary Ledger | 先确定母子账簿关系、COA Mapping、历史汇率、CTA、增量/全量传输和抵销责任 |
+
+```text
+Primary Ledger（主会计表示）
+  ├─ Reporting Currency：以既定转换规则复制/转换金额，重点是报告币种
+  └─ Secondary Ledger：以另一套 Ledger + SLA Method 生成会计表示，重点是准则/COA/日历差异
+```
+
+配置和验收至少要列出：源 Ledger、目标 Ledger/Reporting Currency、Conversion Level（Journal/Subledger/Balance）、汇率类型和日期、是否保留原始汇率、初始余额、CTA/汇兑账户、事件/日记账关联键、对账截止时间以及失败补偿路径。Reporting Currency 不是“自动同步的另一张总账”，Secondary Ledger 也不是简单的汇率换算表。
 
 ## 4. 月结控制顺序
 
@@ -1192,6 +1344,164 @@ SELECT gjl.je_line_num, gjl.code_combination_id,
 - **Smart View（可选）**：通过已部署的连接器在 Excel 查询/钻取 GL 或外部 EPM/BI 数据；连接器的刷新口径和权限需单独验证，不能默认等同 EBS 原生报表。
 - **Web ADI**：Integrator + Interface + Content + Layout + Mapping 将 Excel 数据验证并上传，GL Journal 最终进入 GL Interface/Import。
 - **Journal Import**：按 Source/Group ID 从 `GL_INTERFACE` 生成 Batch/Header/Lines，错误行留在接口表并带 Status。
+
+#### FSG 定义、组件与运行
+
+FSG（Financial Statement Generator，财务报表生成器）是 Oracle General Ledger 中基于已过账余额生成自定义财务报表的定义工具。它读取 Ledger、Ledger Set 或 Reporting Currency 的余额及统计数据，通过可复用的行、列、内容和计算定义形成损益表、资产负债表、现金流量/资金可用性和管理分析报表；它不是子账会计引擎，也不会把未过账的 SLA 或 `GL_INTERFACE` 行直接显示为已确认余额。
+
+```mermaid
+flowchart TB
+    RS[Row Set<br/>账户范围/计算/行标签] --> RPT[Report Definition]
+    CS[Column Set<br/>金额类型/期间/格式] --> RPT
+    CT[Content Set<br/>按部门/法人/产品拆分] -.可选.-> RPT
+    RO[Row Order<br/>排序/段显示] -.可选.-> RPT
+    DS[Display Set<br/>显示/隐藏/覆盖] -.可选.-> RPT
+    RPT --> PAR[运行参数<br/>Ledger Period Currency Date]
+    PAR --> FSG[Run Financial Statement Generator]
+    GLB[(GL_BALANCES<br/>已过账余额)] --> FSG
+    FSG --> OUT[Text / Tab / Spreadsheet / XML / XBRL]
+    OUT --> BIP[BI Publisher 模板与分发]
+    OUT --> DRILL[Account / Journal / Subledger Drilldown]
+```
+
+##### FSG 组件职责
+
+| 组件 | 必需性 | 定义内容 | 典型用途与边界 |
+| --- | --- | --- | --- |
+| **Row Set** | 必需 | 行号、行标签、账户范围或计算、格式/显示属性 | “报什么账户”；一个行不能同时定义账户分配和计算 |
+| **Column Set** | 必需（可用标准列集） | 列顺序、Amount Type、Period Offset、标题、宽度、格式、计算/异常 | “报哪个期间和余额类型”；可复用月度、季度、年度和预算列 |
+| **Content Set** | 可选 | 按一个或多个账户段拆分的处理类型、范围和显示级别 | 一次请求生成多个部门/法人/产品报表；Parallel/Sequential 影响并发与顺序 |
+| **Row Order** | 可选 | 行/段排序、段值及描述显示、按列排名 | 资产负债表层级、销售额降序、段值排序；只能对已生成的明细进行排序 |
+| **Display Set / Display Group** | 可选 | 显示/隐藏行列、组范围、异常显示 | 复用同一行列定义输出管理层/明细版报表 |
+| **Report Definition** | 必需 | Report Name/Title、Row Set、Column Set、可选组件、Ledger/段覆盖、默认币种和舍入 | 保存可重复运行的报表模板；运行时参数不会反写定义 |
+| **Report Set** | 可选 | 多个 Report Definition 的顺序、共同参数和调度 | 一次提交资产负债表、损益表、试算表等月结包 |
+| **BI Publisher Template** | 可选 | XML 数据的版式、Logo、分页、PDF/Excel 输出 | FSG 负责数据，模板负责外观；同一 XML 可用不同模板重新发布 |
+
+##### Row Set：账户、显示类型和计算
+
+Row Set 的每行至少有 Sequence、Line Item Description，以及“Account Assignment 或 Calculation”二选一。Account Assignment 使用 Low/High 账户范围；段值留空表示该段全部值。每个账户段可设置：
+
+- **Expand**：为每个段值展开明细行；适合按成本中心、产品或法人查看。
+- **Total**：把范围汇总为一行；给列分配账户、或一行包含多个账户范围时通常必须使用 Total。
+- **Both**：同时输出明细和合计；行数较多，必须确认性能和分页。
+- **Sign（+/-）**：对指定范围累加或扣减；只有各段为 Total 时才适合使用。
+- **Activity（Dr/Cr/Net）**：指定读取借方、贷方或净额活动；现金流/资金变动报表常需要拆成 Dr 和 Cr。
+- **Summary**：只读取汇总余额；启用父段展开时要结合 `FSG:Expand Parent Value` 等配置验证。
+- **Display Options**：Indent、Lines to Skip、Underline、Page Break、Display Zero、Change Sign、Factor、Level of Detail。
+
+FSG 内部借方通常为正、贷方通常为负。`Change Sign` 只改变显示，不改变 `GL_BALANCES`。例如销售贷方为 `-1,000`、销售成本借方为 `600`，毛利内部公式应使用 `Sales + COGS = -400`；若希望报表打印为正数，再在行或列上启用 Change Sign。不要在公式中凭显示符号再额外减一次成本。
+
+##### Column Set：Amount Type、期间和格式
+
+Column Set 的列定义由 Sequence、Name、Amount Type、Period Offset、Heading、Width、Factor、Format Mask、Currency/Control Value 和可选 Calculation 组成。常用 Amount Type 包括：
+
+| Amount Type | 含义 | 典型列 |
+| --- | --- | --- |
+| `PTD-Actual` / `QTD-Actual` / `YTD-Actual` | 本期/季度/年初至今实际 | 本月实际、季度累计、年累计 |
+| `PTD-Budget` / `YTD-Budget` | 本期/年度预算 | 预算执行表 |
+| `PTD-Encumbrance` / `YTD-Encumbrance` | 本期/年度承诺或保留 | 资金可用、采购承诺 |
+| `PTD-Variance` / `YTD-Variance` | Budget - Actual | 预算差异 |
+| `PTD-Variance%` / `YTD-Variance%` | 差异 ÷ 预算 | 预算百分比（须防除零） |
+| `BAL-Actual (FY Start)` / `YTD-Actual (FY End)` | 财年初/财年末余额 | 资产负债表期初、年末 |
+| `PATD` / `QATD` / `YATD` | 期间/季度/年度平均余额 | 启用平均余额处理的金融机构或监管报表 |
+| `Project-Actual/Budget/Variance` | 项目至今余额和差异 | 项目管理报表 |
+
+`Period Offset` 相对运行时的 Period of Interest（POI）计算，例如 `-1` 是上一期间、`0` 是当前期间。`Constant Period of Interest` 固定期间，不随运行参数变化，适合“去年 12 月”比较列。相对标题可以使用 `&POI-1`、`&POI0`、`&CPOI1`、`&DOI0` 等 Token；标题和 Offset 不一致会造成“数据对但标题错”。
+
+Column Set 还要定义列宽和 Format Mask。格式掩码决定小数位、货币符号、千分位及估计标识；列宽不足会截断或错位。对于公式列，明确选择 **Calculate Then Round** 或 **Round Then Calculate**，并在验收样例中保留未舍入值与显示值。
+
+##### FSG 币种控制值与行列冲突
+
+当同一报表需要同时展示账簿币种、外币输入金额、已转换金额或统计量时，不能只在运行参数里填一个 Currency。应在 Row/Column Set 中定义 Currency Control Value，并在 Report Definition 或运行时把控制值编号绑定到具体币种。Oracle 的四种 Currency Type 含义如下：
+
+| Currency Type | Entered Currency | Ledger Currency | FSG 取数含义 |
+| --- | --- | --- | --- |
+| `Converted` | 任意已录入币种 | 目标账簿/报告币种 | 从 Ledger 或可用的 Journal/Subledger Reporting Currency 读取该 Entered Currency 的已转换等价金额；余额级 Reporting Currency 不支持此取法 |
+| `Entered` | 任意已录入币种 | 目标账簿/报告币种 | 读取该币种的 entered balance；适合核对原始外币金额 |
+| `Statistical` | 固定为 `STAT` | 目标账簿/报告币种 | 读取统计余额（数量、人数等），不做货币汇率换算 |
+| `Total` | 不适用 | 目标账簿/报告币种 | 读取所选 Ledger 中的 total/translated balance；不需要 entered currency |
+
+Currency 的解析优先级为 **Currency Control Value → Row/Column 的 Balance Control Currency → Report Definition 默认 Currency → 运行时 Currency**。Report Definition/运行时的默认 Currency 必须是货币币种，不能填 `STAT`；但 Row/Column 的 Balance Control Currency 可以选择 `STAT`，前提是使用 `Statistical` Currency Type。若每列使用不同币种，列标题应明确打印币种代码，避免同一数字被误读。
+
+行列同时设置属性时要遵循 Oracle 的冲突规则：Amount Type、Period Offset、Control Value、Currency 必须在同一行或同一列层级定义；Row Set 的 Format、Factor、Display Zero 和 Level of Detail 通常覆盖 Column Set；Column Set 的计算和 Activity（Dr/Cr/Net）覆盖 Row Set；Change Sign 选 `Yes` 会覆盖 `No`。因此，设计评审应把“属性定义层级”和“预期优先级”作为报表元数据一并保存。
+
+计算按步骤 Sequence 执行，支持 `+`、`-`、`*`、`/`、`%`、`ENTER`、`AVERAGE`、`MEDIAN`、`STDDEV` 和 `Abs` 等运算；引用行号/列号或名称时，名称必须在各自 Set 内唯一。行计算与列计算在同一单元格冲突时，默认由列计算优先，但可在 Row Set 选择 **Override Column Calculations**。分母为零的行计算会生成报表但不输出该计算结果；XBRL 只能可靠输出行级计算，列级计算和方差列可能在日志中告警并不进入实例文档。
+
+##### Content Set、Row Order、Display Set 与 Segment Override
+
+- **Content Set** 把同一报表按部门、法人、成本中心、产品、Ledger 或 Reporting Currency 拆成多份；Parallel 适合相互独立的大量明细，Sequential 适合需要顺序控制或资源受限的月结任务。每份输出要保存 Content Set 展开值和子请求 ID。
+- Content Set 的显示类型需明确写入设计：`N`（继承 Row Set）、`RE`（Row/Expand）、`RT`（Row/Total）、`RB`（Row/Both）、`CT`（Column/Total）、`PE`（Page/Expand，每个段值一份报表）和 `PT`（Page/Total）。`PE` 只能作用于一个段（可包含 Ledger 段），且必须提供该段范围。
+- Content Set 不能与 XBRL 输出组合；选择 Parallel 处理时也不能用 BI Publisher 发布，应改为 Sequential 或拆分为多个请求后套版。
+- **Row Order** 可按 Ledger Name/Short Name、段值/描述或某一显示列金额升降序排列。按金额排名时，后续段必须能得到 Total/Both 汇总，否则排序结果不可解释。
+- **Display Set/Display Group** 只控制输出可见性，不改变余额；未显示的计算列仍可能被其他公式引用，不能因“看不见”就删除。
+- **Segment Override** 可在 Column Set、Report Definition 或运行时指定段值。建议一个报表只选择一种覆盖层级；若同时设置，优先级通常为运行时 > Report Definition > Column Set。避免同一段在多个层级覆盖导致结果漂移。
+- 同一报表不要同时在 Row Set 和 Column Set 分配 Ledger Segment；Ledger Set 在单列中不能展开为多本 Ledger，跨账簿列报应为每一列显式指定 Ledger 或 Reporting Currency。
+
+##### FSG 定义操作（文字版界面示意）
+
+以下是与 R12.2 窗口一致的操作顺序；字段名称可能因语言包和职责菜单略有差异，实际权限以目标实例为准：
+
+```text
+Define Row Set
+  Name / Description / Enable Security
+  └─ Define Rows
+       Sequence | Line Item | Account Assignment OR Calculation
+       Display Type | Sign | Activity | Summary | Format / Level of Detail
+
+Define Column Set
+  Name / Description / Enable Security
+  └─ Define Columns / Column Set Builder
+       Sequence | Amount Type | Period Offset | Heading | Width | Factor
+       Format Mask | Currency/Control Value | Calculation | Exception
+
+Define Content Set / Row Order / Display Set（可选）
+Define Financial Report
+  Name / Title / Row Set / Column Set
+  Content Set / Row Order / Display Set / Segment Override
+  Default Currency / Rounding Option / Level of Detail / Output Option
+
+Run Financial Reports
+  Report or Report Set | Ledger/Ledger Set/Reporting Currency
+  Period | Date（平均余额时）| Currency | Budget/Encumbrance/Control Values
+  Output: Text / Tab-Delimited / Spreadsheet / XML / XBRL
+```
+
+##### FSG 示例：月度损益与部门拆分
+
+目标是输出 2026 年 8 月按部门的 PTD/YTD 损益和预算差异：
+
+| 对象 | 示例定义 | 关键配置 |
+| --- | --- | --- |
+| Row Set `XX_IS_ROW` | Sales、COGS、Gross Margin、Operating Expense、Operating Income | Sales/COGS/Expense 使用账户范围；Gross Margin、Operating Income 使用计算行 |
+| Column Set `XX_IS_COL` | PTD Actual、PTD Budget、PTD Variance、YTD Actual、YTD Budget、YTD Variance% | POI=2026-08；预算控制值绑定 `FY26_BUDGET`；Variance% 处理预算为零 |
+| Content Set `XX_DEPT` | Department 段 100、200、300 | Parallel 生成三个部门版本；保存每个展开值 |
+| Row Order `XX_IS_ORDER` | 按行号和段描述排序 | 输出账户值+描述；不按未显示列排名 |
+| Report `XX_MONTHLY_IS` | Row Set + Column Set + Content Set + Row Order | Ledger 在运行时指定；Currency=Ledger Currency；Output=XML 或 Spreadsheet |
+
+运行时选择 Ledger、Period、Currency 和 Level of Detail；若使用 XML，再提交 XML Publisher/BI Publisher 模板。每个部门的结果应与按部门过滤的 Trial Balance 和 `GL_BALANCES` 控制总额一致；差异只能来自舍入、汇总、显示符号或明确的账户排除。
+
+##### FSG 运行、输出与安全
+
+1. **运行方式**：Run Financial Reports 窗口可运行单个预定义/临时报表、部分或全部 Report Set；Submit Requests 可运行 `Program - Run Financial Statement Generator`，并支持排程、Request Set 和与标准报表组合。
+2. **核心运行参数**：Ledger/Ledger Set/Reporting Currency、Period、Date（平均余额）、Currency、Optional Components、Budget/Encumbrance/Constant Period 控制值、Level of Detail、Rounding Option、Output Option。运行时修改不会保存回 Report Definition。
+3. **输出类型**：Text 适合在线查看；Tab-Delimited/Spreadsheet 适合分析；XML 供 BI Publisher 套版；XBRL 需要已加载 Taxonomy，且列级计算可能只在日志中提示、不会进入 XBRL 结果。
+4. **BI Publisher**：可一步生成 XML 并发布，或先运行 FSG 得到 XML、再用不同模板重复发布；这样可以更换版式而不重复取数。启用 Drilldown 的模板应能从金额链接到余额、日记账或来源明细。
+5. **数据安全**：Data Access Set 控制 Ledger、Balancing Segment 或 Management Segment 的读写范围；Definition Access Set 控制 Row/Column/Content/Row Order/Report/Report Set 的 Use、View、Modify；FSG Segment Value Security 需定义规则并启用 `FSG: Enforce Segment Value Security`。
+6. **性能与治理**：月结前运行 GL Optimizer；大型 Content Set 评估 Parallel 的并发、数据库负载和输出数量；保存 Report/Row/Column/Content 的 Detail Listing、请求参数、日志、输出文件、版本和签核，不以 Excel 手工改数作为正式报表。
+
+##### FSG 诊断矩阵
+
+| 现象 | 优先检查 | 常见根因 | 修复边界 |
+| --- | --- | --- | --- |
+| 报表为空 | Ledger/Period/Currency、Data Access Set、账户范围、Zero Suppression、Content Set | 期间未过账、段覆盖错误、无 Use/Read 权限 | 先用 Trial Balance 验证余额，再改 FSG 定义 |
+| 余额不对 | Row Account Assignment、Summary/Detail、Sign、Activity、Amount Type、Period Offset | 账户范围交叉、借贷符号、PTD/YTD 混用、标题与 Offset 不一致 | 用单一 CCID/期间重现，再扩展范围 |
+| 总计重复 | Row/Column 同时分配账户、多个 Content Set、Expand+Both | 同一余额在多个维度展开或汇总 | 明确“账户在行、期间在列”的主维度 |
+| 预算/承诺空白 | Balance Control、Budget/Encumbrance Control Value、预算名称/类型 | Row/Column 未定义控制值或运行时未绑定 | 同一控制值在相交行列绑定同一 Budget/Encumbrance |
+| 报表能跑但 XML/BI 无金额 | FSG 日志、XDO 模板、计算列、Locale、Child Request | 模板标签/版式、XBRL 列计算限制、子请求失败 | 先确认 FSG 原始 XML，再单独验证模板 |
+| 只能看定义不能运行 | Definition Access Set Use/View/Modify | 只有 View/Modify 无 Use，或职责未分配程序 | 由管理员补正确权限，不复制敏感报表 |
+| 内容集运行很慢 | Content Set 类型、并发请求、GL Optimizer、账户段选择 | 过多展开值、Parallel 资源争用、余额索引不新鲜 | 拆分批次、调整并发窗口并保留性能基线 |
+
+FSG 最终验收应同时保存：Report Definition、Row/Column/Content/Order/Display 定义清单、运行参数、Request ID/子请求 ID、原始输出、BI Publisher 模板版本、Data Access Set/Definition Access Set、Trial Balance 对账及异常说明。参见 [Oracle General Ledger User's Guide：Financial Statement Generator](https://docs.oracle.com/cd/E26401_01/doc.122/e48748/T312864T313620.htm)。
 
 <a id="src-docs-04-gl-reporting-interfaces--sql"></a>
 #### SQL

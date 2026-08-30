@@ -299,12 +299,33 @@
 | `FND_CONCURRENT_REQUESTS` | 报表请求 | `REQUEST_ID`、程序、参数、Phase/Status、输出 | 报表执行证据 |
 | BI Publisher Data Model/Template | 数据模型/模板 | 数据集、参数、模板版本、输出格式 | 模板报表和分发 |
 | ECC Load Definition | 加载定义 | Full/Incremental/Push、计划、索引新鲜度 | 运营看板数据新鲜度 |
+| `GL_DAILY_RATES` | 日汇率 | From/To Currency、Conversion Date/Type、正向/反向汇率 | 外币日记账、重估、折算和报告币种 |
+| `GL_DAILY_RATES_INTERFACE` | 日汇率接口 | 币种对、日期范围、类型、汇率、模式、错误码 | 受控批量插入/更新/删除日汇率 |
+| Historical Rates | 历史汇率/金额 | Ledger、Target Currency、期间、账户、Rate/Amount、Rate Type | 权益、非货币性项目和时态法翻译 |
+| FSG Row/Column/Content Set | FSG 报表组件 | 账户/计算行、金额类型/期间列、段拆分 | 可复用地定义报表内容和维度 |
+| FSG Report/Report Set | FSG 报表/报表集 | Row Set、Column Set、运行参数、顺序和调度 | 月结报表、管理报表和批量输出 |
 
 ### 名词解释
 
 | 名词 | 解释 |
 | --- | --- |
 | FSG | Financial Statement Generator；基于 GL 余额和行/列集生成财务报表 |
+| Row Set | FSG 行集；定义账户范围、行标签、计算、显示类型和格式 |
+| Column Set | FSG 列集；定义 Amount Type、期间偏移、标题、币种、格式和计算 |
+| Content Set | FSG 内容集；按法人、部门、成本中心、产品、Ledger 或报告币种拆分输出 |
+| Row Order | FSG 行顺序；按段值、描述或列金额排序并控制段显示 |
+| Display Set / Display Group | FSG 显示集/显示组；控制行列显示、隐藏和组范围，不改变余额 |
+| Report Definition | FSG 报表定义；组合 Row/Column Set 及可选组件，运行时参数不反写定义 |
+| Report Set | FSG 报表集；将多个报表按顺序和共同参数批量运行 |
+| Amount Type | FSG 金额类型；PTD/QTD/YTD 的 Actual、Budget、Encumbrance、Variance 或平均余额 |
+| Currency Control Value | FSG 币种控制值；把 Converted、Entered、Statistical、Total 及 Entered/Ledger Currency 绑定到控制值编号 |
+| Balance Control Currency | FSG 行/列的余额控制币种；决定未指定 Currency Control Value 时的取数币种；可为 `STAT` |
+| Converted / Entered / Statistical / Total | FSG 四类币种余额取数方式；分别表示已转换、原始输入、统计量和账簿/报告币种总额 |
+| Period Offset / POI | 期间偏移/期间关注点；相对运行期间选择前后期间，`0` 表示当前期间 |
+| Constant Period of Interest | 固定期间关注点；无论运行期间如何变化都引用同一会计期间 |
+| Segment Override | FSG 段覆盖；在列集、报表定义或运行时限定账户段值，优先级需受控 |
+| Change Sign | FSG 显示符号；只改变报表显示，不改变 GL 借贷余额 |
+| Definition Access Set | 定义访问集；控制 FSG 定义及汇率类型的 Use/View/Modify 权限 |
 | Report Manager | EBS 原生报表提交/查看框架；与外部 Office 插件不同 |
 | BI Publisher | 模板化报表和批量分发工具 |
 | RXi | Report eXchange；可配置的标准报表输出框架 |
@@ -312,6 +333,22 @@
 | ECC | Enterprise Command Center；运营搜索和可视化；新鲜度由加载模式/计划决定 |
 | Control Total | 控制总额；来源、子账、SLA、GL 或报表之间的数量/金额校验 |
 | Data Lineage | 数据血缘；报表单元格到余额、日记账、SLA、来源交易的追溯链 |
+| Conversion Rate Type | 汇率类型；Spot、Corporate、User、EMU Fixed 或客户自定义类型，决定同一币种对/日期的汇率口径 |
+| Spot Rate | 即期汇率；指定日期的市场报价，通常从日汇率表取得 |
+| Corporate Rate | 公司标准汇率；由财务统一发布，供多个模块采用 |
+| User Rate | 用户汇率；在交易/日记账录入时直接指定，不在日汇率窗口维护 |
+| EMU Fixed | 欧元/EMU 固定汇率关系；只适用于法定固定转换，不是一般市场汇率 |
+| Period-End Rate | 期末汇率；通常用于资产负债表余额的期末折算 |
+| Period-Average Rate | 期间平均汇率；通常用于收入费用的期间折算，具体口径依 Ledger 配置 |
+| Historical Rate/Amount | 历史汇率/金额；按期间和账户维护，覆盖 Period-End/Period-Average 的默认选择 |
+| Conversion | 多币种换算；交易录入时将 Entered Currency 转成 Ledger Currency |
+| Revaluation | 重估；按指定日期汇率调整外币货币性账户并生成未实现汇兑损益 |
+| Translation | 折算；把 Ledger 余额按期末/平均/历史规则重述到报告币种，差额通常进 CTA |
+| Remeasurement | 再计量/时态法；非货币性项目使用历史汇率，差额按规则进入损益 |
+| Cumulative Translation Adjustment (CTA) | 累计折算调整；用于平衡权益法折算产生的净差额，账户类型和追踪段需配置 |
+| Rate Date / Conversion Date | 汇率日期；决定从日汇率表取哪一天的 Type；不一定等于交易日期或会计日期 |
+| Inverse Rate | 反向汇率；To→From 的换算率，是否强制为正向率倒数由实例 Profile 控制 |
+| Currency Rates Manager | 汇率管理器；统一维护、上传、下载日汇率/历史汇率并计算 Cross Rates |
 
 官方基线：[General Ledger User's Guide](https://docs.oracle.com/cd/E26401_01/doc.122/e48748/toc.htm)、[Report Manager](https://docs.oracle.com/cd/E26401_01/doc.122/e22006/toc.htm)、[ECC Administrator](https://docs.oracle.com/cd/E26401_01/doc.122/f34732/toc.htm)。
 
