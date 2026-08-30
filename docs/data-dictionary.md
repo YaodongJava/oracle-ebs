@@ -489,16 +489,49 @@
 | 对象/字段 | 粒度 | 关键字段或关系 | 用途 |
 | --- | --- | --- | --- |
 | `GL_BALANCES` | 账簿-科目-期间余额 | Ledger、CCID、期间、余额类型、借贷余额 | FSG/管理报表基础 |
+| `GL_CODE_COMBINATIONS` | 会计组合 | `CODE_COMBINATION_ID`、Accounting Flexfield 段值、启用/有效日期 | 账户范围、安全和报表行取数 |
+| `GL_PERIOD_STATUSES` | Ledger-期间状态 | Ledger、应用、期间、打开/关闭状态、打开/关闭日期 | 报表是否可取数、迟到调整和关账门禁 |
+| `GL_JE_BATCHES` | 日记账批次 | `JE_BATCH_ID`、来源、类别、期间、状态、控制总额 | Journal Import/Posting 批次控制 |
 | `GL_JE_HEADERS/LINES` | 日记账头/行 | 来源、类别、期间、CCID、借贷金额、过账状态 | 报表下钻和控制总额 |
+| `GL_INTERFACE` | GL 日记账接口 | Ledger/CCID、期间、币种、借贷、来源/类别、Group ID、错误信息 | 外部/子账批量导入 Journal Import |
+| `GL_IMPORT_REFERENCES` | GL 来源引用 | `JE_HEADER_ID`、`JE_LINE_NUM`、来源事务标识 | 从总账行回溯成本事务或 SLA |
 | `XLA_AE_HEADERS/LINES` | SLA 分录 | 事件、会计类、账户、借贷、传送状态 | 子账到 GL 血缘 |
+| `XLA_EVENTS` | SLA 事件 | `EVENT_ID`、实体、事件类型、状态、会计日期 | 判断事务是否已生成/处理会计事件 |
 | `FND_CONCURRENT_REQUESTS` | 报表请求 | `REQUEST_ID`、程序、参数、Phase/Status、输出 | 报表执行证据 |
+| `FND_CONCURRENT_PROGRAMS` / Request Group | 并发程序/请求组 | 程序、执行文件、参数、职责可见范围、互斥规则 | 报表注册、调度和权限 |
+| FSG Row/Column/Content Set | FSG 定义组件 | Row/Column、账户范围、金额类型、期间偏移、段拆分 | 可复用财务报表定义 |
+| FSG Report/Report Set/Access Set | FSG 报表与权限 | 组合定义、运行参数、Use/View/Modify、Segment Security | 批量运行、版本和访问控制 |
 | BI Publisher Data Model/Template | 数据模型/模板 | 数据集、参数、模板版本、输出格式 | 模板报表和分发 |
+| BI Publisher Bursting | 分发定义 | 分割键、收件人、文件名、语言、输出格式、传输渠道 | 按法人/组织拆分和外发控制 |
+| Web ADI Integrator/Layout | Excel 集成定义 | 字段、默认值、值集、校验、上传目标和职责 | 受控批量下载/上传 |
 | ECC Load Definition | 加载定义 | Full/Incremental/Push、计划、索引新鲜度 | 运营看板数据新鲜度 |
+| ECC Data Set/Page/Region | ECC 逻辑对象 | 数据集、页面、搜索、指标、图表、动作和角色 | 运营检索、可视化和数据安全 |
+| ECC Load Request/Audit | ECC 加载请求/审计 | 请求、批次水位、开始/结束时间、行数、错误和状态 | 数据加载追踪、重跑和审计 |
 | `GL_DAILY_RATES` | 日汇率 | From/To Currency、Conversion Date/Type、正向/反向汇率 | 外币日记账、重估、折算和报告币种 |
 | `GL_DAILY_RATES_INTERFACE` | 日汇率接口 | 币种对、日期范围、类型、汇率、模式、错误码 | 受控批量插入/更新/删除日汇率 |
 | Historical Rates | 历史汇率/金额 | Ledger、Target Currency、期间、账户、Rate/Amount、Rate Type | 权益、非货币性项目和时态法翻译 |
-| FSG Row/Column/Content Set | FSG 报表组件 | 账户/计算行、金额类型/期间列、段拆分 | 可复用地定义报表内容和维度 |
-| FSG Report/Report Set | FSG 报表/报表集 | Row Set、Column Set、运行参数、顺序和调度 | 月结报表、管理报表和批量输出 |
+| Report Catalog/Version | 报表目录/版本 | Owner、Data Steward、来源、参数、版本、状态、保留期、替代关系 | 生命周期、重复清理和审计定位 |
+| Control Total/Sign-off | 控制总额/签核 | 来源/子账/SLA/GL/报表金额、差异、复核人、批准 | 月结完整性和管理责任 |
+| Audit/Retention Policy | 审计/保留策略 | 对象、审计字段、保留期限、脱敏、归档、销毁批准 | SOX/法定/隐私和诉讼保全 |
+
+### 关键字段判读
+
+| 字段/对象 | 判读方式 | 常见误区与控制 |
+| --- | --- | --- |
+| `LEDGER_ID` / `SET_OF_BOOKS_ID` | 确认报表、日记账、余额和子账事件属于同一 Ledger；旧版本字段可能仍出现在接口/历史对象 | 不能用 Ledger Name 代替 ID；跨 Ledger Set 必须逐 Ledger 对账 |
+| `CODE_COMBINATION_ID` | 连接 Accounting Flexfield 段值、GL 余额、日记账和安全规则 | 同一自然科目在不同法人/成本中心不是同一账户；报表要保留完整 CCID/段值 |
+| `PERIOD_NAME` / `PERIOD_NUM` / `PERIOD_YEAR` | 确认会计期间、财务日历和调整期间；运行期间不一定等于交易日期 | 不要用自然月份字符串替代期间；年结/调整期需单独标识 |
+| `ACTUAL_FLAG` / `BALANCE_TYPE` | 区分 Actual、Budget、Encumbrance、Statistical 或平均余额 | Actual 与 Budget 混列必须明确列标题、来源和比较基准 |
+| `STATUS` / `POSTED_FLAG` | 判断日记账、批次、请求或输出是否完成；具体代码需查 Lookup | Request Normal 不等于 Journal Posted；必须继续核对 Journal Import/Posting |
+| `GROUP_ID` / `REFERENCE*` | 连接 GL_INTERFACE 批次、外部来源和下钻引用 | 外部批次必须有唯一键和控制总额，避免重传重复分录 |
+| FSG `Amount Type` / `Period Offset` | 决定 PTD/QTD/YTD、Actual/Budget 和相对运行期间 | 期间偏移、CPOI、调整期和平均余额要用测试期间验证 |
+| FSG `Display Type` / `Change Sign` | Expand/Total/Both 控制行粒度；Change Sign 只改变显示 | 显示正负不能改变实际借贷；汇总行可能与明细行重复计算 |
+| BI Publisher Parameter/Template Version | 参数决定数据范围，模板决定版式；两者必须独立版本 | 模板中的硬编码过滤/合计会造成口径漂移，不能只审 PDF 外观 |
+| ECC Load Request/Last Successful Load | 判断数据集水位、行数、错误数和最后成功时间 | 页面显示旧数据时先查加载请求和索引，不直接修改来源交易 |
+| `REQUEST_ID` / Output File | 关联并发程序、参数、日志、输出、校验值和归档 | 只保留文件名无法复现运行条件；请求和输出均需受访问控制 |
+| Access Set / Responsibility / MOAC | 叠加决定 Ledger、OU、组织、菜单、请求和段值可见范围 | 只测页面可见性不够，还要测试下钻、导出、Bursting 和接口写入 |
+
+对象名称、列名、状态码和可查询视图会随 R12.2 补丁、已安装产品和本地化变化；带有“/”或功能名的条目是逻辑对象或对象集合，实施 SQL 需先用目标实例 eTRM、`ALL_TAB_COLUMNS`、Lookup 和 Integration Repository 核对。
 
 ### 名词解释
 
@@ -544,8 +577,42 @@
 | Rate Date / Conversion Date | 汇率日期；决定从日汇率表取哪一天的 Type；不一定等于交易日期或会计日期 |
 | Inverse Rate | 反向汇率；To→From 的换算率，是否强制为正向率倒数由实例 Profile 控制 |
 | Currency Rates Manager | 汇率管理器；统一维护、上传、下载日汇率/历史汇率并计算 Cross Rates |
+| Ledger Set | 账簿集；将多个 Ledger 作为一组运行查询或 FSG 报表，结果需保留各账簿及合计口径 |
+| Source / Category | 日记账来源/类别；用于区分子账、手工、接口和调整性质，也是报表过滤维度 |
+| Journal Import | 日记账导入；将 `GL_INTERFACE` 验证并创建 GL 日记账，失败行需根据错误报告修正 |
+| Posting | 过账；将已导入日记账更新到 `GL_BALANCES`；导入成功不等于余额已更新 |
+| Suspense / Invalid Account | 暂记/无效账户；临时承接不能确定或不合法的账户，月结前必须解释并清零或批准例外 |
+| FSG Display Type | Expand、Total、Both；控制段值展开、合计或同时显示明细/合计 |
+| FSG Calculation | FSG 行/列计算；用于合计、差异、比例和统计，需明确计算优先级与舍入 |
+| FSG Rounding | FSG 显示/计算舍入；可能导致报表行合计与原始余额存在小额差异，必须设定阈值 |
+| Segment Value Security | 段值安全；按用户/职责限制 FSG 可输出的账户段值，需要启用相应 Profile |
+| Report Catalog | 报表目录；集中登记用途、Owner、数据源、参数、权限、版本、刷新和保留信息 |
+| Data Steward | 数据管理员；维护业务定义、映射、质量规则和来源解释，不等同于技术开发者 |
+| Semantic Layer | 语义层；统一期间、币种、维度、状态、指标公式和下钻键，隔离展现格式 |
+| Refresh SLA | 刷新服务级别；定义数据最长允许延迟、成功水位、监控和超时升级 |
+| Concurrent Program | 并发程序；注册执行文件、参数和值集，通过 SRS/请求组统一运行 |
+| Concurrent Request | 并发请求；某次带参数的程序运行实例，包含 Phase/Status、日志和输出 |
+| Request Set | 请求集；按顺序或条件组织多个并发请求，适用于日批、月结和报表集 |
+| BI Publisher Data Definition | BI Publisher 数据定义；登记 XML 数据源/并发程序/Web Service 与参数 |
+| BI Publisher Data Model | BI Publisher 数据模型；定义数据集、参数、SQL、事件和安全过滤 |
+| BI Publisher Template | BI Publisher 模板；将 XML 数据渲染为 RTF、PDF、XSL、Excel 等版式输出 |
+| Bursting | 分发拆分；按分割键生成多个文件并映射收件人、语言、格式和渠道 |
+| Web ADI Integrator | Web ADI 集成器；定义 Excel 与 EBS 任务之间的元数据和上传目标 |
+| Web ADI Layout | Web ADI 布局；定义字段位置、默认值、值列表、必填和显示规则 |
+| ECC Data Set | ECC 数据集；将来源数据加载到索引，供页面、搜索、指标和图表使用 |
+| ECC Load Request | ECC 加载请求；记录 Full/Incremental/Push 加载的批次、行数、错误和水位 |
+| Full/Incremental/Push Load | ECC 全量/增量/推送加载；分别适合初始化、变化同步和事件驱动更新 |
+| Drilldown | 下钻；从报表单元格/余额进入日记账、SLA、子账和业务单据的追溯动作 |
+| Control Total | 控制总额；来源、子账、SLA、GL、报表或分发批次之间的数量/金额证明 |
+| Reconciliation | 对账；按相同 Ledger、期间、币种、过滤和舍入口径比较两侧证据 |
+| Exception Item | 例外项；未达到控制条件但有金额、风险、责任人、临时控制和解决期限的事项 |
+| Compensating Control | 补偿控制；无法及时修复系统/数据缺陷时，经批准的人工或替代核验措施 |
+| Audit Trail | 审计轨迹；记录用户、时间、前后值、原因、批准、请求和对象版本 |
+| Retention / Archive | 保留/归档；按法规、税务、合同、审计和诉讼保全保留定义、输出、日志和签核 |
+| Data Masking | 数据脱敏；在非生产环境屏蔽个人、银行、税务和商业敏感字段 |
+| Output Checksum | 输出校验值；验证 PDF/XML/Excel 文件未被替换或损坏，配合版本和参数复现 |
 
-官方基线：[General Ledger User's Guide](https://docs.oracle.com/cd/E26401_01/doc.122/e48748/toc.htm)、[Report Manager](https://docs.oracle.com/cd/E26401_01/doc.122/e22006/toc.htm)、[ECC Administrator](https://docs.oracle.com/cd/E26401_01/doc.122/f34732/toc.htm)。
+官方基线：[General Ledger User's Guide](https://docs.oracle.com/cd/E26401_01/doc.122/e48748/toc.htm)、[Financial Reporting/FSG](https://docs.oracle.com/cd/E26401_01/doc.122/e48748/T312864T313620.htm)、[Report Manager](https://docs.oracle.com/cd/E26401_01/doc.122/e22006/toc.htm)、[EBS Concepts — Web ADI/BI Publisher](https://docs.oracle.com/cd/E26401_01/doc.122/e22949/T120505T120508.htm)、[ECC Administrator](https://docs.oracle.com/cd/E26401_01/doc.122/f34732/toc.htm)、[ECC Extending](https://docs.oracle.com/cd/E26401_01/doc.122/f21671/T673609T673614.htm)、[ECC Push Load/Java API](https://docs.oracle.com/cd/E26401_01/doc.122/f21671/T673609T676700.htm)。
 
 <a id="dict-09"></a>
 ## 09 端到端流程与跨模块关联
