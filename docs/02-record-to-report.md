@@ -4,7 +4,7 @@
 
 ## 阅读导航
 
-- [会计链](#2-端到端会计链) · [总账设计](#3-总账核心设计) · [月结](#4-月结控制顺序) · [功能视角](#5-功能顾问检查点) · [技术视角](#6-技术顾问检查点) · [差异诊断](#7-高频差异诊断) · [页面与关账实操](#9-资深顾问实操页面会计与关账) · [专题详解](#10-专题详解)
+- [会计链](#2-端到端会计链) · [SLA 定义与流程](#r2r-sla) · [总账设计](#3-总账核心设计) · [月结](#4-月结控制顺序) · [功能视角](#5-功能顾问检查点) · [技术视角](#6-技术顾问检查点) · [差异诊断](#7-高频差异诊断) · [页面与关账实操](#9-资深顾问实操页面会计与关账) · [专题详解](#10-专题详解)
 - [模块数据字典与名词解释](data-dictionary.md#dict-02)
 
 ## 模块业务架构与核心 ER 图
@@ -91,6 +91,301 @@ erDiagram
 ```
 
 诊断时必须指出断点在事件生成、创建会计、传输、导入、过账还是余额/reporting；“未进总账”不是足够的问题描述。
+
+<a id="r2r-sla"></a>
+### 2.1 SLA 定义、来源与会计生成流程
+
+#### 2.1.1 SLA 的定义与边界
+
+Subledger Accounting（SLA，子分类账会计）是 EBS 中连接业务子账与总账的会计规则引擎。它不负责录入 AP 发票、AR 发票或库存交易本身，而是读取来源交易产生的会计事件，按账簿适用的会计方法生成可追溯的子分类账分录，再把最终分录传送到 GL。SLA 的核心目标是：
+
+- **同一业务事件可产生不同会计表示**：Secondary Ledger 可采用不同的会计方法、币种、COA 或日历；Reporting Currency 主要提供币种表示，转换级别和时点需单独定义。
+- **规则与交易分离**：交易数据保存在产品子账，账户和借贷逻辑由 Accounting Methods Builder（AMB）配置；不通过直接修改基表改变历史会计。
+- **可审计可追溯**：从交易实体、事件、SLA 分录头/行到 GL 日记账和余额保留关联键，并支持从 GL 下钻回来源交易。
+- **由事件驱动而不是由表驱动**：只有已定义、可处理且满足会计日期/期间条件的 Accounting Event 才能进入 Create Accounting。
+
+本节采用 Oracle EBS R12.2 的 AMB 术语。不要把 R12.2 EBS 的 Application Accounting Definition（AAD）/Journal Lines Definition（JLD）与 Oracle Fusion Cloud 的 Journal Entry Rule Set 直接混称；迁移或对照时必须以目标产品和版本的界面、文档和实例定义为准。
+
+#### 2.1.2 SLA 对象层次
+
+| 层次 | 对象 | 作用 | 典型问题 |
+| --- | --- | --- | --- |
+| 来源交易 | AP 发票、AR 收款、FA 资产、INV 交易、PO 接收、Projects 成本、外部接口 | 提供业务事实、金额、币种、组织和账户属性 | 交易未完成、来源字段为空、组织/账簿错误 |
+| Transaction Entity | 交易实体 | 将产品交易登记为 SLA 可识别的业务对象 | `SOURCE_ID_INT_*` 映射不正确、实体未生成 |
+| Accounting Event | 会计事件 | 表示可产生会计的业务动作；由 Event Class/Type 分类 | 事件未创建、事件日期或状态不符合条件 |
+| Sources / Accounting Attributes | 来源值和会计属性 | 为条件、账户、描述、币种、日期、主体和业务流提供输入 | 来源未分配到事件类、上下文/金额缺失 |
+| Journal Line Type（JLT） | 日记账行类型 | 决定借/贷/损益、会计类别、余额类型、合并和转 GL 行为 | 行类型条件不命中、借贷方向错误 |
+| Account Derivation Rule（ADR） | 账户推导规则 | 推导完整 Accounting Flexfield、段或值集 | 映射缺失、优先级/默认规则错误、CCID 无效 |
+| Journal Entry Description（JED） | 日记账描述规则 | 生成 SLA 日记账头、行的描述 | 描述缺少业务键或泄露敏感字段 |
+| Supporting Reference（SR） | 支持性参考 | 在分录头/行记录可对账、分析的来源属性 | 未分配到所有相关事件，无法按项目/客户对账 |
+| Journal Lines Definition（JLD） | 日记账行定义 | 将 JLT、ADR、JED、SR 组合为一套事件级行规则 | 行定义未激活、事件类不匹配 |
+| Application Accounting Definition（AAD） | 应用会计定义 | 为应用的 Event Class/Type 分配 JLD、头描述和支持性参考 | 未勾选 Create Accounting、定义未验证 |
+| Subledger Accounting Method（SAM） | 子分类账会计方法 | 把多个应用的 AAD 组合成一套会计政策 | 未分配到 Ledger、COA 不兼容 |
+| Ledger / Accounting Representation | 账簿/会计表示 | 决定会计 COA、币种、日历和使用的 SAM | 主账簿/二级账簿结果不一致 |
+
+Oracle 官方 AMB 关系是：Source、Event Entity、Event Class/Type 为规则输入；Mapping Set 供 ADR 使用，JLT、ADR、JED 和 Supporting Reference 组成 JLD；JLD 和头部定义组成 AAD；多个 AAD 组成 SAM；SAM 再分配给 Ledger。参见 [Oracle Subledger Accounting Implementation Guide：Accounting Methods Builder](https://docs.oracle.com/cd/E26401_01/doc.122/e48771/T149412T149415.htm)。
+
+#### 2.1.3 从来源交易到 GL 的运行时流程
+
+```text
+产品/外部来源交易
+  → Transaction Entity（交易实体）
+  → Accounting Event（会计事件：Event Class + Event Type）
+  → 来源/会计属性装载与校验
+  → 选择 AAD（应用会计定义）和 JLD（行定义）
+  → JLT 条件判断：是否生成该行、借/贷/损益及行属性
+  → ADR/Mapping Set 推导 Accounting Flexfield
+  → 计算 Entered/Accounted Amount、汇率、舍入和多期间
+  → XLA_AE_HEADERS / XLA_AE_LINES（Draft 或 Final）
+  → Transfer Journal Entries to GL / Journal Import
+  → GL Journal Batch/Header/Lines（来源、类别、描述、引用）
+  → Approval（如启用）→ Posting → GL Balances
+  → 子账、SLA、GL、外部回执数量/金额对账
+```
+
+每个阶段都要保存上一阶段的主键和下一阶段的状态。`Create Accounting` 成功只说明 SLA 分录生成成功；如果未勾选 Transfer to GL，或传送/Journal Import/Posting 失败，GL 仍可能没有可过账日记账。
+
+#### 2.1.4 会计事件、事件类和事件类型
+
+- **Transaction Entity** 是业务对象的登记容器，例如一张发票、一笔收款或一项资产。它通过产品定义的来源列指向原交易；`SOURCE_ID_INT_1..4` 的业务含义随应用和 Entity Code 变化，不能跨产品硬编码。
+- **Event Class** 将具有相同会计模型的一组事件归类，例如 Invoice、Payment、Receipt、Asset Addition、Inventory Issue。JLT 通常先按 Event Class 定义，再在具体 Event Type 上加条件。
+- **Event Type** 是可处理的业务动作，例如 Validated、Paid、Adjusted、Received、Transferred。一个交易可能在生命周期内产生多个事件，各事件应按顺序和业务状态处理。
+- **事件状态** 至少要区分未处理、处理中、已完成和错误；状态代码在不同应用/补丁中可能不同，应同时输出原始代码和 Lookup Meaning，不把单字符代码直接翻译进程序。
+- **会计日期** 决定进入哪个 Ledger 期间；交易日期、事件日期和 GL Date 可能不同，期间关闭、未来可录入和会计日期来源规则都必须在测试中确认。
+
+事件未创建时先查产品交易完成条件和事件生成程序；事件已创建但未会计时查 Event Status、Process Status、会计日期和 Create Accounting 日志；不要直接插入 `XLA_EVENTS` 或修改状态列。
+
+#### 2.1.5 Sources（来源）与 Accounting Attributes（会计属性）
+
+**Source** 是规则可以读取的交易或事件属性，来源可以是产品提供的标准 Source，或在确有必要时由 PL/SQL 函数定义的 Custom Source。来源必须先在对应 Event Class/Entity 上可用，才能被 JLT 条件、ADR、JED、Supporting Reference 或属性分配使用；一个规则引用了事件类不可用的 Source，AAD/JLD 验证会失败。
+
+| 来源类别 | 常见内容 | 典型用途 | 设计控制 |
+| --- | --- | --- | --- |
+| 交易标识 | 交易号、分配行号、供应商/客户、物料、项目、资产号 | 描述、幂等和 Drilldown | 保留业务主键，不把完整敏感载荷写入描述 |
+| 组织与账簿 | Ledger、Legal Entity、OU、Inventory Organization、项目组织 | ADR 条件、MOAC、跨组织隔离 | 明确组织来源和会计 COA，不用页面默认值代替 |
+| 原始账户 | 发票分配账户、物料账户、现金账户、税账户、原交易 CCID | 账户推导的 Source 或继承值 | 验证 CCID 有效期、允许过账和 COA |
+| 金额与币种 | Entered Amount、Currency、Exchange Rate、Tax Amount | JLT 金额、汇率、舍入和 Gain/Loss | 区分交易币种与账簿币种，保留汇率类型/日期 |
+| 事件与状态 | Event Type、Event Date、Accounting Date、状态、Tracking Option | JLT 条件、会计日期和描述 | 按 Lookup 解码，避免把状态文本当稳定接口 |
+| 会计属性 | Party、Reconciliation Reference、Reversal Indicator、Multiperiod、Encumbrance Type | 分录头/行特殊处理和对账 | 按 Header/Line 层级分配，缺失必填属性时拒绝会计 |
+| Lookup/常量/自定义 | Lookup Code、固定值、客户函数结果 | 条件、Mapping Set 输入、描述或段值 | 常量须有变更控制；Custom Source 控制性能和异常 |
+
+Accounting Attribute 不等同于普通来源列：有些属性会写入 SLA 命名列并参与特殊处理，例如 Entered Currency/Amount；有些属性改变行为，例如 Accounting Reversal Indicator、Multiperiod Option。属性通常在事件类默认，也可以在 JLT 或 AAD 层按支持范围覆盖。
+
+##### 典型产品来源（Source）示例
+
+下表用于设计来源清单，不是跨产品通用的固定字段名。实际 Source 名称、可用事件类和来源应用必须从目标实例的 Accounting Definitions、eTRM 和产品文档确认：
+
+| 产品/事件 | 常见 Source | 账户或规则用途 |
+| --- | --- | --- |
+| Payables Invoice | Invoice Distribution Account、Supplier Site Liability Account、Tax Code、Invoice Type、PO/Receipt、Project/Task | 费用、资产、税、负债和应计账户；项目/采购维度对账 |
+| Payables Payment | Liability Account、Payment Method、Bank Account、Cash Clearing、Currency | 负债结清、现金/银行、汇兑损益和付款方式条件 |
+| Receivables Invoice | Receivable Account、Revenue Account、Transaction Type、Customer/Site、Tax Code、Salesperson | 应收、收入、税、客户和销售区域账户 |
+| Receivables Receipt | Receipt Method、Bank/Cash Account、Remittance、Customer、Applied Transaction | 现金、汇款/清算、应收核销和未核销收款 |
+| Assets | Asset Category、Asset Book、Cost、Depreciation Expense、Reserve、Retirement Type | 资产成本、折旧、累计折旧、处置损益和资产账簿 |
+| Inventory/Costing | Item、Inventory Organization、Subinventory、Cost Element、Transaction Type、WIP/Overhead | 库存、发出、接收检查、WIP、制造费用和成本差异 |
+| Purchasing/Receiving | PO Charge Account、Accrual Account、Receiving Inspection、Destination Type、Item/Organization | 收货、暂估应计、费用/库存目的地和业务流继承 |
+| Projects/FAH/外部来源 | Project/Task、Expenditure Type、Source System、External Key、Event Type、金额/币种 | 项目成本/收入、FAH 事件、外部批次、幂等和跨系统对账 |
+
+Source 名称相似不代表语义相同。例如 `Invoice Distribution Account`、`Supplier Site Liability Account` 和 `Bank Account` 分别属于费用/资产、负债和现金侧；不能因字段都返回 CCID 就互换使用。
+
+#### 2.1.6 AMB 定义顺序与发布控制
+
+推荐按“先验证标准，再最小复制”的顺序实施：
+
+1. **确认 Ledger 与会计政策**：确定 Primary/Secondary Ledger、Accounting COA、币种、日历、会计方法、会计选项和是否使用现金制/权责制；先运行标准定义的 Draft 会计。
+2. **盘点事件与来源**：列出应用、Entity、Event Class/Type、可用 Sources、会计日期来源和需要的 Accounting Attributes；缺少来源时先评估是否能使用已有 Source。
+3. **定义或复制 JLT**：按 Event Class 定义行类型、Side、Accounting Class、Balance Type、合并/转 GL、Business Flow、Multiperiod、条件和属性。不要直接修改 Oracle Owner 的 seeded JLT。
+4. **定义 JED**：分别设计 Journal Header Description 和 Line Description，至少包含业务单号、事件类型或批次；描述内容需脱敏且限制长度。
+5. **定义 Mapping Set**：把一个或多个输入 Source 映射为完整账户、段或值集；为未匹配值定义拒绝/默认策略，不把 Suspense 当正常映射。
+6. **定义 ADR**：决定输出完整 Accounting Flexfield、单个段或值集，配置 Source/Mapping Set/Constant/ADR 的 Value Type、条件和优先级。
+7. **定义 Supporting Reference**：选择项目、客户、资产、外部批次等用于余额分析和对账的 Source，并分配到所有产生该账户的 JLD 行。
+8. **定义 JLD**：把 JLT、ADR、JED、Supporting Reference 组合为事件类/类型的完整行集合；确认行类型、账户规则和描述引用的 Source 均可用，并将行分配设为 Active。
+9. **定义 AAD**：为事件类/类型分配头描述、JLD 和支持性参考，设置是否 Create Accounting；执行 Validate，只有 Valid 的事件类/类型才可生成分录。
+10. **定义并分配 SAM**：把各应用 AAD 组合成共同会计政策，确认 Accounting COA 兼容，再通过 Accounting Setup Manager 分配到 Ledger。
+11. **迁移与回归**：使用 AAD Loader/FNDLOAD 或实例认可的配置迁移方式，先 DEV/SIT Draft，再 Final、Transfer、Journal Import、Posting 和 Drilldown；保留版本、Owner、依赖、差异和回退包。
+
+Oracle 建议对 seeded 组件使用 Copy and Modify，而不是直接修改；自定义组件只分配给自定义 JLD/AAD/SAM，并在补丁前执行 Merge Analysis。配置变更不能只导出一张截图，必须同时保存规则定义、输入值、输出账户、验证状态和测试结果。
+
+#### 2.1.7 账户推导规则（ADR）与 Mapping Set
+
+##### 账户推导的三个输出层级
+
+1. **完整 Accounting Flexfield（Flexfield/Account）**：一次返回整套会计组合，适合来源已经带有目标 COA 的场景。
+2. **Segment/Qualifier**：只推导一个段或限定段，其余段由其他规则补齐；例如从交易分配账户继承 Balancing Segment 或 Cost Center。
+3. **Value Set**：在指定值集内返回值，再由规则构成目标段；适合受控的映射值而非任意字符串。
+
+##### Value Type 与规则优先级
+
+| Value Type | 输入/输出含义 | 典型场景 |
+| --- | --- | --- |
+| Source | 从交易或事件来源直接取账户/段/值 | 发票分配账户、库存组织、税码 |
+| Mapping Set | 按 Source 值查表得到完整账户或段 | OU/法人/产品线映射自然科目或成本中心 |
+| Constant | 返回固定账户、段或值集值 | 固定银行现金段、特定汇总账户（须受控） |
+| Account Derivation Rule | 复用另一条 ADR 的结果 | 公共账户规则被多个 JLT 复用 |
+
+规则明细按 Priority 升序判断，数字越小优先级越高；满足条件后采用该行，后续行不再评估。建议最后保留一条无条件的默认行，或明确让事件进入 Error；不要无声地落入 Suspense。账户推导时还要注意：
+
+- 规则可以按完整账户或逐段构建；如果同时指定完整 Accounting Flexfield 规则和段规则，段规则可能覆盖对应段，必须在目标 COA 上验证最终组合。
+- Mapping Set 的输入值、输出值和 COA 必须版本化；新增 OU、法人、库存组织、项目类型或产品线时同步补充映射并测试未匹配分支。
+- 交易 COA 与 Accounting COA 在 Primary Ledger 始终一致；Secondary Ledger 或多重会计表示可能不同，ADR 仍是在目标 Accounting COA 上生成账户，必要时使用 COA Mapping。
+- 账户推导结果必须通过 CCID、有效期、Detail Posting Allowed、启用标志和账户权限验证；“能拼出字符串”不等于可过账。
+- 规则条件使用的 Source 必须对该 Event Class 可用；跨应用复用 ADR 时，所有依赖 Source 都要在目标事件类上存在。
+- 原始账户和替代账户都要保留审计依据；如果替代账户无效，是否允许 Suspense 由产品和 Ledger 配置决定，不能把 Suspense 当账户推导成功。
+
+##### 账户推导示例（教学账户）
+
+假设目标账户结构为 `法人-成本中心-自然科目-产品`，AP 发票费用行要从分配账户继承成本中心，并按物料类别映射自然科目：
+
+| 优先级 | 条件 | 输出类型 | 输出 |
+| --- | --- | --- | --- |
+| 10 | 物料类别 = `CAPEX` | Mapping Set | `自然科目=160000`，其余段来自来源/继承 |
+| 20 | 项目号不为空 | Mapping Set | `自然科目=540100`，成本中心来自项目 |
+| 90 | 无条件默认 | Source | 直接使用发票分配 Accounting Flexfield |
+
+如果 `CAPEX` 映射缺失，系统应按项目/默认分支或明确报错，不能随机使用上一行值。实施验收要保存输入 Source、匹配的 Priority、Mapping Set 版本、最终 CCID 和 Journal Line ID。
+
+#### 2.1.8 JLT、会计类型与借贷逻辑
+
+**Journal Line Type（JLT）不是“总账科目”**，而是定义某一事件类下如何生成一类 SLA 行。下表是实施时必须区分的会计类型：
+
+| 概念 | 含义 | 示例 | 与其他概念的区别 |
+| --- | --- | --- | --- |
+| Event Class/Type | 业务动作分类 | AP Invoice / Validated、AR Receipt / Remitted | 决定处理的业务事件，不直接表示借或贷 |
+| Accounting Class | 分录行业务语义 | Expense、Liability、Tax、Revenue、Cash、Accrual | 用于分类、Post-Accounting 和分析，不等同 GL Category |
+| Balance Type | 余额类型 | Actual、Budget、Encumbrance | 决定进入实际、预算或承诺余额；普通财务交易通常是 Actual |
+| Side | 行方向 | Debit、Credit、Gain/Loss | 由 JLT 指定；Gain/Loss 是汇兑损益专用行为 |
+| Accounting Method | 会计政策集合 | Accrual、Cash Basis 或客户定义方法 | 由 SAM 汇总 AAD 后分配给 Ledger |
+| Business Flow Method | 关联交易继承方式 | None、Prior Entry、Same Entry | 解决收货—发票—付款等关联交易的账户/属性继承 |
+| Multiperiod | 多期间处理 | None、Accrual、Recognition | 决定递延/确认分录及 GL 日期 |
+| Transfer Level | 传送粒度 | Detail、Summary | 决定 GL 保留明细还是按 Accounting Flexfield 汇总 |
+| Journal Source/Category | GL 日记账元数据 | Payables、Receivables、Manual；业务类别 | 由 GL 识别来源/类别，不是 ADR 或 Accounting Class |
+
+JLT 还可以定义 Rounding Class、Merge Matching Lines、条件、Accounting Attribute Assignment、Gain/Loss 是否在主账簿计算和是否允许多期间。配置前先用标准 JLT 观察结果，再针对明确需求复制并修改。
+
+**借贷生成规则**：
+
+- `Side = Debit` 时，金额通常进入 `ENTERED_DR/ACCOUNTED_DR`；`Side = Credit` 时进入对应 `CR` 列。一个 SLA 行通常只填一侧，但最终每个会计事件/账簿的借贷必须平衡。
+- `ENTERED_DR/CR` 是交易币种金额，`ACCOUNTED_DR/CR` 是账簿币种金额；不能用交易币种金额直接与 GL 账簿金额比较。
+- `Side = Gain/Loss` 由 SLA 根据相关交易汇率差计算；损失通常生成借方，收益通常生成贷方，实际账户由 Gain/Loss ADR 和配置决定，不应手工把普通行改成负数。
+- 负数、冲销和反向交易应由产品事件、Reversal Indicator 或标准 API 处理；不要通过交换 DR/CR 列或直接更新 XLA/GL 表“修正方向”。
+- 余额类型为 Budget/Encumbrance 时，需确认产品是否启用预算/承诺会计以及对应的 Encumbrance Type；不能把预算行当作 Actual 交易。
+
+##### 常见业务分录示意
+
+以下金额和科目仅为教学示意，最终账户、税、折扣、汇兑和自动平衡以产品规则及目标实例为准：
+
+| 业务事件 | Accounting Class / JLT | 借方 | 贷方 | 说明 |
+| --- | --- | ---: | ---: | --- |
+| AP 发票验证 | Expense | 费用 100 | — | ADR 通常来自发票分配、项目和物料规则 |
+| AP 发票验证 | Tax | 税 13 | — | Tax Source/Mapping Set 决定税账户和舍入 |
+| AP 发票验证 | Liability | — | 供应商负债 113 | 可按供应商站点、法人或业务流继承段值 |
+| AP 付款 | Liability | 供应商负债 113 | — | 结清发票负债 |
+| AP 付款 | Cash / Bank | — | 银行现金 113 | 银行账户和现金结算规则参与推导 |
+| AR 发票 | Receivable | 应收 113 | — | 客户账户/交易类型提供来源 |
+| AR 发票 | Revenue / Tax | — | 收入 100；税 13 | 收入账户按物料、交易类型或销售区域推导 |
+| AR 收款 | Cash | 现金/银行 113 | — | 收款方式和银行账户决定现金账户 |
+| AR 收款 | Receivable | — | 应收 113 | 应用/核销事件清理客户余额 |
+
+业务案例不能只看借贷是否平衡，还要确认每一行的 Event Type、Accounting Class、ADR 命中规则、币种、组织、Supporting Reference、来源键和最终会计状态。
+
+#### 2.1.9 Business Flow、继承与多期间
+
+- **None**：当前事件独立推导账户和属性。
+- **Same Entry**：同一会计事件内，某一行可以从另一侧继承指定 Accounting Attribute 或段值。例如 AP 发票负债行继承费用行的 Cost Center 等指定段，避免收货/发票分配的对应段不一致。
+- **Prior Entry**：从同一 Business Flow Class 的上游会计事件继承账户或属性。例如付款继承发票的负债/主体信息，或发票反转收货应计分录。
+
+Business Flow 的 `Applied-to` 属性、Flow Class、继承的币种/汇率/主体和段值必须在关联交易的正向、反向、部分应用和取消场景验证。不要把 Same Entry/Prior Entry 当作简单复制整套账户；继承哪些属性由 JLT、JLD 和 Accounting Attribute Assignment 决定。
+
+多期间会计至少定义：起始日、结束日、期间数、每期间或一次性确认、GL Date 规则、Accrual/Recognition 行类型、舍入和中断恢复。Originating Entry 与 Recognition Entry 必须分别对账，期间关闭时使用标准 Complete Multiperiod Accounting/反转程序，不直接改历史 SLA 行。
+
+#### 2.1.10 日记账头、行和其他定义
+
+SLA 生成的是子分类账日记账；传送到 GL 后还会形成 GL Batch/Header/Lines。以下定义必须分层管理：
+
+| 定义 | 所属层 | 主要字段/控制 | 实施要点 |
+| --- | --- | --- | --- |
+| Journal Entry Description | SLA | Header/Line Description、Source、常量 | 用业务单号/事件/批次，脱敏并限制长度 |
+| Supporting Reference | SLA | Reference 类型、Source、余额维度 | 用于项目、客户、资产、外部批次对账；需覆盖所有相关 JLT |
+| Accounting Class | SLA | 行分类和 Post-Accounting 选择 | 是语义标签，不代替科目或 GL Category |
+| Post-Accounting Program | SLA/产品后处理 | Accounting Class assignments、Ledger | 为资产 Mass Additions 等后续处理筛选分录行 |
+| Entered/Accounted Amount | SLA | 交易币种/账簿币种借贷金额 | 保留汇率类型、日期、舍入和交易币种 |
+| Accounting Date / Reversal Date | SLA | 事件/会计/冲销日期来源 | 受期间状态和会计属性影响 |
+| Transfer Level | SLA→GL | Detail 或 Summary | Summary 降低 GL 行数，但可能减少直接下钻粒度 |
+| GL Journal Source | GL | `JE_SOURCE` / 用户来源名 | 标识来源系统，如 Payables、Receivables 或自定义来源 |
+| GL Journal Category | GL | `JE_CATEGORY` / 用户类别名 | 标识业务性质，如 Purchase Invoices、Payments、Manual |
+| Batch/Header/Line | GL | 批名、日记账名、行号、描述、Reference | 用于审批、过账、审计和 Drilldown |
+| Document Sequence | GL/产品 | 序列类别、编号、日期 | 法规或内部凭证编号，不能用批次名代替 |
+| Journal Approval | GL | 审批规则、状态、审批人、时间 | 与录入人、过账人职责分离 |
+| AutoPost | GL | 来源/类别/批次自动过账条件 | 自动化也要保留请求、规则和异常证据 |
+| Suspense / Intercompany Balancing | GL | 暂记账户、平衡段和公司间规则 | 只作为配置的例外机制；要能追溯和清理 |
+
+**Journal Source/Category 与 SLA 的关系**：SLA 的 Event Class、JLT、Accounting Class 决定“为什么生成哪一行”；GL Source、Category、Batch 和 Approval 决定“以什么总账元数据接收、审批和过账”。二者都出现在审计报表中，但不能互相替代。配置自定义来源/类别时要确认 Journal Import、自动过账、审批、报表和下钻设置。
+
+#### 2.1.11 Create Accounting、Transfer 和 Posting 参数
+
+Oracle R12.2 的 Create Accounting 程序使用 AAD/SAM 处理符合条件的事件。常用参数及边界如下：
+
+| 参数 | 作用 | 关键边界 |
+| --- | --- | --- |
+| Ledger | 限定处理的账簿 | 受职责、Data Access Set 和子账数据安全限制 |
+| Process Category | 按事件类/类型缩小范围 | 只选择实例已定义的处理类别 |
+| End Date | 处理事件日期截止点 | 不能代替会计日期/期间检查 |
+| Mode | Draft 或 Final | Draft 可检查规则但不可传 GL；Final 分录不可随意修改 |
+| Errors Only | 仅重处理先前错误事件 | 先确认错误已分类和修复，避免无条件重复 |
+| Report | Summary 或 Detail | Detail 用于逐事件/逐行验证和问题复盘 |
+| Transfer to General Ledger | 是否传送 Final SLA 到 GL | No 时需运行 Transfer Journal Entries to GL |
+| Post in General Ledger | 传送后是否提交 GL Posting | 是否可用受权限、子账和配置影响 |
+| General Ledger Batch Name | 传送后 GL 批名 | 用外部批次/请求 ID 形成可追踪命名 |
+| Include User Transaction Identifiers | 报告是否包含用户交易标识 | 需防止输出敏感字段并按权限保留 |
+
+Create Accounting 的正确判断顺序是：先看事件选择范围和错误数，再看 AAD/JLD 验证、账户推导、SLA 行、Transfer 状态、Journal Import、Posting 和最终余额。Final SLA 已生成但未传 GL 时，应运行 Transfer Journal Entries to GL；再次运行 Create Accounting 不一定会重新拾取已经 Final 的事件。参见 [Create Accounting and Transfer Journal Entries to GL Programs](https://docs.oracle.com/cd/E26401_01/doc.122/e48771/T149412T283033.htm)。
+
+#### 2.1.12 SLA 结果追溯与对账证据
+
+| 断点 | 必须记录的证据 | 结论示例 |
+| --- | --- | --- |
+| 来源→事件 | 业务主键、Entity Code、Event ID、事件日期、状态 | 交易已完成但事件未生成 |
+| 事件→SLA | Create Accounting Request ID、AAD/JLD 版本、错误消息、AE Header/Line | 规则未命中或 CCID 无效 |
+| SLA→GL | `AE_HEADER_ID`、`GL_TRANSFER_STATUS_CODE`、Transfer Request ID、批名 | Final SLA 未传送或 Journal Import 失败 |
+| GL→余额 | `JE_HEADER_ID`、`JE_LINE_NUM`、Posting Request ID、期间、币种 | 日记账未过账或期间/币种错误 |
+| GL→来源 | `GL_IMPORT_REFERENCES`、`GL_SL_LINK_ID/TABLE`、Source/Category、业务键 | 下钻引用缺失或传送汇总丢失粒度 |
+| 业务→外部 | 外部批次/回执、数量/金额控制总额、ACK 时间 | EBS 成功但外部 ACK 丢失，需按幂等键补发 |
+
+最低对账断言：在预先定义的粒度上，来源交易、会计事件、Final SLA、已传 GL 和已过账 GL 的数量与金额差异都可解释；允许的舍入、汇兑、税差、冲销、汇总以及部分成功必须单列并经批准。只比较借贷净额可能掩盖账户、组织、币种、项目或客户维度错误。
+
+#### 2.1.13 SLA 实施案例：AP 发票验证
+
+**场景**：一张外币 AP 发票含费用 100、税 13，费用分配来自项目，供应商站点定义负债账户；发票验证后要产生 SLA，再传送并过账到 GL。
+
+1. AP 完成发票校验，产品生成 Invoice Entity 和 Validated Event；确认 Ledger、ORG、会计日期和期间可用。
+2. AAD 为该 Event Class/Type 选择 Invoice JLD；JLD 激活 Expense、Tax、Liability 三个 JLT。
+3. Expense JLT 的 ADR 先读取分配/项目来源，Tax JLT 读取税行来源；Liability JLT 读取供应商站点负债账户，并按 Business Flow/继承规则补齐平衡段。
+4. JLT 计算交易币种 Entered Amount 和账簿币种 Accounted Amount；根据汇率类型、日期、舍入和税规则形成借贷行。
+5. Draft Create Accounting 检查：三类 JLT 是否都命中、总借贷是否平衡、CCID 是否有效、税/项目 Supporting Reference 是否写入。
+6. 修复错误后运行 Final Create Accounting，保存 `AE_HEADER_ID/AE_LINE_NUM` 和详细报告；Transfer to GL 后保存 `GL_IMPORT_REFERENCES`、Journal Import Request ID 和批名。
+7. 经过审批（如启用）后 Posting，查询 GL 余额并从 GL 下钻回 AP 发票；对账金额、币种、税、项目和供应商维度。
+
+| SLA 行 | 教学借贷 | 账户来源 | 关键验收 |
+| --- | --- | --- | --- |
+| Expense | DR 100 | 项目/发票分配 ADR | 项目号、成本中心、自然科目和 CCID |
+| Tax | DR 13 | 税行 ADR/Mapping Set | 税码、税账户和舍入 |
+| Liability | CR 113 | 供应商站点 ADR + Business Flow | 供应商、法人/平衡段、负债账户 |
+
+若出现“AP 发票已验证但 GL 无金额”，按事件存在性 → AAD/JLD Valid → ADR/CCID → Final 状态 → Transfer → Journal Import → Approval/Posting 顺序定位；不要直接插入 GL 行。
+
+#### 2.1.14 SLA 配置自审清单
+
+- [ ] Ledger、Accounting COA、币种、日历、SAM 和应用会计选项已核对。
+- [ ] 每个目标 Event Class/Type 的来源、事件日期、会计属性和会计前置条件有清单。
+- [ ] JLT 的 Side、Accounting Class、Balance Type、Rounding、Merge、Business Flow、Multiperiod 和 Transfer Level 有设计说明。
+- [ ] JED 头/行描述、Supporting Reference、敏感字段和 Drilldown 需求经过审查。
+- [ ] Mapping Set、ADR 的输入、输出、COA、优先级、默认/拒绝分支和 CCID 校验有测试。
+- [ ] JLD、AAD 已激活并 Validate 为 Valid；自定义组件没有直接修改 Oracle Owner 的 seeded 定义。
+- [ ] Draft/Final、Errors Only、Transfer、Post、Journal Import、Approval 和 Posting 均有 Request ID/输出证据。
+- [ ] AP/AR/FA/INV/PO/Projects/外部接口至少各有一个正向、错误、重复、冲销、外币和期间边界案例。
+- [ ] 来源→事件→SLA→GL→余额的数量/金额/维度对账通过，失败和补偿路径有负责人。
+
+本节的规则层次、来源可用性、JLT 借贷/余额类型、ADR 优先级、Supporting Reference、AAD 验证和 Create Accounting 参数均以 [Oracle Subledger Accounting Implementation Guide](https://docs.oracle.com/cd/E26401_01/doc.122/e48771/) 为 R12.2 基线；实际字段、事件名称、可用 Source、产品 API 和状态值仍需用目标实例 eTRM、Integration Repository 和测试请求确认。
 
 ## 3. 总账核心设计
 
@@ -1113,8 +1408,7 @@ GL 的业务层级是 Ledger → Batch → Journal Header → Journal Line → B
 <a id="src-docs-04-gl-tables--官方参考"></a>
 #### 官方参考
 
-- [Oracle General Ledger Implementation Guide R12.2](https://docs.oracle.com/cd/E26401_01/doc.122/e48747/)
-- [Oracle E-Business Suite eTRM User's Guide](https://docs.oracle.com/cd/E26401_01/doc.122/f53031/)
+- 参见本章总账接口小节的官方参考。
 
 <!-- 兼容旧版目录与学习材料的定位锚点；正文已按主题重编。 -->
 <a id="src-docs-02-record-to-report-agis-intercompany-readme"></a>

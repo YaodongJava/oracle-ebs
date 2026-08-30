@@ -83,6 +83,14 @@
 | `XLA_EVENTS` | 会计事件 | `EVENT_ID`、`ENTITY_ID`、`EVENT_TYPE_CODE`、`EVENT_STATUS_CODE` | 业务事件会计资格 |
 | `XLA_AE_HEADERS/LINES` | SLA 分录头/行 | `AE_HEADER_ID`、`AE_LINE_NUM`、`ACCOUNTING_CLASS_CODE`、借贷金额、传输状态 | 子账会计和 GL 传送 |
 | `GL_INTERFACE` | GL 导入接口行 | `STATUS`、`GROUP_ID`、`LEDGER_ID`、`ACCOUNTING_DATE`、CCID、借贷金额 | Journal Import 暂存 |
+| Source / Accounting Attribute | SLA 来源/会计属性 | 交易、事件、币种、主体、汇率、反转、多期间等 | 规则条件、账户、描述和行属性输入 |
+| Event Class / Event Type | 事件类/事件类型 | 业务事件分组和具体动作 | 决定适用的 AAD/JLD/JLT |
+| Journal Line Type（JLT） | 日记账行类型 | Side、Accounting Class、Balance Type、条件、合并、转 GL | 决定生成借/贷/损益行的行为 |
+| Account Derivation Rule（ADR） | 账户推导规则 | 完整账户、段/限定段或值集、优先级 | 生成目标 Accounting Flexfield |
+| Mapping Set | 映射集 | Source 输入到账户、段或值的映射 | ADR 的条件化账户映射 |
+| Journal Lines Definition（JLD） | 日记账行定义 | JLT、ADR、JED、Supporting Reference 的组合 | 为事件类/类型组成完整分录 |
+| Application Accounting Definition（AAD） | 应用会计定义 | 事件类/类型、头描述、JLD、Create Accounting、验证状态 | 规定应用如何生成 SLA |
+| Subledger Accounting Method（SAM） | 子分类账会计方法 | 多应用 AAD 的会计政策集合 | 分配到 Ledger 形成会计表示 |
 
 ### 名词解释
 
@@ -90,9 +98,31 @@
 | --- | --- |
 | Journal Batch | 日记账批；一组受控日记账头和行，可统一导入/过账 |
 | Journal Header/Line | 日记账头/行；头存来源和期间，行存科目、币种和借贷金额 |
+| Journal Source / Category | GL 日记账来源/类别；分别表示来源系统和业务性质，不等同 SLA Accounting Class |
 | Posting | 过账；把已批准日记账更新到 GL 余额 |
 | Accounting Event | 会计事件；业务动作触发的会计处理单位 |
 | Transfer to GL | 传送到总账；SLA 分录传入 GL 接口/导入链 |
+| Source | SLA 规则可读取的交易/事件属性；必须在目标 Event Class 上可用 |
+| Accounting Attribute | 参与金额、币种、主体、反转、多期间或对账等特殊处理的属性 |
+| Event Class / Event Type | 事件类/事件类型；前者按会计模型分组，后者表示具体业务动作 |
+| Accounting Class | SLA 行的业务语义标签，如 Expense、Liability、Revenue、Tax、Cash |
+| Balance Type | JLT 的余额类型；Actual、Budget 或 Encumbrance，需结合产品和启用范围确认 |
+| Side | JLT 的行方向；Debit、Credit 或 Gain/Loss |
+| Transfer Level | SLA 向 GL 传送的粒度；Detail 保留明细，Summary 按账户组合汇总 |
+| Post-Accounting Program | 按 Accounting Class 选择 SLA 行供后续产品处理的定义，例如资产 Mass Additions |
+| Journal Line Type（JLT） | 定义行的借/贷/损益方向、余额类型、条件、合并和转 GL 粒度 |
+| Account Derivation Rule（ADR） | 按 Source、Mapping Set、Constant 或其他 ADR 推导完整账户、段或值集 |
+| Mapping Set | 将一个或多个输入 Source 值映射到账户、段或值集输出的可维护映射 |
+| Journal Entry Description（JED） | 生成 SLA 日记账头和行描述的规则，可引用 Source 和常量 |
+| Journal Lines Definition（JLD） | 将 JLT、ADR、JED 和 Supporting Reference 组合成事件级行集合 |
+| Application Accounting Definition（AAD） | 为应用 Event Class/Type 分配 JLD、头描述和支持性参考，并控制是否 Create Accounting |
+| Subledger Accounting Method（SAM） | 将多个应用的 AAD 组合成共同会计政策，再分配给 Ledger |
+| Supporting Reference | 用于按项目、客户、资产或外部批次建立 SLA 余额和对账维度的可选参考 |
+| Business Flow Method | None、Same Entry 或 Prior Entry；控制关联交易之间的账户/属性继承 |
+| Multiperiod Accounting | 将递延/预付等金额按起止日期和 GL 期间生成 Accrual/Recognition 分录 |
+| Draft / Final Accounting | Draft 用于检查规则且不可传 GL；Final 是可传送、过账的正式 SLA 分录 |
+| Accounting COA | SLA 生成分录所依据的 Accounting Flexfield 结构；Secondary Ledger 可与交易 COA 不同 |
+| Gain/Loss Side | JLT 的汇兑损益方向；由 SLA 根据相关交易汇率差计算，不是普通负数行 |
 | Revaluation | 重估；按期末汇率重算外币余额并生成差额 |
 | Translation | 折算；将账簿余额转换为报告币种 |
 | Summary Transfer | 汇总传送；以较少明细传入 GL，可能降低逐笔下钻粒度 |
