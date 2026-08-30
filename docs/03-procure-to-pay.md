@@ -98,13 +98,210 @@ erDiagram
 
 ### 3.2 匹配与容差
 
-- **2-way match（两单匹配）**：采购订单与发票。
-- **3-way match（三单匹配）**：采购订单、收货和发票。
-- **4-way match（四单匹配）**：再加入检验/验收。
+- **2-way match（两单匹配）**：发票数量/金额与 PO 订单数量/价格核对，适合服务、订阅或不要求仓库收货的采购。
+- **3-way match（三单匹配）**：在 2-way 基础上增加已接收数量或金额，适合实物采购；未收货或超收会产生 Matching Hold。
+- **4-way match（四单匹配）**：在 3-way 基础上增加 Inspection/Acceptance 结果，适合需要质量验收的物料。
 
-Quantity/Amount/Price/Exchange Rate Tolerance（数量、金额、价格、汇率容差）应有业务依据。Hold（挂起）是控制结果，不应通过放宽全部容差解决。
+| 匹配方式 | 必须存在的事实 | 主要检查 | 典型适用场景 | 常见失败原因 |
+| --- | --- | --- | --- | --- |
+| 2-way | PO + Invoice | 价格、金额、税/运费、币种和日期 | 咨询、租赁、订阅、已在外部系统验收的服务 | PO 价格过期、发票金额超容差、PO 关闭 |
+| 3-way | PO + Receipt/Delivery + Invoice | 订单量、已收量、发票量及价格 | 库存、费用物料和普通实物采购 | 收货未完成、退货未扣减、UOM 不一致 |
+| 4-way | PO + Receipt + Inspection/Acceptance + Invoice | 在 3-way 上检查验收数量/状态 | 食品、药品、质量门禁物料 | 检验未完成、拒收未处理、验收数量不足 |
 
-### 3.3 付款安全
+#### 匹配粒度和容差
+
+1. **匹配粒度**：可以从 PO Header、Line、Shipment 到 Distribution 逐层选择；发票行应尽量落到 PO Shipment/Distribution，避免只按供应商和总额“粗匹配”。按 Receipt 匹配时，应保存 `RCV_TRANSACTION_ID`，从而能够解释部分收货、退货和更正。
+2. **数量容差**：比较发票数量与可开票接收数量；应考虑 UOM 转换、退货、纠正和已开票数量。超过容差时按 Ignore、Warning 或 Reject 处理，Reject 通常形成 Quantity Hold。
+3. **价格/金额容差**：比较 PO 单价、发票单价、扩展金额、税和运费；价格差异必须区分供应商错误、已批准变更、汇率差异和税额舍入，不能用提高 Price Tolerance 掩盖 PO 未更新。
+4. **汇率容差**：外币发票通常按发票汇率入账；与 PO 汇率不同产生的差额应在 SLA 中进入汇兑损益/价格差异规则，先确认汇率日期和 Rate Type，再判断是否为业务差异。
+5. **容差层级**：组织、供应商、物料和订单均可能提供接收/发票控制；实施时应记录最终生效值、覆盖层级和审批人。不同补丁级别对可配置项的名称和优先级可能不同，生产配置以目标实例页面和 eTRM 为准。
+6. **Final Match**：发票分配标记为 Final Match 时，表示不再向该 PO 分配后续发票，并在启用承诺会计时冲回未使用承诺；Final Match 不能用于 Receipt 或 Prepayment 匹配，必须由业务确认剩余数量不会再开票。
+
+```mermaid
+flowchart TD
+    I[发票行] --> Q{是否匹配采购单?}
+    Q -- 否 --> N[非 PO 发票：分配/审批/税务检查]
+    Q -- 是 --> L{匹配到 PO 行/Shipment?}
+    L --> M{匹配选项}
+    M -- 2-way --> P[核对 PO 价格、金额、币种]
+    M -- 3-way --> R[再核对 Receipt/Delivery 数量]
+    M -- 4-way --> A[再核对 Inspection/Acceptance]
+    P --> T{在容差内?}
+    R --> T
+    A --> T
+    T -- 是 --> V[通过验证并生成分配]
+    T -- 否 --> H[生成 Hold，修正单据或按权限释放]
+```
+
+### 3.3 采购文档层级与采购订单类型
+
+采购不是从 PO 直接开始。完整链路通常是“请购需求 → 询价/供应商选择 → 采购文档 → 收货/验收 → 发票”。Oracle Purchasing 将采购文档区分为请购单、询价/报价、采购订单和采购协议；采购订单类型的显示名称可以在 Document Types 中改名，但其功能类别仍是下列四种 seeded 类型。
+
+```mermaid
+flowchart LR
+    RQ[Requisition 请购单] --> RFQ[RFQ/Quotation 询价报价]
+    RFQ --> D{采购文档类型}
+    D --> STD[Standard PO 标准采购订单]
+    D --> PLA[Planned PO 计划采购订单]
+    D --> BPA[Blanket Purchase Agreement 总括采购协议]
+    D --> CPA[Contract Purchase Agreement 合同采购协议]
+    PLA --> SR[Scheduled Release 计划订单释放]
+    BPA --> BR[Blanket Release 总括协议释放]
+    STD --> RC[Receipt/Delivery/Inspection]
+    SR --> RC
+    BR --> RC
+    CPA --> STD2[引用合同协议创建标准 PO]
+    STD2 --> RC
+    RC --> INV[AP 发票匹配与验证]
+```
+
+#### 四类采购订单/协议
+
+| 类型（Oracle seeded class） | 什么时候用 | 下单时已知的信息 | 后续释放方式 | 承诺/预留控制 | 业务例子 |
+| --- | --- | --- | --- | --- | --- |
+| **Standard Purchase Order**（标准采购订单） | 一次性或明确批次的采购 | 商品/服务、价格、数量、交付计划、账户分配均已知 | 不需要释放，批准后直接收货/开票 | 可启用 Encumbrance；批准后形成可执行订单 | 采购 100 台显示器，已确定供应商、单价和到货日期 |
+| **Planned Purchase Order**（计划采购订单） | 需求总量已知、实际交付节奏待定 | 商品/服务和预计总量已知；交付计划可只填预计值，具体日期/地点在 Release 时细化 | 通过 Scheduled Release 产生实际交付计划 | 可预留总额；释放时可调整分配，须符合变更审批 | 年度预计采购 12,000 件，按月由工厂拉动 |
+| **Blanket Purchase Agreement**（Blanket Purchase Agreement，总括采购协议） | 价格和条款谈妥、按需分批采购 | 商品/服务和价格通常已知；具体数量、交付计划不确定 | 通过 Blanket Release 按需下单；可设价格 breaks | 可启用承诺；可设 Global Agreement 供多个 OU/BU 引用 | 与办公用品供应商约定一年价格，按部门申请释放 |
+| **Contract Purchase Agreement**（合同采购协议） | 只先锁定法律条款和商业条件 | 条款已知，但商品/服务、价格、数量、分配均未定义 | 创建引用合同的 Standard PO 再收货/开票 | 通常不直接做采购金额承诺，实际订单才形成金额 | 集团框架合同，后续各 OU 按项目创建具体订单 |
+
+Oracle 的选择逻辑可以概括为：**已知交付计划选 Standard；已知总量但计划不定选 Planned；已知价格、按需分批选 Blanket；只知条款、不知具体采购内容选 Contract**。如果价格、数量或科目尚未经过预算和业务批准，不要为了“先占额度”而创建金额不真实的 Standard PO。
+
+#### Planned/Blanket Release 的区别
+
+| 释放对象 | 来源 | 释放时必须明确 | 对原协议的影响 | 需要关注的控制 |
+| --- | --- | --- | --- | --- |
+| Scheduled Release | Planned PO 或部分协议场景 | 具体交付日期、地点、数量、分配和价格 | 消耗计划订单的可释放数量/金额 | 计划变更、交付窗口、项目/成本中心分配 |
+| Blanket Release | Blanket Purchase Agreement | 本次采购数量、交付计划、收货地点和分配 | 消耗协议金额/数量；按协议价格和价格阶梯计算 | 协议有效期、价格 breaks、累计承诺、供应商地点 |
+
+合同协议本身不等于可收货的订单；收货和 AP 匹配应引用实际批准的 Standard PO 或 Release。Global Agreement 可以让不同采购业务单元引用共享协议，但必须检查供应商地点、币种、税务和本 OU 的访问权限。
+
+#### PO 控制字段与生命周期
+
+- **Header**：供应商、Supplier Site、采购员、Operating Unit/BU、币种、付款条件、交货条款、协议引用、审批状态和 Global 标志。批准 PO 后通常不能任意更换供应商；供应商地点变更是否允许取决于配置，并会增加修订和重新审批。
+- **Line**：物料或服务描述、Item/Category、数量、单位、单价、价格基础、税分类和供应商物料号。服务行要明确服务期间、验收人和是否需要收货。
+- **Shipment**：交付日期、收货组织、Ship-to/Bill-to、接收路由、匹配选项、超收/迟交容差和最终关闭标志；同一行可拆分多个 Shipment。
+- **Distribution**：费用、库存、项目、资产或预付款分配，包含数量/金额、科目组合、项目/任务、预算账户和应计账户。一个 Shipment 可分摊到多个分配。
+- **Approval/Revision/Change Order**：批准是可执行性的门槛；金额、价格、数量、日期、地点、匹配选项等关键字段变更应走 Change Order 工作流。不要直接更新 `PO_*_ALL` 表绕过审批和审计。
+- **Close/Cancel**：关闭阻止后续收货/开票，取消只释放未履行部分；取消前要检查已收、已开票、预付款、承诺和项目成本，必要时先做退货/贷项。
+
+#### 采购订单类型选择案例
+
+1. **一次性硬件**：创建 Standard PO，按实际物料行拆分交付计划，采用 3-way；收货后 AP 按 Receipt 匹配。
+2. **年度框架价**：创建 Blanket Agreement，维护价格阶梯和有效期；每次需求创建 Blanket Release，Release 才是实际可收货、可开票的订单。
+3. **滚动生产计划**：创建 Planned PO，维护年度预计量；每次排产创建 Scheduled Release，允许在释放阶段细化日期和科目。
+4. **法律框架先行**：创建 Contract Agreement，只记录合同条款和供应商；项目启动时引用合同创建 Standard PO，不把合同协议当作收货依据。
+
+上线前至少形成一张“订单类型—审批规则—匹配选项—收货路由—应计方式—关闭规则”矩阵，并为每种类型配置正向、变更、取消、部分收货、退货和跨期发票测试案例。
+
+官方依据：[Oracle Purchasing User's Guide — Purchase Order Types](https://docs.oracle.com/cd/E26401_01/doc.122/e48931/T446883T443953.htm)。
+
+### 3.4 AP 发票类型、行类型与处理边界
+
+AP 的 **Invoice Type 是发票头级别的业务性质**，而 `ITEM/TAX/FREIGHT/MISCELLANEOUS` 是发票行类型，二者不能混用。不同补丁或本地化可能扩展 Lookup，但下表覆盖 Oracle Payables R12.2 常见 seeded 类型；生产实例应以 Invoice Workbench 的 Type 值、eTRM 和本地化文档为准。
+
+```mermaid
+flowchart TD
+    S[收到供应商/员工/系统单据] --> K{业务性质}
+    K -- 正常采购或费用 --> STD[Standard]
+    K -- 供应商退款/折让 --> CM[Credit Memo]
+    K -- 买方录入供应商应付减少 --> DM[Debit Memo]
+    K -- 预先付款 --> PP[Prepayment]
+    K -- 员工费用 --> ER[Expense Report]
+    K -- 原发票/PO价格追溯变化 --> PA[PO Price Adjustment]
+    K -- 保留款释放 --> RR[Retainage Release]
+    K -- 系统计息/预扣税 --> SYS[Interest / Withholding Tax]
+    STD --> M{是否匹配 PO/Receipt?}
+    M -- 是 --> V[2/3/4-way 验证]
+    M -- 否 --> N[非 PO 分配、审批和税务检查]
+    CM --> NET[与待付款发票净额核销]
+    DM --> NET
+    PP --> APPLY[付款后按条件核销到发票]
+```
+
+#### 发票头类型定义
+
+| Invoice Type | 借贷方向/金额特征 | 来源与含义 | PO/Receipt 匹配 | 后续处理和控制 |
+| --- | --- | --- | --- | --- |
+| **Standard** | 必须为正数 | 供应商贸易发票，可为商品、服务或费用 | 可匹配 PO、Receipt，也可非 PO | 通过验证、审批和会计后进入付款计划；检查重复发票号 |
+| **Mixed** | 可正可负 | 同一张发票同时包含匹配行、非 PO 行或调整行 | 可同时匹配 PO/其他发票；负数 Mixed 通常只能匹配 Standard Invoice | 逐行核对正负方向、税和分配；避免将贷项误当作负 Standard |
+| **PO Price Adjustment** | 由差额决定，可正可负 | PO 价格追溯调整后，原发票与新价格之间的差额 | 可引用 PO/发票；常由追溯定价流程生成 | 与原始发票、价格生效日期和供应商通知关联；不能手工伪造为普通费用 |
+| **Credit Memo** | 负数 | 供应商主动开具的退货、折让、质量赔偿或退款凭证 | 可匹配原发票、PO 或 Receipt | 与待付款发票净额核销；退货应先完成 RCV Return/Correction |
+| **Debit Memo** | 负数 | 买方为记录供应商应减少的应付款而录入，如供应商少发货、折扣未扣 | 可匹配原发票/PO/Receipt | 必须保留买方计算依据和通知供应商的证据；不要理解成“借方正数发票” |
+| **Prepayment**（Temporary/Permanent） | 通常为正数预付款 | 在货物/服务前向供应商或员工支付的预付款 | 可引用 PO；核销时匹配正式发票 | Temporary 可后续 Apply，Permanent 不可核销；预付款必须已验证、已付款、无活动 Hold |
+| **Expense Report** | 通常为正数 | 员工差旅、招待、里程、公司卡等费用报销 | 通常不与 PO 匹配 | 依赖 Internet Expenses/费用审批；按费用行、税和项目分配入账 |
+| **Interest** | 系统计算 | 发票逾期产生的利息（启用自动计息时） | 通常不匹配 PO | 系统生成并关联原发票/付款条件；需检查利率、宽限期和会计科目 |
+| **Retainage Release** | 释放保留款的正数或调整金额 | 复杂服务合同达到里程碑后释放保留金额 | 关联原始保留款/合同发票 | 以验收/里程碑证据为前提；检查保留款余额不能超释放上限 |
+| **Withholding Tax** | 预扣税专用单据/金额 | 将供应商发票中代扣的税款结算给税务机关；可由预扣税流程自动产生或按实例流程录入 | 由原发票的税务规则和预扣事件衍生 | 不应当作普通费用发票；核对税率、税务主体、税务机关和原发票关联 |
+| **Adjustment** | 系统生成 | 价格、税或舍入更正产生的调整单据 | 关联原始发票/交易 | 必须保留原始单据和调整原因；按实例规则由系统生成 |
+| **Standard Invoice Request** | 通常为正数 | iSupplier 自助提交的非 PO 发票请求 | 通常无 PO 匹配 | 先经过批准，再由 AP 在 Invoice Workbench 中修改/转正式发票 |
+
+> Oracle Payables 将 Credit Memo 和 Debit Memo 都定义为负数；Credit Memo 来自供应商，Debit Memo 由买方录入以记录应减少的供应商负债。预付款的 Temporary/Permanent 属性决定能否 Apply，不要只根据发票编号或负号判断类型。
+
+#### 发票行类型与分配
+
+| 行类型 | 记录内容 | 是否形成会计分配 | 典型控制 |
+| --- | --- | --- | --- |
+| `ITEM` | 商品、服务、费用或资产成本 | 是；可有多个 Distribution | PO/Receipt 匹配、项目/资产、费用科目和数量 |
+| `TAX` | E-Business Tax 计算的税额 | 是；可区分可抵扣/不可抵扣 | 税分类、税率、税务日期、法人与地点 |
+| `FREIGHT` | 运费/运输费用 | 是 | 运费供应商、分摊规则、是否计入存货成本 |
+| `MISCELLANEOUS` | 包装、手续费等杂项 | 是 | 费用科目、供应商合同和税处理 |
+| `PREPAY` | 预付款核销产生的负分配 | 是 | 原预付款、核销金额、供应商/币种和付款状态 |
+| `AWT`/Withholding | 自动预扣税分配（名称按实例） | 是 | 预扣税规则和税务机关 |
+
+发票数据的正确粒度是 **Header → Lines → Distributions**：Header 保存供应商、发票号、日期、币种、总额和付款条件；Lines 保存商品/服务、税、运费和杂项；Distribution 是账户、项目、资产、税和匹配信息的会计来源。一条发票行可以拆分到多个科目或项目，因而不能仅以 `AP_INVOICE_LINES_ALL.AMOUNT` 代替会计金额。
+
+#### 录入、验证与付款边界
+
+1. **Invoice Workbench** 适合复杂、在线匹配、税务、预付款、贷项/借项、附件、Hold 和审批；录入后执行 Validate 才会完成匹配、税、期间、分配和 Hold 检查。
+2. **Quick Invoices** 适合大量简单非 PO 发票；默认和验证多在导入阶段完成，不应把它当作绕过验证的入口。
+3. **Validation ≠ Approval**：Validation 检查业务和会计可付款性；Invoice Approval/AME 决定授权。两者状态必须分别记录，批准不代表已会计，已会计也不代表已付款。
+4. **付款前**：发票须已验证、满足付款条件、无阻止付款 Hold、付款计划到期且供应商地点/银行账户有效。PPR 选择条件还可能按 OU、付款日期、币种、付款方式和金额筛选。
+5. **外币**：发票分配通常按发票汇率入账，PO 汇率只作为采购承诺/比较依据；差额应由汇兑损益或价格差异规则解释。记录 Rate Type、Rate Date、Rate 和来源，不要在接口中只传一个换算后的本位币金额。
+
+#### 发票处理案例
+
+- **正常三单发票**：Standard + `ITEM`，引用 PO Shipment 和 Receipt；验证通过后冲销收货应计，差异在容差内才允许付款。
+- **供应商退货**：先记录 RCV Return，再接收 Credit Memo；Credit Memo 关联原发票或 PO，确保库存、应计和 AP 同步减少。
+- **供应商少收款/折扣未扣**：由买方创建 Debit Memo（负数），附计算表和供应商通知；与原 Standard 发票净额核销。
+- **合同预付款**：创建 Temporary Prepayment，先验证并付款；正式发票到达后在同一供应商、相同发票/付款币种及有效结算日期下 Apply，产生 `PREPAY` 负分配。
+- **年度价格追溯**：批准新价格后运行追溯定价，产生 PO Price Adjustment；对原发票、PO 修订和价格生效期间做三方追溯，不能将差额直接记入任意费用科目。
+- **员工差旅**：Expense Report 由员工提交并经费用政策审批，再导入 AP；费用行按成本中心、项目、税和公司卡结算，不走 PO 三单匹配。
+
+官方依据：[Oracle Payables User's Guide — Entering Invoices](https://docs.oracle.com/cd/E26401_01/doc.122/e48760/T295436T366808.htm)。
+
+### 3.5 接收路由、退货与应计
+
+接收路由决定 Receiving 事务的先后顺序和库存/费用何时生效。Oracle 常见三种路由可按组织、供应商、物料或订单设置，较低层级可以覆盖较高层级；实际生效值必须在 PO Shipment 和接收页面核对。
+
+| 路由 | 事务顺序 | 库存/目的地何时生效 | 适用场景 | 关键控制 |
+| --- | --- | --- | --- | --- |
+| **Standard Receipt** | Receive → Deliver/Put Away | 完成 Deliver/Put Away 后才增加库存或进入目的地 | 普通仓库收货，收货和上架分离 | 收货数量、库位、迟交/超收容差 |
+| **Inspection Required** | Receive → Inspect → Accept/Reject → Deliver | Accept 并 Deliver/Put Away 后生效；Reject 不应进入可用库存 | 质量检验、药品、食品、关键零件 | 检验结果、拒收原因、隔离区和验收人 |
+| **Direct Delivery** | Receive/Deliver 一次完成 | 收货时立即增加库存或费用目的地 | 直接送线、服务现场、无需仓储的物料 | 现场签收、数量、地点和不可逆操作复核 |
+
+标准收货与发票匹配应区分 **Receive 数量** 和 **Deliver 数量**；4-way 还要区分 **Inspection/Acceptance 数量**。退货和更正不是删除原收货，而是创建带原因和参考事务的 Return to Supplier、Return to Receiving 或 Correction，以保留审计轨迹。
+
+| 接收事务 | 业务含义 | 对后续 AP/库存的影响 |
+| --- | --- | --- |
+| Receive | 记录供应商已交付到接收地点 | 形成可用于 3-way 的收货事实，是否入库取决于路由 |
+| Deliver | 将接收数量送入库存、费用、项目或资产目的地 | 更新目的地数量/成本，可能触发应计 |
+| Inspect / Accept | 记录检验和验收结果 | 决定 4-way 是否可匹配，拒收数量不能作为可开票数量 |
+| Reject | 质量/数量不合格 | 保留拒收证据；按业务退货或重发 |
+| Return to Supplier | 将已收数量退回供应商 | 冲减可开票/可用数量，通常需要 Credit Memo 或重开订单 |
+| Return to Receiving | 撤回错误 Deliver | 修正库存/目的地，不能替代供应商退货 |
+| Correction | 更正数量或事务错误 | 原事务不删除，保留调整链和责任人 |
+
+#### 应计与跨期
+
+- **收货应计**：启用收货时应计且未开票时，系统按 PO/Receipt 形成暂估；AP 发票验证后以匹配分配冲销应计并确认负债。库存组织、费用目的地、项目和资产目的地的账户来源可能不同，应以 SLA 规则为准。
+- **期末处理**：关账前列出未开票收货、已开票未收货、收货冲正、退货和价格差异；按责任人决定补收货、催票、退货或做合规调整，不以手工 GL 净额掩盖明细差异。
+- **跨期**：PO/Receipt 在旧期间、Invoice 在新期间时，旧期间保留应计，新期间发票冲销；如果旧期间已关闭，按组织的 Accrual Reconciliation 和调整政策处理并保留审批。
+- **Drop Ship/ASN**：Drop Ship 订单的收货路由和普通仓库不同，可能由订单履行或 ASN 自动产生；不要把自动收货当成仓库实收，必须确认来源、数量和客户签收证据。
+- **Receiving Open Interface**：外部仓库、条码系统或 ASN 可通过 Receiving Open Interface 导入；接口需保存 PO Shipment、事务类型、数量、UOM、事务日期、来源系统键和原始回执，按 `Source + External Transaction ID` 幂等。
+
+官方依据：[Oracle Purchasing User's Guide — Receiving](https://docs.oracle.com/cd/E26401_01/doc.122/e48931/T446883T443958.htm)。
+
+### 3.6 付款安全
 
 Payment Process Request（付款处理请求，PPR）从选择、建立付款、格式化、传输到确认是多个状态。支付文件已生成不表示银行已受理；需要保存文件校验、传输回执、银行 ACK/拒绝、作废和重发链路。银行账户维护、PPR 提交、审批和文件传输应职责分离。
 
@@ -117,6 +314,50 @@ Payment Process Request（付款处理请求，PPR）从选择、建立付款、
 5. SLA、期间、对账报表和关闭规则。
 
 场景至少覆盖：PO/非 PO 发票、预付款、借贷项、员工报销、外币、部分收货、价格差异、退货、作废付款和跨期处理。
+
+### 4.1 实施蓝图与职责边界
+
+实施前先把“谁创建、谁批准、谁接收、谁验证、谁付款、谁对账”写成 RACI，而不是只配置菜单。建议至少拆分以下职责：
+
+| 业务职责 | 主要动作 | 不应同时拥有的权限 | 必留证据 |
+| --- | --- | --- | --- |
+| 需求/请购人 | 提交需求、确认服务完成 | 不应批准自己的 PO 或释放自己的付款 | 请购理由、预算、验收证明 |
+| 采购员 | 询价、供应商选择、创建/变更 PO | 不应维护供应商银行账户并执行付款 | 比价、合同、PO 修订和批准历史 |
+| 收货/验收人 | Receive、Deliver、Inspect、Return | 不应验证同一批次 AP 发票 | 收货单、检验报告、退货单 |
+| AP 录入/验证 | 录入发票、匹配、Validate、处理 Hold | 不应审批自己创建的发票或维护付款银行 | 发票影像、匹配依据、Hold 释放理由 |
+| AP 付款审批人 | 审核 PPR、付款提案和例外 | 不应修改供应商银行账户或直接改付款金额 | PPR 审批、付款清单、复核签名 |
+| 资金/银行操作 | 格式化、传输、获取 ACK、现金预测 | 不应创建/批准业务发票 | 文件哈希、传输日志、银行回执 |
+| 财务关账/对账 | AP-GL、收货应计、CE 对账和关账 | 不应绕过来源系统手工冲销明细 | Trial Balance、对账表、关账清单 |
+
+### 4.2 配置产出物清单
+
+| 设计域 | 必须明确的决策 | 产出物/验收标准 |
+| --- | --- | --- |
+| 企业与权限 | OU、BU、法人、Ledger、库存组织、MOAC、安全职责 | 组织访问矩阵；用户只能看到授权 OU/库存组织 |
+| 供应商/TCA | Party、Supplier、Site、Pay Site、Purchasing Site、税登记、银行账户 | 供应商去重和变更审批；停用前有未结单据检查 |
+| 采购文档 | 四种 PO 类型、协议/Release、审批金额和变更阈值 | 订单类型选择矩阵；每种类型可完成正向和取消测试 |
+| 收货/应计 | Receipt Routing、接收容差、应计方法、库存/费用目的地 | 收货事务和会计事件可追溯；未开票收货报表可对账 |
+| AP 发票 | Invoice Type、Line Type、Match Option、Tolerance、Duplicate Check | Standard、Credit/Debit、Prepayment、Expense Report 至少各有一条通过案例 |
+| 税务 | EBTax Regime/Tax/Rate、输入税/输出税、可抵扣率、预扣税 | 税额、税务日期、税务主体和税务机关结果可复核 |
+| 付款/资金 | Terms、Payment Method、Bank Account、PPP、PPR 模板、格式和传输 | 从付款选择到银行 ACK/CE Clearing 的端到端证据链 |
+| SLA/GL | 负债、应计、库存/费用、税、现金、汇兑和差异账户 | 每类事件至少可下钻到来源发票/收货/付款 |
+
+### 4.3 端到端测试矩阵
+
+| 测试组 | 主数据/单据 | 关键步骤 | 预期控制结果 |
+| --- | --- | --- | --- |
+| 标准库存采购 | Standard PO、3-way、Standard Receipt | PO → Receive → Deliver → Invoice Match → Validate → Pay | 发票量不超过可接收量；应计冲销；付款可追溯 |
+| 质量采购 | Standard PO、4-way、Inspection | Receive → Inspect Reject/Accept → Deliver → Invoice | 未验收数量不能通过匹配；拒收有原因和退货链 |
+| 框架采购 | Blanket Agreement、Blanket Release | Agreement → Release → Receipt → Invoice | Release 消耗协议余额；不能超有效期/价格阶梯 |
+| 计划采购 | Planned PO、Scheduled Release | Planned total → Release → Partial receipt | 释放可细化日期/分配；总量和预算不超限 |
+| 非 PO 服务 | Standard Invoice（unmatched） | Workbench → Distribution → Approval → Validate | 必须有服务验收和费用审批；不借 PO 绕过采购 |
+| 退货/贷项 | Receipt、Return、Credit Memo | Return to Supplier → Credit Memo → Apply/Pay | 库存、应计和 AP 同步减少；原单据仍可审计 |
+| 预付款 | Temporary Prepayment、PO | Validate → Pay → Apply to Standard | 只能在已付款、无 Hold、同供应商/币种条件下核销 |
+| 价格追溯 | 原发票、PO 修订、PO Price Adjustment | 价格生效 → 调整 → Validate/Account | 差额关联原 PO/发票；不产生无来源的费用调整 |
+| 外币 | 外币 PO/Invoice、Rate Type | 输入发票汇率 → 匹配 → 付款/重估 | 交易币、账簿币和汇兑损益可解释 |
+| 付款异常 | PPR、银行文件、Reject/ACK | Selection → Build → Format → Transmit → Rebuild/Void | 回执不明不重发；重复付款和作废链路可证明 |
+
+每个测试案例应保存输入数据、职责/用户、请求 ID、页面状态、日志、会计分录、报表和预期/实际差异。只验证“页面显示成功”不足以证明 P2P 完成；必须验证数据库状态、SLA/GL 和银行/对账结果。
 
 ## 5. 技术与接口设计
 
@@ -172,7 +413,35 @@ sequenceDiagram
     IBY->>SLA: Payment / Clearing Accounting
 ```
 
-### 9.2 页面剧本：录入并验证标准发票
+### 9.2 页面剧本：创建采购文档与收货
+
+#### 创建 Standard PO
+
+**常见职责与导航**：`Purchasing Super User → AutoCreate Documents`（从已批准请购创建）或 `Purchase Orders → Purchase Orders`（手工创建）。
+
+1. 先确认 OU/BU、采购员、供应商及 Supplier Site 的 Purchasing Site/Pay Site、币种和有效期；协议订单还要确认协议可见范围和剩余金额。
+2. 在 Header 选择 Document Type：Standard、Planned、Blanket 或 Contract。不要因为“以后可能会买”就用 Standard PO 代替协议。
+3. 在 Lines 输入 Item/Category、描述、数量或金额、UOM、单价、税分类和供应商物料号；服务行补充服务期间、验收人和是否需要收货。
+4. 在 Shipments 维护 Ship-to Organization/Location、Need-By/Promise 日期、Receipt Routing、Match Option、超收和迟交容差；同一行需拆分多个地点或日期时创建多个 Shipment。
+5. 在 Distributions 维护库存、费用、项目、资产或预付款科目；核对数量/金额合计、项目任务有效期、预算账户和应计账户。
+6. 运行 Funds Check（如启用预算控制），使用 Notes/附件保存合同、比价和技术规格；提交 PO Approval/AME，并确认批准版本和 revision。
+7. 批准并向供应商发送 PO/Release；供应商确认、变更和拒绝均应回写到单据历史，不能只保留邮件。
+
+#### 创建 Blanket/Planned Release
+
+1. 查询有效的 Blanket Agreement 或 Planned PO，检查生效/失效日期、供应商地点、币种、价格 breaks、剩余数量/金额和 Global Agreement 访问权限。
+2. 选择 **Blanket Release** 或 **Scheduled Release**，输入本次具体数量/金额、交付日期、Ship-to、收货路由、匹配选项和分配；Release 是实际可收货、可开票的订单。
+3. 对 Release 重新执行预算、审批和供应商通知；检查累计释放不超过协议/计划总量，价格取值与协议版本一致。
+
+#### 录入 Receipt/Inspection/Return
+
+1. 在 `Receiving → Receipts` 以 PO、Release、ASN 或供应商查询预期行；核对 packing slip、供应商批次、序列/批次号、收货组织和数量。
+2. **Standard Receipt** 先 Receive 到 Receiving，再执行 Deliver/Put Away；**Inspection Required** 先 Receive，录入检验结果后 Accept/Reject，再 Deliver；**Direct Delivery** 在一次事务中完成收货并进入目的地。
+3. 部分到货只录实收数量；超收、迟交、地点不符或 UOM 不一致时，按容差和授权处理，不用“多收后再删行”修正。
+4. 退货选择原始 Receipt/Delivery，创建 Return to Supplier 或 Return to Receiving 并填写 Reason；更正使用 Correction，保留原事务、参考号和责任人。
+5. 验证 3-way/4-way 可用数量、库存/费用目的地数量、收货应计和后续 AP 匹配键（`PO_LINE_LOCATION_ID`、`RCV_TRANSACTION_ID`）。
+
+### 9.3 页面剧本：录入并验证标准发票
 
 **常见职责与导航**：`Payables Super User（应付超级用户） → Invoices（发票） → Entry（录入） → Invoices`，进入 Invoice Workbench（发票工作台）。
 
@@ -188,7 +457,7 @@ sequenceDiagram
 
 **结果验证**：发票总额等于行和税；匹配数量不超过可用数量；付款计划正确；无未解释 Hold；SLA 与 GL 可追溯。
 
-### 9.3 页面剧本：处理匹配差异与 Hold
+### 9.4 页面剧本：处理匹配差异与 Hold
 
 1. 在 Invoice Workbench 查询发票，打开 Holds 标签或 Actions 查看 Hold 名称和原因。
 2. 对 Quantity/Price/Amount Hold，比较 PO、Receipt、Invoice 的数量、单价、币种和 UOM。
@@ -196,7 +465,7 @@ sequenceDiagram
 4. 释放需授权的 Hold 时填写原因并保存审批证据；不可为通过付款而无依据释放系统控制。
 5. 重新 Validate，并复核分配与会计是否发生变化。
 
-### 9.4 页面剧本：创建 Payment Process Request
+### 9.5 页面剧本：创建 Payment Process Request
 
 **常见职责与导航**：`Payables Manager/Payments Responsibility → Payments → Entry → Payment Manager`。
 
@@ -208,7 +477,7 @@ sequenceDiagram
 6. 获取银行 ACK/Reject，不把“文件已生成”当作“银行已支付”。
 7. 按银行事实完成确认、作废/重发和 CE Clearing/Reconciliation；核对付款会计与现金账户。
 
-### 9.5 PPR 状态与恢复决策
+### 9.6 PPR 状态与恢复决策
 
 ```mermaid
 stateDiagram-v2
@@ -229,11 +498,11 @@ stateDiagram-v2
 
 恢复前确认是否已生成 Payment、Payment Instruction 或银行文件。同一 PPR 的不同阶段不能采用相同重跑方式；银行回执不明时先向银行查询，不得盲目重发造成重复支付。
 
-### 9.6 月结页面检查
+### 9.7 月结页面检查
 
 在 AP Period Close/Control 页面检查期间，运行 Invoice Validation、Create Accounting、Transfer to GL 和相关 Trial Balance/Accounting 报表。关闭前清理未验证、Hold、未会计、未传输、未清算和接口拒绝，并与 PO Receiving Accrual、IBY、CE 和 GL 责任人签核。
 
-### 9.7 资深顾问必须设计的例外
+### 9.8 资深顾问必须设计的例外
 
 - 预付款申请与核销、员工报销、借项/贷项通知单、外币付款与汇兑损益。
 - 取消发票、取消付款、Stop Payment（止付）、Void（作废）和银行已结算后的补偿。
@@ -241,7 +510,7 @@ stateDiagram-v2
 - PO/Receipt 在旧期间、发票在新期间时的应计与价格差异。
 - 接口部分成功、重复发票号、税额舍入和 Project/Asset 分配。
 
-### 9.8 官方操作依据
+### 9.9 官方操作依据
 
 - [Oracle Payables User's Guide](https://docs.oracle.com/cd/E26401_01/doc.122/e48760/title.htm)
 - [Oracle Payables User's Guide — Contents](https://docs.oracle.com/cd/E26401_01/doc.122/e48760/toc.htm)
@@ -302,7 +571,7 @@ stateDiagram-v2
 <a id="src-docs-02-ap-accounting-close-reports--会计链路"></a>
 #### 会计链路
 
-AP 发票、付款、作废、预付核销和兑兑损益通过 SLA 建立会计。常见经济分录（以实际 SLA 规则为准）：
+AP 发票、付款、作废、预付核销和汇兑损益通过 SLA 建立会计。常见经济分录（以实际 SLA 规则为准）：
 
 ```text
 Invoice:  Dr Expense/Asset/Tax   Cr Liability

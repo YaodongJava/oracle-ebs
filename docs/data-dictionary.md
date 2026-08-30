@@ -140,9 +140,16 @@
 | `PO_LINES_ALL` | 采购订单行 | `PO_LINE_ID`、`PO_HEADER_ID`、物料/描述、数量、单价 | 采购明细 |
 | `PO_LINE_LOCATIONS_ALL` | 发运计划 | `LINE_LOCATION_ID`、交付日期、接收控制 | 交付和接收计划 |
 | `PO_DISTRIBUTIONS_ALL` | 采购分配 | `PO_DISTRIBUTION_ID`、CCID、数量、项目/任务 | 费用/库存/项目分配 |
+| Purchase Order Type | 采购文档类型 | Standard、Planned、Blanket、Contract | 决定订单是否直接执行、是否需要 Release 及已知信息范围 |
+| Blanket/Scheduled Release | 协议/计划释放 | `PO_RELEASE_ID`、来源协议/计划 PO、释放号、交付计划 | 将框架价格或计划总量转成实际可收货订单 |
 | `RCV_TRANSACTIONS` | 接收事务 | `TRANSACTION_ID`、`PO_LINE_LOCATION_ID`、事务类型、数量 | Receipt/Delivery/Return |
+| Receipt Routing | 收货路由 | Standard、Inspection Required、Direct Delivery | 决定 Receive、Inspect、Deliver 的顺序和库存生效时点 |
 | `AP_INVOICES_ALL` | AP 发票头 | `INVOICE_ID`、`ORG_ID`、供应商、金额、`WFAPPROVAL_STATUS` | 发票业务头 |
 | `AP_INVOICE_DISTRIBUTIONS_ALL` | 发票分配 | `INVOICE_DISTRIBUTION_ID`、`INVOICE_ID`、CCID、金额、匹配信息 | 会计和三单匹配 |
+| Invoice Type | 发票类型 | Standard、Mixed、Credit Memo、Debit Memo、Prepayment、Expense Report 等 | 决定发票正负方向、匹配和核销方式；以实例 Lookup 为准 |
+| Invoice Line Type | 发票行类型 | ITEM、TAX、FREIGHT、MISCELLANEOUS、PREPAY/AWT | 区分成本、税、运费、杂项和预扣/预付核销分配 |
+| Invoice Hold | 发票挂起 | `AP_HOLDS_ALL`、Hold Code、Reason、Release | 阻止验证、付款或会计的控制结果 |
+| Match Option | 匹配选项 | 2-way、3-way、4-way、PO/Receipt/Inspection 引用 | 规定发票验证时必须存在的采购事实 |
 | `AP_CHECKS_ALL` / IBY | 付款/支付指令 | `CHECK_ID`、付款状态、Payment Instruction | 付款执行和银行文件 |
 
 ### 名词解释
@@ -150,15 +157,29 @@
 | 名词 | 解释 |
 | --- | --- |
 | 2-way/3-way match | 二单/三单匹配；发票与 PO，或发票、PO、接收数量/金额核对 |
+| 4-way match | 四单匹配；在 PO、发票和接收基础上核对 Inspection/Acceptance 数量或状态 |
+| Standard Purchase Order | 标准采购订单；商品/服务、价格、数量、交付计划已知，批准后可直接收货和开票 |
+| Planned Purchase Order | 计划采购订单；预计商品/服务和总量已知，具体交付计划通过 Scheduled Release 细化 |
+| Blanket Purchase Agreement | 总括采购协议；价格和条款已谈妥，数量/交付按需通过 Blanket Release 消耗 |
+| Contract Purchase Agreement | 合同采购协议；先锁定条款，商品/服务和金额未定，后续引用合同创建实际 Standard PO |
+| Blanket Release | 总括协议释放；将 Blanket Agreement 的一部分价格/数量/交付转成可执行订单 |
+| Scheduled Release | 计划订单释放；把 Planned PO 的预计量细化为具体日期、地点、数量和分配 |
 | Receipt | 收货；记录供应商交付到 Receiving 的事实 |
 | Delivery | 交付；把接收数量送入库存、费用或项目目的地 |
+| Receipt Routing | 收货路由；Standard、Inspection Required、Direct Delivery 三种 Receive/Inspect/Deliver 顺序 |
 | Accrual | 应计；收货与 AP 发票之间的暂估负债/清算机制 |
 | Invoice Validation | 发票验证；匹配、税、期间、账户、Hold 和审批检查 |
 | Hold | 挂起；阻止验证、付款或会计的业务控制 |
+| Final Match | 最终匹配；声明 PO 分配不再接受后续发票，启用承诺会计时可冲回未用承诺 |
+| Prepayment | 预付款；货物/服务交付前支付给供应商或员工的发票，Temporary 可核销、Permanent 不可核销 |
+| PO Price Adjustment | 采购价格调整；追溯价格变化与原发票之间的差额单据，可正可负 |
+| Credit Memo / Debit Memo | 贷项/借项通知单；均可为负数，前者由供应商开具，后者由买方记录应减少的供应商负债 |
+| Expense Report | 费用报销发票；员工差旅、里程、招待或公司卡费用经审批后导入 AP |
+| Invoice Workbench / Quick Invoices | 发票工作台/快速发票；前者适合复杂在线处理，后者适合大量简单记录 |
 | PPR | Payment Process Request；支付流程请求；按模板和选择规则生成付款 |
 | IBY | Oracle Payments；支付引擎，负责指令、格式、传输和回执 |
 
-官方基线：[Payables User's Guide](https://docs.oracle.com/cd/E26401_01/doc.122/e48760/toc.htm)、[Payables Reference](https://docs.oracle.com/cd/E26401_01/doc.122/e48763/h/uaework/tmp/archive/e48763/toc.htm)。
+官方基线：[Purchasing User's Guide](https://docs.oracle.com/cd/E26401_01/doc.122/e48931/toc.htm)、[Payables User's Guide](https://docs.oracle.com/cd/E26401_01/doc.122/e48760/toc.htm)、[Payables Reference](https://docs.oracle.com/cd/E26401_01/doc.122/e48763/h/uaework/tmp/archive/e48763/toc.htm)。
 
 <a id="dict-04"></a>
 ## 04 信用到收款：TCA、AR、收款和核销
