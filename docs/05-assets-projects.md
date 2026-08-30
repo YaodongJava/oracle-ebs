@@ -96,27 +96,347 @@ AP/采购/手工来源 → Mass Additions（批量资产增加） → 创建资�
 
 ## 3. Fixed Assets 设计重点
 
-- Corporate Book（公司账簿）服务企业核算；Tax Book（税务账簿）服务税务折旧。账簿间复制规则要明确。
-- Asset Category（资产类别）通常默认成本、累计折旧、折旧费用等账户和折旧规则。
-- Depreciation Method（折旧方法）、寿命、比例分摊惯例和投产日期共同决定折旧。
-- Source Line（来源行）保留资产与 AP/项目来源的可追溯性；合并或拆分资产时不能丢失来源关系。
-- 退休、恢复、转移、调整和重分类都要测试当期及追溯影响。
+Fixed Assets（FA）不是一张“资产清单”，而是由资产主数据、每本账簿的价值历史、分配历史和事务历史共同组成。设计时先区分“实物身份”和“账簿价值”，再确定来源、审批、会计和盘点责任。
+
+### 3.1 资产主数据、账簿和分配层次
+
+| 层次 | 主要对象/概念 | 业务职责 | 典型控制 |
+| --- | --- | --- | --- |
+| 资产身份 | Asset Number、Tag Number、Description、Asset Key | 确认是哪一项实物或软件资产 | 编号唯一；标签、序列号和父子资产关系可追溯 |
+| 类别 | Asset Category、Asset Type | 决定默认账户、折旧方法和资本化属性 | 类别按政策审批；不要用描述文本代替类别 |
+| 账簿 | Corporate Book、Tax Book、其他 Book | 在不同会计/税务口径保存成本、折旧和处置结果 | 一项资产通常只归属一个 Corporate Book，可按当地政策配置一个或多个 Tax Book；通过 Mass Copy 传递允许的交易 |
+| 价值 | Cost、Original Cost、Salvage、Life、Method、DPIS | 计算可折旧基础、累计折旧和账面净值 | 变更必须有生效日期和事务来源，禁止覆盖历史值 |
+| 分配 | Location、Employee、Expense Account、Units | 说明资产在哪、谁负责以及折旧费用归属 | 当前分配单位合计 = 资产当前单位数；地点、员工和 CCID 在生效日期有效 |
+| 来源 | AP Invoice/Distribution、PO、Project/Task/Asset Line、迁移批次 | 追溯取得成本和资本化依据 | 保存外部单据号、来源系统、批次和接口行号 |
+
+Corporate Book 用于企业核算，Tax Book 用于税务折旧或其他法定口径；两者的折旧方法、寿命、残值、日历和调整并不必然相同。资产类别在各 Book 中有独立的 Category-Book 设置，不能只检查类别名称就认定账户一致。
+
+### 3.2 A2R 全生命周期和状态转换
+
+```mermaid
+flowchart LR
+    A[AP/PO/Projects/迁移来源] --> B[来源校验与暂存]
+    B --> C[FA Mass Additions]
+    C --> D{Prepare / Review}
+    D -- HOLD/ERROR --> E[补齐类别/账簿/分配/日期]
+    E --> D
+    D -- POST --> F[资产主数据 + Book + Distribution]
+    F --> G{是否 CIP?}
+    G -- 是 --> H[在建工程归集]
+    H --> I[资本化/投产]
+    G -- 否 --> J[投入使用]
+    I --> J
+    J --> K[折旧与 SLA]
+    K --> L[调整/转移/重分类/减值]
+    L --> K
+    K --> M[全额/部分退休]
+    M --> N{纠错?}
+    N -- 是 --> O[Reinstatement/反向事务]
+    O --> K
+    N -- 否 --> P[处置损益与关账]
+```
+
+| 事务 | 何时使用 | 需要同时核对的对象 | 常见后续 |
+| --- | --- | --- | --- |
+| Addition | 新资产进入 FA | 来源行、类别、Book、成本、DPIS、分配 | 运行折旧、创建会计 |
+| Cost Adjustment | 发票/项目补充成本或冲减成本 | 原资产、调整金额、调整日期、摊销策略 | 重算折旧、检查 CIP/成本账户 |
+| Transfer | 地点、员工、成本中心或单位责任变化 | 当前单位、Location、Employee、Expense CCID | 分配历史和折旧费用归属变化 |
+| Reclassification | 资产类别或资产类型错误 | 原/新类别的账户、折旧规则、有效日期 | 账户重分类、必要时重跑折旧 |
+| Retirement | 出售、报废、丢失、退回或停止使用 | 退休数量/成本、日期、收入、移除成本、Book | 计算处置损益、生成会计 |
+| Reinstatement | 取消错误退休 | 原退休状态、期间是否已关、重算范围 | 重新折旧并复核损益 |
+
+### 3.3 Mass Additions：从来源行到正式资产
+
+Mass Additions 是受控暂存区，不是最终资产表。AP、Projects 或外部迁移程序把来源行放入队列后，由资产会计在工作台补充和确认资产属性，再执行 Post Mass Additions。
+
+```text
+来源单据/项目资产线
+  → 生成 Mass Addition（来源、金额、类别、账簿、日期）
+  → Prepare/Review（补齐分配和折旧参数）
+  → POST（创建 FA Addition/Book/Distribution）
+  → Asset Number + Source Line 可下钻
+```
+
+| 处理动作 | 适用情形 | 控制要求 |
+| --- | --- | --- |
+| Post | 一行对应一项或一组正式资产 | 过账前检查总额、类别、账簿、DPIS 和分配 |
+| Merge | 多个来源行实际属于同一资产 | 保存所有来源行；合并后核对成本、单位和描述 |
+| Split | 一行需拆成多个资产或分配 | 拆分金额/单位之和必须等于原行，记录拆分依据 |
+| Hold | 信息不完整或等待业务决定 | 说明原因和责任人，避免无限期挂起 |
+| Delete/Expense | 错误来源或不应资本化 | 先确认来源系统已完成反向/更正，不可只在 FA 删除 |
+
+Mass Additions 过账前建议建立控制总额：`来源可资本化金额 = Post 金额 + Hold/Error 金额 + 明确排除金额`。跨系统重试必须使用“来源系统 + 外部单据号 + 来源行号 + Book”作为幂等键，不能以描述或金额近似去重。Oracle Assets 会从类别、账簿和 DPIS 默认折旧规则，人工覆盖后必须保留审批证据。
+
+### 3.4 折旧、CIP 与资本化
+
+折旧结果由以下输入共同决定，而不是只由“年限”决定：
+
+| 输入 | 作用 | 审核问题 |
+| --- | --- | --- |
+| Cost/Original Cost | 当前/原始成本 | 是否包含运费、税、安装和后续资本化成本；是否重复导入 |
+| DPIS（Date Placed in Service） | 投入使用日期 | 验收、可使用和会计期间是否一致；是否允许追溯 |
+| Prorate Convention/Calendar | 首期、末期折旧起算规则 | 月初、月末、日折旧或半月规则是否符合政策 |
+| Method/Life/Rate | 折旧算法和寿命 | 账簿及类别默认是否正确；变更是否需要摊销 |
+| Salvage/Ceiling/Bonus | 可折旧基础和特殊折旧 | 残值、上限、奖励折旧是否适用该 Book |
+| Depreciate Flag/Asset Type | 是否参与折旧 | CIP/Expensed/退休资产是否被错误折旧 |
+
+CIP（Construction in Progress，在建工程）用于在达到可使用状态前归集成本；通常不在 CIP 阶段计提普通折旧。项目成本完成、验收通过并确定实际投产日期后，Projects 生成资产线，传入 FA Mass Additions，再由 FA 资本化/投产并开始折旧；具体起算规则仍以 Book 的 Convention 和实例配置为准。
+
+**项目资本化最小控制链**：
+
+1. 项目/任务允许的交易控制明确哪些员工、支出类别、支出类型和资源可资本化。
+2. 所有成本完成分配并在 SLA 以 Final 模式创建会计；未成功会计的成本不能生成有效资产线。
+3. 设定 Asset Date Through、PA Through Date、资产分组级别和共同成本分配规则，运行 Generate Asset Lines。
+4. 审核资产线明细、CIP 账户、类别、单位、资本化日期和项目追溯，再运行 Interface Assets。
+5. 在 FA Prepare/Post Mass Additions 接收；资产成本、项目资产线、CIP 清理和 GL 必须四方相等（允许明确的舍入/排除项）。
+
+### 3.5 退休、减值和实物盘点
+
+- **全额/部分退休**：按单位退休时系统按单位比例计算成本；按成本退休时单位数可不变而成本按分配行分摊。税务账簿的退休能力和单位/成本限制可能与公司账簿不同，必须按 Book 验证。
+- **处置损益**：至少核对 `Cost Retired`、`Reserve Retired`、`Proceeds of Sale` 和 `Cost of Removal`；不要用“收款金额”单独推断 Gain/Loss。
+- **退休状态**：新退休通常先为 Pending，运行折旧或计算损益后转为 Processed；已处理退休的恢复需要重算并检查会计。状态和值以目标实例 Lookup 为准。
+- **减值/重估**：若启用相关功能，先确认会计政策、审批和 Book 支持，再核对资产账面价值、减值损失、累计折旧和后续折旧基础。
+- **实物盘点**：使用 Tag/序列号、Location、Employee 和资产状态生成盘点清单；差异先由业务确认，再以标准转移、调整或退休事务更正，不能直接更新 `FA_DISTRIBUTION_HISTORY`。
+
+### 3.6 FA 期间关账检查
+
+```mermaid
+flowchart TB
+    A[来源交易与 Mass Additions 完成] --> B[未完成事务/异常资产清理]
+    B --> C[Run Depreciation]
+    C --> D[折旧报告、Reserve、Expense、异常日志]
+    D --> E[Create Accounting Final]
+    E --> F[Transfer to GL / Journal Import / Posting]
+    F --> G[FA-GL 与来源对账]
+    G --> H[Close FA Period / 打开下一期间]
+```
+
+折旧前不要直接关闭期间；先跑测试/正式折旧并复核报表。若当前期间又发生允许的成本、调整或退休，系统可能需要回滚相关折旧并重跑。关账证据至少包括并发请求 ID、折旧汇总、失败资产清单、SLA/GL 批次和对账签核。
 
 ## 4. Projects 设计重点
 
-项目、任务、组织、支出类型和 Expenditure Organization（支出组织）决定成本归属。Burdening（负担成本）用于间接成本分摊；Capitalization（资本化）需要定义可资本化成本、资产线生成、分组和 FA 接收规则。项目开票与收入确认可能使用不同事件与分配逻辑，必须分别验证。
+Oracle Projects 要同时管理“项目结构、实际成本、承诺、资本化、收入和开票”。项目成本可以来自时间、费用、库存/使用量、AP/采购和外部系统；合同项目还要维护客户、协议、资金、费率、事件和账单周期。
+
+### 4.1 项目、任务和控制属性
+
+| 对象 | 作用 | 实施时要明确 |
+| --- | --- | --- |
+| Project Type | 决定项目类别（间接、资本、合同等）及成本/计费默认 | 是否启用 Burden、资本化、收入/开票、跨组织和预算 |
+| Project | 成本、收入、客户和资金的管理单元 | 项目功能币、开始/结束日期、客户、协议、项目状态 |
+| Task/WBS | 将工作拆成可执行和可归集节点 | 任务层级、可收费/可资本化、Billable/Chargeable、组织和责任人 |
+| Expenditure Type/Category | 对支出进行业务分类 | Labor、Material、Expense、Burden Transaction 等及费率/资本化规则 |
+| Expenditure Organization | 承担成本或执行工作的组织 | 员工、供应商、库存组织与项目组织的跨组织规则 |
+| Transaction Controls | 限制允许的人员、资源、日期和类型 | 防止把不可资本化、不可收费或跨组织交易送入项目 |
+| Agreement/Funding | 合同项目的额度与资金来源 | 客户、资金金额、有效期、优先级和提前收款 |
+
+项目状态与任务状态是成本、调整、资本化和开票的门禁。不要因为“项目看起来已完成”就直接关闭：先确认所有支出已导入/分配/会计，资本项目已生成资产线，合同项目已生成收入/发票且 AR 已回写。
+
+### 4.2 支出到成本会计的处理链
+
+```mermaid
+flowchart LR
+    S[Time / Expense / AP / PO / Inventory / External] --> I[Pre-Approved Batch / Transaction Import]
+    I --> V[Validation: Project/Task/Type/Date/Org]
+    V -- Reject --> R[来源修正或标准调整]
+    V -- Accept --> C[Raw Cost: Quantity x Rate]
+    C --> B{启用 Burden?}
+    B -- 否 --> D[Raw Cost Distribution]
+    B -- 是 --> E[Burden Schedule / Cost Base]
+    E --> F[Burden Cost + Burdened Cost]
+    D --> G[Generate Cost Accounting Events]
+    F --> G
+    G --> H[Create Accounting Final]
+    H --> J[Transfer / Journal Import / GL]
+```
+
+Expenditure Item 至少包含 Project、Task、Expenditure Organization、Expenditure Type、Expenditure Date、Quantity、Transaction Currency、来源和外部参考。处理后要区分：
+
+| 成本口径 | 定义 | 用途 |
+| --- | --- | --- |
+| Raw Cost | 直接交易成本，例如小时 × 成本率 | 基础成本、成本控制和部分计费 |
+| Burden Cost | 按负担结构/费率计算的间接成本 | 福利、场地、管理费等间接成本 |
+| Burdened Cost | Raw + Burden 的总成本 | 项目 WIP、资本化或合同成本 |
+| Commitment | 采购申请、采购订单等未来成本 | 预算/承诺控制，不等同已发生支出 |
+
+Oracle Projects 的成本程序还负责交易币到项目功能币/报告币的转换、默认账户（AutoAccounting）和成本事件生成。出现 `Imported but Uncosted`、`Cost Distributed`、`Event Generated but Unaccounted`、`Accounted but Not Posted` 时，要按状态推进，不能通过更新状态列“补过账”。
+
+### 4.3 Burdening（负担成本）
+
+Burdening 是对每一笔 Raw Cost 应用一个或多个负担成本组件。常见公式为：`Burdened Cost = Raw Cost + Σ(Raw Cost × Burden Multiplier)`。Burden Structure 定义成本基础，Burden Schedule 按组织、期间或项目类型提供有效费率；成本、收入和开票可以使用不同 multiplier。
+
+- 可选择把 Burden 存在同一 Expenditure Item、作为独立负担支出项，或只用于管理报表而不产生额外 GL 影响。
+- 若资本项目按 Burdened Cost 资本化，必须先运行 `PRC: Distribute Total Burdened Cost`、`PRC: Generate Cost Accounting Events` 和 Final `PRC: Create Accounting`，然后才能生成资产线。
+- 费率修订要确定生效日期和追溯范围；重算后检查成本、收入、发票和资产线是否需要同步再生成。
+- 计费时所有参与计算的 Expenditure Type（含 Burden Transaction）必须包含在适用的 Bill Rate Schedule，否则会出现收入/发票生成错误。
+
+### 4.4 资本项目、资产分组与资产线
+
+资本项目通过 WBS、Grouping Level、Asset Assignment 和 Capital Event 将 CIP 成本汇总到一个或多个资产。共同成本可以按当前成本、预计成本、标准单位成本或平均分摊分配；如果 Allocation Method 为 None，则产生未分配资产线，需要人工分配。
+
+```text
+资本任务/共同成本
+  → 成本分配 + Final SLA
+  → 定义资产、Grouping Level、Actual Date In Service
+  → Generate Asset Lines（按分组级别/方法/CIP 账户汇总）
+  → Review Asset Line Details
+  → Interface Assets to Oracle Assets
+  → FA Prepare/Post → 资产折旧
+```
+
+| 参数 | 影响 |
+| --- | --- |
+| Asset Date Through | 只处理实际投产/退休日期不晚于该日期的资产 |
+| PA Through Date | 成本考虑到哪个 PA 期间；落在期间中间时通常按前一期间期末处理 |
+| Grouping Level/Method | 决定按项目、任务、共同成本、支出类别、支出类型或全部汇总 |
+| Include Common Tasks | 是否把共同成本纳入资产线 |
+| Asset Allocation Method | 多资产之间按当前成本、估算、标准单位成本或平均分摊 |
+| CIP/RWIP Account | 资产成本或退休调整成本的来源账户；不同账户可能拆分资产线 |
+
+资产线生成前必须已完成成本 Final Accounting；接口后不能随意改项目/任务关联。接口后的追加发票或费用应作为新的成本调整资产线；错误资本化则在 Projects 反向资本化并再次传送反向行。
+
+### 4.5 合同项目：收入与开票分离
+
+合同项目常见类型包括 Time and Materials、Fixed Price 和 Cost Plus；每个项目/任务配置客户、联系人、协议/资金、收入确认方法、开票方法、费率、币种、Bill Through Date 和事件。
+
+```mermaid
+flowchart LR
+    A[项目实际成本/里程碑事件] --> R[PRC: Generate Draft Revenue]
+    R --> RR[Review / Release Revenue]
+    RR --> RA[Generate Revenue Accounting Events]
+    RA --> G1[Create Accounting → GL Revenue]
+    A --> I[PRC: Generate Draft Invoices]
+    I --> IR[Review / Approve / Release Invoice]
+    IR --> AI[Interface Draft Invoice to Receivables]
+    AI --> AR[AutoInvoice → AR Transaction]
+    AR --> TB[Tieback → Projects]
+    AR --> G2[AR Create Accounting → GL Receivable]
+```
+
+收入与发票可以不同日期、不同批次运行：
+
+| 概念 | 说明 | 不能混淆的点 |
+| --- | --- | --- |
+| Draft Revenue | 按成本/事件和收入规则计算的草稿收入 | Released Revenue 不等于已开票 |
+| Revenue Accounting Event | 把收入、未开票应收（UBR）或递延收入（UER）送入 SLA 的事件 | 需要独立 Create Accounting |
+| Draft Invoice | 可审核的项目发票草稿 | 释放后不能直接覆盖，需贷项/取消/重开 |
+| AutoInvoice | AR 接收 Projects 发票接口并生成应收交易 | 接口成功、AR 会计和 Tieback 是不同状态 |
+| Tieback | 将 AR 交易号、错误或状态回写 Projects | AutoInvoice 拒绝时先修复接口，不要重复生成草稿 |
+
+预收款/协议资金会影响可用资金和发票余额；UBR/UER 账户取决于收入先于发票还是发票先于收入。多币种项目还要分别核对项目币、项目功能币、资金币和发票交易币及各自汇率日期。
+
+### 4.6 项目调整、关闭和跨组织
+
+调整已批准支出项后，通常需要重新运行成本分配；若成本已资本化、计费或确认收入，还需按影响范围重新生成资产线、收入或发票。以下是最小影响矩阵：
+
+| 调整 | 成本分配 | 资产线 | 草稿收入 | 草稿发票 |
+| --- | --- | --- | --- | --- |
+| 修正已批准支出 | 是 | 是（若资本项目） | 是 | 是 |
+| Billable ↔ Non-Billable | 是（按配置） | 否 | 是 | 是 |
+| Capitalizable ↔ Non-Capitalizable | 是 | 是 | 否 | 否 |
+| 重算 Raw/Burden Cost | 是 | 是 | 是 | 是 |
+| Billing Hold / Release | 否 | 否 | 否 | 是 |
+
+跨组织或跨法人交易还要检查 Intercompany/Cross Charge、借方/贷方组织、交易币、项目功能币、税和清算账户。项目关闭前应取得：来源交易已处理、未分配/拒绝项为零或有批准例外、承诺已关闭、资产线/收入/发票已完成、AR Tieback 完成、项目余额与 GL 对账。
 
 ## 5. 会计和对账
 
-常见控制包括：AP Mass Additions 与 FA 接收总额、CIP（在建工程）与资本化、FA 资产成本/累计折旧与 GL、项目未分配成本、项目成本到资产线、项目开票到 AR。
+### 5.1 会计链路和控制总额
 
-关账顺序通常是完成来源交易和接口，处理未过账资产交易，运行折旧并创建会计，核对 FA/PA 与 GL 后关闭期间。折旧运行前要处理异常资产、未完成批量增加和回退限制。
+| 业务链路 | 子账会计关注 | 对账控制 |
+| --- | --- | --- |
+| AP/PO → FA | 资产成本、清算、应付来源 | AP 资本化分配 = Mass Additions Post = FA Cost |
+| Projects CIP → FA | CIP、资产成本、项目资产线、追加成本 | PA Capitalizable Cost = Asset Lines = FA Cost（按 CIP 账户/Book 分层） |
+| FA 折旧 | 折旧费用、累计折旧、资产净值 | FA Depreciation/Reserve = SLA = GL 过账 |
+| FA 退休 | 资产成本、累计折旧、处置收入/移除成本、Gain/Loss | Retirement Report = FA SLA = GL 处置账户 |
+| Projects Costing | Raw、Burden、Burdened、成本账户 | 来源交易 = 成功 + 拒绝 + 未处理；Raw + Burden = Burdened |
+| Projects Revenue | 收入、UBR/UER、调整 | Released Revenue = Revenue Events = SLA = GL Revenue |
+| Projects Billing → AR | 发票、税、UBR/UER、应收 | Released Invoice = AR Interface Success = AR Transaction = Tieback |
+
+金额对账必须统一四个口径：交易币/功能币/报告币、借贷方向、会计日期/服务日期、明细/汇总传送粒度。舍入、汇率差、税和跨期间调整要单独列示，不能用“总账余额差异”笼统冲销。
+
+### 5.2 建议关账顺序
+
+```text
+来源交易与审批完成
+→ AP/Projects/外部接口导入并清理拒绝
+→ Project Costing 分配、Burden、成本会计
+→ 资本项目生成/接口资产线，处理 FA Mass Additions
+→ Projects Revenue / Invoice 生成、释放、AutoInvoice、Tieback
+→ FA 资产事务完成并运行折旧
+→ 各子账 Create Accounting Final
+→ Transfer to GL → Journal Import → Posting
+→ FA/PA/AR/GL 对账与签核
+→ 按产品顺序关闭期间
+```
+
+在关账清单中记录每个程序的参数、请求 ID、开始/结束时间、日志首个错误和重跑范围。FA 期间关闭不等同于 PA/AR/GL 期间关闭；必须按产品和 Ledger 的 `GL_PERIOD_STATUSES` 分别确认。
+
+### 5.3 失败处理原则
+
+- **来源失败**：在 AP、采购、时间或外部系统修正后按原外部键重送，保留原失败记录。
+- **Projects 成本失败**：修正项目/任务、组织、费率、期间或 AutoAccounting 后重新分配；不要手工改写成本分配行。
+- **资产接口失败**：先处理 Mass Additions 队列和错误，再只重送失败行；已 Post 行不得整批重送。
+- **SLA 失败**：按事件状态和错误消息修正账户、期间、汇率或规则；Draft 只能检查，Final 才能传 GL。
+- **AutoInvoice/Tieback 失败**：区分未进接口、被 AR 拒绝、AR 已成功但回写未完成，先查询外部交易键再决定是否重跑。
 
 ## 6. 技术视角
 
-常用对象包括 `FA_ADDITIONS_B`、`FA_BOOKS`、`FA_DISTRIBUTION_HISTORY`、`FA_TRANSACTION_HEADERS`、`FA_DEPRN_SUMMARY`、`FA_MASS_ADDITIONS`，以及 PA 的项目、任务、支出项目、成本分配、资产线和开票接口表。具体表与列必须在目标实例 eTRM/数据字典确认。
+### 6.1 技术架构
 
-接口设计要区分来源行、资产、账簿和分配层级；项目成本接口要保留项目/任务、支出类型、组织、日期、人员/供应商和原始交易引用。处理部分成功时，不可简单整批重送。
+```mermaid
+flowchart TB
+    EXT[外部系统/文件/采购/人事/银行] --> STG[自定义暂存层<br/>幂等键/校验/审计]
+    AP[AP/PO/OM/AR] --> STD[Oracle 标准接口与事务]
+    PA[Projects Costing/Billing] --> STD
+    STG --> STD
+    STD --> FA[FA Mass Additions / Asset Workbench]
+    STD --> PA2[PA Expenditure / Asset / Billing Interface]
+    FA --> SLA[XLA: Events → AE Headers/Lines]
+    PA2 --> SLA
+    SLA --> GLI[GL_INTERFACE / Transfer to GL]
+    GLI --> GL[GL Journal Import / Posting / Balances]
+    GL --> REP[对账/报表/FSG/下钻]
+```
+
+EBS 接口应优先采用标准并发程序、公开 API、Open Interface 或 Integration Repository 中登记的 Web Service；接口表是暂存边界，不代表可以直接 DML 推动业务状态。定制程序要把“接收、校验、导入、业务处理、会计、回写”分为可重跑阶段。
+
+### 6.2 接口矩阵
+
+| 来源 → 目标 | 标准实现边界 | 最小必传字段/键 | 成功证据 |
+| --- | --- | --- | --- |
+| AP → FA | Create Mass Additions / Mass Additions Workbench | Invoice、Supplier、Distribution、Book、Category、Cost、Units、DPIS、外部行号 | Mass Addition 已 Post，生成 Asset Number |
+| Projects → FA | Generate Asset Lines → Interface Assets | Project/Task、Asset、Grouping、CIP Account、Cost、Units、Asset Date、PA Through Date | Projects 资产线状态完成，FA 队列可追溯 |
+| 外部成本 → Projects | Pre-Approved Expenditure / Transaction Import | Project、Task、Expenditure Type、Org、Date、Qty、币种、来源键 | 支出项已验证且 Cost Distributed |
+| Projects → AR | Generate Draft Invoice → Interface Draft Invoice | Customer/Site、Agreement/Funding、Bill Through、金额、税、币种、外部发票键 | AutoInvoice 交易号、Projects Tieback 完成 |
+| Projects → GL | Generate Cost/Revenue Accounting Events → Create Accounting | Event、Ledger、Accounting Date、Source/Accounting Attributes | XLA Final、GL Journal Import/Posting |
+| FA → GL | Create Accounting → Transfer/Journal Import | Book、Transaction Event、Accounting Date、CCID、借贷金额 | FA SLA 与 GL 批次可下钻 |
+
+外部接口建议使用如下幂等键：`source_system + source_document + source_line + business_date + book_or_ledger`。接口日志至少保存 `request_id`、外部键、EBS 主键、处理状态、错误码、重试次数、最后更新时间和原始报文哈希。部分成功时只重送失败行；重送前先按外部键查询是否已经生成资产、支出、AR 交易或 GL 批次。
+
+### 6.3 关键表和追溯路径
+
+| 业务对象 | 常见表/视图 | 追溯路径 |
+| --- | --- | --- |
+| 资产身份 | `FA_ADDITIONS_B` / `FA_ADDITIONS_TL` | `ASSET_ID → FA_BOOKS / FA_DISTRIBUTION_HISTORY` |
+| 资产账簿 | `FA_BOOK_CONTROLS`、`FA_BOOKS`、`FA_CATEGORY_BOOKS` | `BOOK_TYPE_CODE + ASSET_ID + DATE_EFFECTIVE` |
+| 资产事务 | `FA_TRANSACTION_HEADERS`、`FA_RETIREMENTS` | 事务头 → Books/Distribution/折旧结果 |
+| 折旧 | `FA_DEPRN_PERIODS`、`FA_DEPRN_SUMMARY`、`FA_DEPRN_DETAIL` | Book + Period + Asset + Distribution |
+| 资产暂存 | `FA_MASS_ADDITIONS` | 来源键/批次 → Prepare/Post → Asset Number |
+| 项目结构 | `PA_PROJECTS_ALL`、`PA_TASKS` | `PROJECT_ID → TASK_ID → Expenditure/Asset/Billing` |
+| 项目成本 | `PA_EXPENDITURE_ITEMS_ALL`、`PA_COST_DISTRIBUTION_LINES_ALL` | Expenditure Item → Distribution → XLA |
+| 项目资产 | `PA_PROJECT_ASSET_LINES_ALL`（按实例 eTRM 核对） | Project/Task/Asset → FA Mass Addition |
+| 项目收入/发票 | 常见 `PA_EVENTS`、Draft Revenue/Draft Invoice 对象及分配视图 | Event/Expenditure → Revenue/Invoice → AR/Tieback |
+| 会计 | `XLA_EVENTS`、`XLA_AE_HEADERS/LINES`、`GL_IMPORT_REFERENCES` | 业务主键 → Event → SLA → GL Journal |
+
+表名、状态值和列在 R12.2 补丁、本地化和客户扩展下可能变化。生产 SQL 先用 eTRM、`ALL_TAB_COLUMNS`、Integration Repository 和目标实例日志核对；只读诊断也要按 `ORG_ID`、Book、Ledger 和安全上下文过滤。
+
+### 6.4 性能、安全和运维
+
+- 大批量导入按 Book/OU/项目和业务日期分片，避免多个请求同时锁定同一 Mass Additions 或期间。
+- 接口暂存表建立外部键唯一索引、状态索引和错误索引；原始报文与业务表分离，定期归档但保留可审计摘要。
+- 并发程序使用标准参数和请求集，记录父/子请求关系；长事务拆分为验证、导入和会计阶段。
+- 查询 FA/PA/AR 时遵守 MOAC、Data Access Set、Security by Book 和职责权限，报表 SQL 不得绕过组织安全。
+- 生产环境禁止直接更新 `FA_*`、`PA_*`、`XLA_*`、`GL_*` 业务表；修正必须使用标准表单、API 或 Oracle 支持的接口。
 
 ## 7. 高频问题定位
 
@@ -219,10 +539,61 @@ Oracle Assets 在折旧运行期间限制相关资产交易。未关闭期间发
 | 项目资本化 | 哪些成本可资本化，何时停止资本化 | 部分资本化、冲销、跨期 |
 | 项目开票 | 收入与开票是否同步、如何进 AR | 预付款、里程碑、贷项 |
 
-### 9.8 官方操作依据
+### 9.8 页面剧本：资本项目到正式资产
+
+**适用场景**：厂房、设备、软件实施等需要先在项目中累计 CIP，再在验收/可使用后转入 FA 的项目。以下步骤对应 Oracle Projects 的 Capital Projects/Asset Capitalization 与 Oracle Assets 的 Mass Additions；菜单名称可能因职责和补丁不同而变化。
+
+1. **建立项目与任务**：选择 Capital 项目类型，定义项目功能币、组织、开始/结束日期；在 WBS 中区分资本任务、费用任务和 Common Cost 任务。
+2. **设置交易控制**：按员工、Expenditure Category、Expenditure Type、Non-Labor Resource 和日期限制可资本化交易；明确哪些安装、运输、设计、培训和管理成本排除。
+3. **导入并验证成本**：从 AP、采购、时间、费用、库存或外部系统导入支出，检查 Project/Task、组织、期间、币种、数量和来源键；对拒绝项在来源或 Review Transactions 中修正。
+4. **运行成本程序**：按需运行 `PRC: Transaction Import`、对应的 Cost Distribution/Burden 程序、`PRC: Generate Cost Accounting Events` 和 Final `PRC: Create Accounting`。只有 Final SLA 成功的 CIP/RWIP 成本才可生成有效资产线。
+5. **定义资产与分组**：在 Capital Projects 中维护资产、类别、Grouping Level、Asset Assignment 和 Actual Date In Service；共同成本按项目政策选择自动分配或保留未分配。
+6. **生成资产线**：运行 `PRC: Generate Asset Lines for a Single Project`（或范围程序），设置 Asset Date Through、PA Through Date 和 Include Common Tasks；查看 Generate Asset Lines Report。
+7. **处理未分配/拆分行**：在 Asset Lines/Asset Line Details 中把未分配行指定到资产，必要时按金额或百分比 Split；核对分配金额 = 原始资产线金额。
+8. **传送到 FA**：运行 `PRC: Interface Asset Lines to Fixed Assets`（实例中可能显示为 `PRC: Interface Assets to Oracle Assets`），记录请求 ID；在 FA Prepare Mass Additions 检查 Queue、来源、类别、Book、成本、单位、DPIS 和地点。
+9. **FA 过账与折旧**：Post Mass Additions 后查询 Asset Number、Books 和 Source Lines；确认 CIP 清理、资产成本和投产日期，再按 FA 期间运行折旧。
+10. **追加成本/反向资本化**：接口后发生的发票/贷项作为新的成本调整资产线；放弃或错误资本化时先在 Projects 反向资本化，再生成反向行传回 FA，不直接删除历史记录。
+
+**验收证据**：项目资产资本化报告、资产线明细、Mass Additions Report、FA Asset/Book 查询、SLA/GL 批次和四方对账表（PA CIP、Asset Lines、FA Cost、GL）。
+
+### 9.9 页面剧本：合同项目收入与开票到 AR
+
+1. **合同与资金**：维护客户和 Bill-to/Ship-to、Agreement、Funding、金额、有效期、优先级及预收款；检查项目/任务的收入和开票贡献比例。
+2. **计费配置**：选择 Time and Materials、Fixed Price 或 Cost Plus 等适用方法，定义 Bill Rate/Cost Rate、Revenue/Invoice Currency、Bill Through Date、Invoice Format、Payment Terms 和税属性。
+3. **记录事件与成本**：导入已批准支出，或在 Events 窗口录入里程碑、进度、预付款、Invoice Reduction 等事件；检查事件日期、金额、Billable/Revenue 资格。
+4. **生成草稿收入**：运行 `PRC: Generate Draft Revenue for a Single Project` 或范围程序；在 Revenue Review 查看成本/事件、费率、资金、币种和 UBR/UER，发现错误时在未释放状态重新生成。
+5. **释放收入并会计**：审批并 Release Draft Revenue，运行 Generate Revenue Accounting Events 和 Final Create Accounting；确认收入、UBR/UER 与 GL 账户。
+6. **生成草稿发票**：运行 `PRC: Generate Draft Invoices for a Single Project`，核对 Bill Through Date、Invoice Date、GL Date、税估算、Expenditure Bill Group 和合并规则。
+7. **审批、释放和接口**：Review/Adjust → Approve → Release；释放后不能直接改写，差异用 Credit Invoice/Credit Memo 或重新生成未释放草稿处理。
+8. **进 AR 并回写**：运行 `PRC: Interface Invoices to Receivables`，再运行 AutoInvoice Import Program，最后运行 `PRC: Tieback Invoices from Receivables`；核对 AR Transaction Number、税、付款计划和 Projects 状态。
+9. **异常分层**：Projects 草稿错误、释放但未接口、AutoInvoice 拒绝、AR 已成功但 Tieback 待完成分别处理；按外部发票键查询后再重跑，避免重复应收。
+
+**验收证据**：Revenue/Invoice Review、AutoInvoice 错误报告、AR 交易号、Tieback 状态、Projects-to-AR 对账和 UBR/UER/Revenue SLA 批次。
+
+### 9.10 页面剧本：月末项目与资产关账
+
+| 顺序 | 操作 | 完成条件 |
+| --- | --- | --- |
+| 1 | 检查 AP、采购、时间、费用、库存和外部接口 | 无未解释的导入/拒绝批次；保留失败清单 |
+| 2 | 运行 Projects 成本分配和 Burden | Uncosted、Rejected、Unprocessed 有批准例外或为零 |
+| 3 | 生成成本和收入会计 | 成本/收入事件 Final，账户和期间有效 |
+| 4 | 处理资本项目 | 该投产的资产线已生成/传 FA，未分配线已处理 |
+| 5 | 处理项目发票 | 草稿已审核、释放，AutoInvoice 和 Tieback 完成 |
+| 6 | 处理 FA 事务 | Mass Additions 已过账；调整、转移、退休无未完成错误 |
+| 7 | 运行 FA 折旧 | 折旧、Reserve、异常资产报告已复核 |
+| 8 | Transfer/Journal Import/Posting | 子账批次与 GL 批次可下钻，借贷平衡 |
+| 9 | 执行对账并关期 | PA/FA/AR/GL 差异有解释和签核；再关闭各产品期间 |
+
+### 9.11 官方操作依据
 
 - [Oracle Assets User Guide](https://docs.oracle.com/cd/E26401_01/doc.122/e48755/T293142T293144.htm)
+- [Oracle Assets User Guide — Mass Additions](https://docs.oracle.com/cd/E26401_01/doc.122/e48755/T293142T293157.htm)
 - [Oracle Assets User Guide — Depreciation](https://docs.oracle.com/cd/E26401_01/doc.122/e48755/T293142T301315.htm)
+- [Oracle Project Costing User Guide — Costing Overview](https://docs.oracle.com/cd/E26401_01/doc.122/e48918/T188094T188096.htm)
+- [Oracle Project Costing User Guide — Burdening](https://docs.oracle.com/cd/E26401_01/doc.122/e48918/T188094T188098.htm)
+- [Oracle Project Costing User Guide — Asset Capitalization](https://docs.oracle.com/cd/E26401_01/doc.122/e48918/T188094T188100.htm)
+- [Oracle Project Billing User Guide — Revenue Generation](https://docs.oracle.com/cd/E26401_01/doc.122/e49079/T178714T178720.htm)
+- [Oracle Project Billing User Guide — Invoicing](https://docs.oracle.com/cd/E26401_01/doc.122/e49079/T178714T178721.htm)
 - [Oracle EBS R12.2 Projects Documentation](https://docs.oracle.com/cd/E26401_01/nav/projects.htm)
 
 ## 10. 专题详解

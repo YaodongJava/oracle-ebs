@@ -242,27 +242,75 @@
 | 对象/字段 | 粒度 | 关键字段或关系 | 用途 |
 | --- | --- | --- | --- |
 | `FA_ADDITIONS_B` | 资产头 | `ASSET_ID`、资产编号、类别、标签 | 资产身份 |
+| `FA_ADDITIONS_TL` | 资产多语言描述 | `ASSET_ID`、`LANGUAGE`、Description | 多语言资产名称和说明 |
+| `FA_BOOK_CONTROLS` | 资产账簿控制 | `BOOK_TYPE_CODE`、会计账簿、折旧/期间日历 | Book 期间和控制参数 |
 | `FA_BOOKS` | 资产-账簿 | `ASSET_ID`、`BOOK_TYPE_CODE`、成本、DPIS、折旧方法 | Corporate/Tax 账簿价值 |
+| `FA_CATEGORIES_B` / `FA_CATEGORY_BOOKS` | 资产类别/类别账簿 | `CATEGORY_ID`、类别段、成本/折旧/CIP 账户 | 类别默认规则和账户 |
 | `FA_DISTRIBUTION_HISTORY` | 资产分配历史 | 资产、账簿、地点、员工、CCID、有效日期 | 资产责任和费用归属 |
 | `FA_TRANSACTION_HEADERS` | 资产事务 | `TRANSACTION_HEADER_ID`、资产、事务类型/日期 | 增加、调整、转移、退休 |
+| `FA_DEPRN_PERIODS` | FA 折旧期间 | `BOOK_TYPE_CODE`、`PERIOD_COUNTER`、开/关日期 | Book 折旧期间状态 |
+| `FA_DEPRN_SUMMARY` / `FA_DEPRN_DETAIL` | 折旧汇总/分配明细 | Asset、Book、Period、Distribution、折旧金额 | 折旧费用和累计折旧 |
+| `FA_RETIREMENTS` | 资产退休 | `RETIREMENT_ID`、资产、日期、成本/单位、状态 | 全额/部分处置和恢复 |
 | `FA_MASS_ADDITIONS` | 资产新增接口 | `MASS_ADDITION_ID`、来源、成本、队列/过账状态 | AP/Projects/外部资产暂存 |
 | `PA_PROJECTS_ALL` / `PA_TASKS` | 项目/任务 | `PROJECT_ID`、`TASK_ID`、项目状态、客户/组织 | 项目管理和成本归集 |
 | `PA_EXPENDITURE_ITEMS_ALL` | 支出项目 | 支出、项目/任务、类型、日期、数量/成本 | Project Costing 原始支出 |
 | `PA_COST_DISTRIBUTION_LINES_ALL` | 成本分配行 | 支出、Raw/Burden 成本、CCID、会计状态 | 项目成本会计 |
-| Draft Revenue/Invoice 对象 | 草稿收入/发票 | Project、金额、状态、来源事件/支出 | Project Billing 到 AR |
+| `PA_PROJECT_ASSET_LINES_ALL` | 项目资产线 | Project/Task、Asset、CIP/RWIP、成本、接口状态 | 资本项目成本到 FA 的汇总/明细边界；以目标实例 eTRM 核对 |
+| `PA_EVENTS` | 项目事件 | Project/Task、事件类型、日期、金额、Billable/Revenue 标志 | 里程碑、进度、预付款、贷项等独立计费依据 |
+| Draft Revenue / Revenue Distribution 对象 | 草稿收入及分配 | Project、Event/Expenditure、Revenue、状态、会计期间 | 收入生成、释放和 SLA |
+| Draft Invoice / Invoice Distribution 对象 | 草稿发票及分配 | Project、Customer、Bill Through、金额、状态 | 项目开票、释放和 AR 接口 |
+| Project Transaction Interface | 项目交易接口 | 外部键、Project/Task、Type、Org、日期、数量、状态 | 外部成本/库存/时间导入；具体表以 eTRM 核对 |
 
 ### 名词解释
 
 | 名词 | 解释 |
 | --- | --- |
 | Asset Book | 资产账簿；定义折旧日历、方法、币种和会计边界 |
+| Corporate Book | 公司账簿；企业财务报表使用的主要 FA 账簿，一项资产通常只能有一本 Corporate Book |
+| Tax Book | 税务账簿；按税法或其他法定口径保存独立折旧和价值，可通过 Mass Copy 复制允许的交易 |
+| Asset Category | 资产类别；资产 KFF 组合，在每个 Book 维护默认账户和折旧规则 |
+| Asset Type | 资产类型；常见 Capitalized、CIP、Expensed、Group，具体值以 FA Lookup/启用功能为准 |
+| Prorate Convention | 比例分摊惯例；定义 DPIS/退休日期在首期、末期或日折旧中的起算方式 |
 | CIP | Construction in Progress；在建工程；达到可使用状态前归集的资本项目成本 |
+| RWIP | Retirement Work in Progress；退休调整在建成本，如拆除、移除和处置准备成本 |
 | DPIS | Date Placed in Service；投入使用日期；影响折旧起算和期间 |
 | Mass Additions | 资产新增暂存；须 Prepare/Post 后才成为正式资产 |
+| Mass Additions Queue | 资产批量增加队列；按来源/处理状态组织待审、挂起、错误和可过账行 |
+| Asset Assignment | 资产分配；把单位分到地点、员工和费用 CCID，影响责任和折旧费用归属 |
+| Cost Adjustment | 成本调整；对已入账资产增加或冲减成本，可选择当期费用或剩余寿命摊销 |
+| Retirement / Reinstatement | 退休/恢复；分别记录处置和撤销错误退休的标准事务 |
+| Gain/Loss on Retirement | 资产处置损益；基于退休成本、转出累计折旧、处置收入和移除成本计算 |
+| Physical Inventory | 实物盘点；用标签、地点、员工和状态核对账面资产与实物差异 |
 | Project Costing | 项目成本；支出验证、Raw/Burden 分配和成本会计 |
+| Project Type | 项目类型；决定项目类别和成本、负担、资本化、收入/开票默认 |
+| Expenditure Item | 支出项目；项目实际工作或成本的最小可追溯交易单元 |
+| Expenditure Organization | 支出组织；承担或执行项目交易的组织，影响成本率、跨组织和会计 |
+| Transaction Control | 交易控制；按人员、日期、资源、支出类型和任务限制项目可接受交易 |
+| Raw Cost | 原始成本；直接成本，例如数量乘成本率 |
+| Burden Cost | 负担成本；按 Burden Structure/Schedule 对 Raw Cost 计算的间接成本 |
+| Burdened Cost | 负担后成本；Raw Cost + Burden Cost |
+| Burden Structure | 负担结构；定义成本基础、负担代码及组件层级 |
+| Burden Schedule | 负担费率表；按组织、期间或项目类型提供有效 multiplier |
+| Commitment | 承诺；采购申请、采购订单等预期成本，不等同已发生支出 |
+| Capital Project | 资本项目；归集 CIP/RWIP 并生成资产线、传送 FA 的项目类型 |
+| Asset Grouping Level | 资产分组级别；WBS 中决定成本汇总到项目、任务或共同成本的层级 |
+| Asset Line | 项目资产线；将资本化成本按资产、分组和 CIP/RWIP 账户汇总后传送 FA |
+| Generate Asset Lines | 生成资产线；只选取满足资本化资格、日期和 Final Accounting 条件的成本 |
+| Interface Assets | 传送资产线；将有效项目资产线创建为 FA Mass Addition |
+| Capitalization Date | 资本化/投产日期；决定成本转固和折旧起算，必须与验收/可使用事实一致 |
+| Agreement / Funding | 协议/资金；合同项目的客户合同、额度、有效期、优先级和预收款来源 |
+| Event | 项目事件；独立于支出项的里程碑、进度、预收、贷项或交付计费依据 |
+| Revenue Method | 收入确认方法；例如 Time and Materials、Percent Complete、Cost Plus 或 Fixed Price 规则 |
+| Billing Method | 开票方法；决定可收费成本/事件如何生成项目发票 |
 | Draft Revenue | 草稿收入；生成、复核、释放后进入收入会计 |
 | Draft Invoice | 草稿发票；批准、释放、接口 AR 并 Tieback |
+| UBR / UER | Unbilled Receivable / Unearned Revenue；收入与发票不同步时使用的未开票应收/递延收入 |
+| Bill Through Date | 截止计费日期；收入或发票生成选择交易和事件的上限日期 |
+| Revenue Release / Invoice Release | 收入/发票释放；将草稿变成可会计或可接口的正式状态 |
+| AutoInvoice | AR 自动开票；接收 Projects 发票接口并创建 Receivables 交易 |
 | Tieback | 回写；把 AR AutoInvoice 结果回写 Projects |
+| Project Billing Currency | 项目计费币种；需区分项目币、项目功能币、资金币和发票交易币 |
+| Invoice Reduction / Credit Invoice | 发票减少/贷项发票；释放后更正项目发票的标准审计方式 |
 
 官方基线：[Assets User's Guide](https://docs.oracle.com/cd/E26401_01/doc.122/e48755/toc.htm)、[Project Costing](https://docs.oracle.com/cd/E26401_01/doc.122/e48918/toc.htm)、[Project Billing](https://docs.oracle.com/cd/E26401_01/doc.122/e49079/toc.htm)。
 
