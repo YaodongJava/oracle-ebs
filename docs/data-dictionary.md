@@ -191,12 +191,18 @@
 | `HZ_PARTIES` | Party | `PARTY_ID`、`PARTY_TYPE`、名称 | 客户/供应商共享身份 |
 | `HZ_CUST_ACCOUNTS` | Customer Account | `CUST_ACCOUNT_ID`、`PARTY_ID`、账户编号 | 客户商业关系 |
 | `HZ_CUST_ACCT_SITES_ALL` | Account Site | `CUST_ACCT_SITE_ID`、地址/用途 | Bill-to/Ship-to 等地点 |
+| `HZ_CUST_SITE_USES_ALL` | Site Use | `SITE_USE_ID`、`SITE_USE_CODE`、`ORG_ID`、主用途 | BILL_TO、SHIP_TO、STATEMENT、DUN 等交易用途 |
+| Customer Profile / Credit Profile | 客户/信用档案 | 付款条件、额度、风险类别、AutoCash、Collector、催收标志 | 在账户或地点层默认应收和信用策略 |
 | `RA_CUSTOMER_TRX_ALL` | AR 交易头 | `CUSTOMER_TRX_ID`、`ORG_ID`、交易号、类型、日期 | 发票/贷项/借项 |
 | `RA_CUSTOMER_TRX_LINES_ALL` | AR 交易行 | `CUSTOMER_TRX_LINE_ID`、交易头、Line Type、数量/金额 | 交易明细和税/运费行 |
+| `RA_CUST_TRX_LINE_GL_DIST_ALL` | 交易 GL 分配 | `CUST_TRX_LINE_GL_DIST_ID`、`ACCOUNT_CLASS`、CCID、金额 | Receivable、Revenue、Tax、Freight、Unearned/Unbilled |
 | `AR_PAYMENT_SCHEDULES_ALL` | 付款计划 | `PAYMENT_SCHEDULE_ID`、交易/收款、到期日、余额 | 账龄和未结余额 |
 | `AR_CASH_RECEIPTS_ALL` | 收款头 | `CASH_RECEIPT_ID`、金额、币种、`STATUS`、Method | 收款和核销维度 |
 | `AR_RECEIVABLE_APPLICATIONS_ALL` | 收款核销行 | `RECEIVABLE_APPLICATION_ID`、收款、交易、`AMOUNT_APPLIED` | Invoice/On-account/Unapplied |
 | `AR_CASH_RECEIPT_HISTORY_ALL` | 收款生命周期 | Receipt、`STATUS`、日期 | Confirmed/Remitted/Cleared/Reversed |
+| `AR_ADJUSTMENTS_ALL` | 应收调整 | `ADJUSTMENT_ID`、交易、类型、金额、状态、Activity | 差异、坏账、手续费和核销调整 |
+| `RA_INTERFACE_LINES_ALL` / `RA_INTERFACE_ERRORS_ALL` | AutoInvoice 接口/错误 | 外部键、Source、金额、`INTERFACE_LINE_ID`、错误消息 | 外部交易导入、验证和拒绝回写 |
+| `AR_PAYMENTS_INTERFACE_ALL` | Lockbox 接口 | Transmission、记录类型、客户/发票引用、金额、状态 | 银行收款导入和 QuickCash |
 
 ### 名词解释
 
@@ -205,13 +211,28 @@
 | Party | TCA 现实主体；可以拥有 Customer Account 或 Supplier 角色 |
 | Customer Account | 客户账户；Party 与企业之间的商业关系层 |
 | Site Use | 地点用途；如 Bill-to、Ship-to、Statements、Legal |
+| Customer Profile Class | 客户档案类别；向账户/地点默认付款条件、信用、账龄、催收和 AutoCash 规则 |
+| Credit Profile | 信用档案；额度、风险类别、信用检查和逾期策略的输入 |
+| Transaction Source | 交易来源；控制手工/导入交易编号、批次和 AutoInvoice 验证 |
+| Transaction Type | 交易类型；定义 Invoice、Credit Memo、Debit Memo 等类别及 Open Receivable、应用和会计行为 |
+| Payment Term | 付款条件；根据交易日期、到期日、折扣日和分期规则生成 Payment Schedule |
+| AutoAccounting | AR 账户默认引擎；按交易类型、来源、Memo Line、Salesperson 等派生 Receivable/Revenue/Tax 账户 |
 | AutoInvoice | 自动开票；从 OM/Projects/外部接口生成 AR 交易 |
 | Lockbox | 自动收款箱；导入银行收款并按规则识别/核销 |
+| Receipt Class / Receipt Method | 收款分类/方法；定义确认、汇款、清算步骤以及银行账户、编号和会计活动 |
+| AutoCash Rule Set | 自动核销规则集；规定按发票、到期日、折扣、余额或客户参考应用收款的顺序 |
+| Application Rule Set | 核销规则集；规定收款在交易行、税、运费和滞纳金之间的分配顺序 |
 | Unapplied | 未核销；已入账但尚未应用到具体交易的收款金额 |
+| Unidentified | 未识别收款；尚未确定付款客户，不能直接应用到发票 |
 | On-account | 挂账户；归客户账户但暂不指定某张发票 |
+| Chargeback | 扣款转借项；原发票减少，同时创建新的 Chargeback 应收项目 |
+| Deduction / Dispute | 扣款/争议；客户短款或异议的原因、责任、证据和结案流程 |
+| Credit Memo | 贷项通知单；减少客户应收，可关联原交易、行、税或运费 |
+| Refund | 退款；将客户贷项或多收款退回，需经过余额、审批、付款和清算控制 |
+| Dunning / Collections Strategy | 催收信函/策略；按账龄、风险和承诺付款生成催收行动 |
 | Application | 核销；把收款应用到发票、贷项或其他应收项目 |
 
-官方基线：[Receivables User's Guide](https://docs.oracle.com/cd/E26401_01/doc.122/f10570/toc.htm)、[TCA Administration Guide](https://docs.oracle.com/cd/E26401_01/doc.122/e48940/toc.htm)。
+官方基线：[Receivables User's Guide](https://docs.oracle.com/cd/E26401_01/doc.122/f10570/toc.htm)、[Receivables Reference Guide](https://docs.oracle.com/cd/E26401_01/doc.122/f10312/toc.htm)、[TCA Administration Guide](https://docs.oracle.com/cd/E26401_01/doc.122/e48940/toc.htm)、[Credit Management User's Guide](https://docs.oracle.com/cd/E26401_01/doc.122/e48901/toc.htm)。
 
 <a id="dict-05"></a>
 ## 05 资产与项目：FA、Project Costing 和 Billing

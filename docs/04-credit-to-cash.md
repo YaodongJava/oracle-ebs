@@ -85,6 +85,149 @@ TCA 中 Party（参与方）是现实主体，Customer Account（客户账户）
 
 收款不能简单分为“已收/未收”，也不能把核销状态和银行处理状态串成一条状态链。`AR_CASH_RECEIPTS_ALL.STATUS` 反映客户余额/核销维度（如 `UNID`、`UNAPP`、`APP`、`REV`、`NSF`、`STOP`）；`AR_CASH_RECEIPT_HISTORY_ALL.STATUS` 反映收款生命周期（如 `APPROVED`、`CONFIRMED`、`REMITTED`、`CLEARED`、`REVERSED`）。`APP` 还可能表示全部转为 On-account；部分核销后通常仍为 `UNAPP`。两类状态应分别查询和解释。
 
+### 3.1 TCA 客户数据层级与用途
+
+客户主数据不是一张“客户表”。TCA 用 Party 表示现实主体，用 Customer Account 表示主体与本企业的商业关系，再通过 Account Site 和 Site Use 把地址、业务单元、开票、交货、对账和催收用途绑定到交易。销售交易至少需要有效的 Customer Account、Bill-to Site Use 和适用的 OU/BU。
+
+```mermaid
+flowchart TD
+    P[HZ_PARTIES\nParty 现实主体] --> PS[HZ_PARTY_SITES / HZ_LOCATIONS\n地址与地点]
+    P --> A[HZ_CUST_ACCOUNTS\nCustomer Account 商业账户]
+    A --> AS[HZ_CUST_ACCT_SITES_ALL\nAccount Site + OU]
+    AS --> U1[Site Use: BILL_TO]
+    AS --> U2[Site Use: SHIP_TO]
+    AS --> U3[Site Use: STATEMENT / DUN]
+    A --> CP[Customer Profile / Credit Profile\n付款条件、额度、AutoCash、催收]
+    U1 --> T[AR Transaction]
+    U2 --> T
+```
+
+| 层级 | 业务含义 | 典型属性 | 常见错误 |
+| --- | --- | --- | --- |
+| Party | 真实组织、个人或集团 | 名称、Party Number、税号、地址、联系人 | 把同一主体重复建成多个 Party |
+| Customer Account | 与本企业发生交易的账户 | Account Number、Account Type、状态、信用资料 | 只按名称识别客户，不使用 Account Number/Orig System Reference |
+| Account Site | 客户账户在某地址/OU 的关系 | OU、地址、税务区域、状态 | 误把 Party Site 当作可开票 Site |
+| Site Use | 具体交易用途 | `BILL_TO`、`SHIP_TO`、`STATEMENT`、`DUN`、`LEGAL` 等 | Bill-to 无付款条件或 Ship-to 不属于同一账户 |
+| Customer/Profile Class | 账户或地点的默认策略 | Payment Terms、Statement、Dunning、Credit、AutoCash | 只改账户层，未检查 Site 层覆盖 |
+
+主数据治理应同时维护 **内部客户编码、外部系统编码、税务登记、Bill-to/Ship-to 关系、付款条件、币种、信用额度、Collector、Statement/Dunning 标志**。合并客户、停用地点和变更税号前，先检查未结交易、收款、自动扣款、催收工作项、AutoInvoice 引用和下游接口；必须使用 TCA 标准 Merge/API 流程，不能直接 DML `HZ_*` 表。
+
+### 3.2 AR 交易模型、类型与生命周期
+
+AR 交易采用 **Transaction Source → Transaction Type → Header → Lines → GL Distributions → Payment Schedules** 的模型。Source 决定来源、编号和 AutoInvoice 验证；Type 决定交易类别、Open Receivable、Post to GL、Natural Application、Overapplication、税和会计行为；Payment Terms 生成到期日和分期，最终由 Complete 状态进入正常收款/会计链。
+
+| 业务对象/类型 | 作用 | 对余额/后续流程的影响 | 主要控制 |
+| --- | --- | --- | --- |
+| Invoice | 销售商品或服务的正向应收 | 增加客户应收和收入/税；可分期 | Bill-to、价格/数量、税、收入账户、付款条件 |
+| Debit Memo | 补收差额、费用或原交易调整 | 增加应收，可参与催收和核销 | 原交易引用、原因、税和 Transaction Type |
+| Credit Memo | 退货、折让、服务赔偿或价格下调 | 减少应收/收入/税；可冲原发票或挂账户 | 可贷额度、行/税/运费范围、原交易余额 |
+| Chargeback | 收款短款/争议暂转为新应收 | 关闭或减少原发票，同时建立新的借项 | 短款原因、原收款、Chargeback Activity、审批 |
+| On-account Credit | 已知客户但暂未指定发票的贷项 | 形成客户账户信用，后续可核销 | 客户账户、原因、可用余额和过期策略 |
+| Guarantee/Deposit/Commitment | 预收、保证或承诺类交易（如启用） | 可形成 Unbilled/Unearned 余额，后续转开票 | 交易类型、收入确认/Contingency、结算规则 |
+| Adjustment | 对现有应收做小额差异、坏账或手续费调整 | 直接改变 Payment Schedule 余额 | Activity、Reason、审批限额、会计账户 |
+
+交易生命周期应至少区分：`Incomplete → Complete → Accounted → Transferred/Posted → Paid/Closed`。未完成交易不能被当作已确认收入；已完成也不代表已会计或已收款。Credit Memo、Chargeback、Adjustment、Reverse 和 Refund 必须通过标准窗口/API产生关联历史，避免直接更新余额字段。
+
+### 3.3 信用评估、额度与订单 Hold
+
+信用控制的目标是把“是否允许履约”与“是否确认收入”分开。Credit Management 可发起信用审查、收集数据、分析并形成建议；Receivables/OM 根据 Credit Profile、信用额度、逾期余额、未开票订单和风险规则执行订单或发运 Hold。具体是按 Party、Account、Site 还是 OU 汇总，应在方案中固定口径。
+
+```mermaid
+flowchart LR
+    C[客户/账户/地点] --> P[Credit Profile\n额度、风险类别、付款条件]
+    P --> E[Exposure\n未结 AR + 未开票订单 + 未履约订单]
+    E --> R{Credit Check Rule}
+    R -- 通过 --> F[允许订单/发运]
+    R -- 超限或逾期 --> H[Credit Hold / Analyst Review]
+    H --> D{人工决定}
+    D -- 放行 --> F
+    D -- 拒绝/延期 --> X[停止履约，建立催收或争议任务]
+```
+
+信用设计要回答以下问题：
+
+1. 额度是按客户账户、账户地点、法人、OU 还是全局 Party 汇总；不同币种如何换算和比较。
+2. Exposure 是否包含未完成订单、已发运未开票、未到期应收、逾期应收、争议和临时信用；每类金额的更新时间和并发程序是什么。
+3. 超额时是自动 Hold、预警、需要 Credit Analyst 审核，还是允许具有授权的用户覆盖；覆盖必须有原因、期限和批准历史。
+4. 客户风险类别、付款条件、信用额度、Collector 和 AutoCash Rule Set 的默认层级是什么，账户与 Site 层设置冲突时谁优先。
+
+### 3.4 AutoInvoice、手工交易、收入与税
+
+AutoInvoice 不是“把几行数据写进 AR”。源系统先按 Transaction Source、Transaction Type、Grouping Rule、Transaction Flexfield 和客户引用组织数据，AutoInvoice 再验证并生成 AR 交易、行、税、销售人员和 GL 分配。OM/Projects 的接口还要保留订单、发运、项目事件和收入规则引用，以便退货、贷项和收入确认回写。
+
+| 处理方式 | 适用场景 | 必须控制的内容 | 结果验收 |
+| --- | --- | --- | --- |
+| Manual Transaction | 少量人工发票、贷项、借项和调整 | Customer/Site、Type、Terms、Tax、AutoAccounting、Complete | 交易号、行/税/分配、Payment Schedule 和 SLA |
+| AutoInvoice | OM、Projects、计费平台和外部系统批量开票 | Source、Grouping、Flexfield、ID/Reference、行关联和幂等 | 成功/拒绝数量、金额、税、交易号、错误回写 |
+| Credit Memo Request | 需要业务审批后生成贷项 | 原发票、原因、额度、税、审批层级 | 贷项与原交易/客户余额可追溯 |
+| Recurring/Rules | 租赁、订阅、按期间或里程碑计费 | 模板、会计规则、起止日期、分摊期间 | 每期交易、递延/已赚收入和取消规则 |
+
+AutoAccounting 与 SLA 的职责要区分：AutoAccounting 负责 AR 交易生成阶段的 Receivable/Revenue/Tax/Freight 等账户默认；SLA 负责会计事件、账户推导、描述、汇兑、重分类和传送。税由 E-Business Tax 根据税制、税率、税务区域、交易日期、客户/物料分类等 Determining Factors 计算；源系统不应只传一个“含税总额”而跳过税务驱动因素。税行、可抵扣/不可抵扣、预扣、舍入和贷项税务都必须与原交易和法定报表口径一致。
+
+### 3.5 收款分类、收款方法与生命周期
+
+Receipt Class 决定收款是否需要确认、汇款和清算；Receipt Method 关联银行账户、收款来源、会计活动和编号。手工收款、自动扣款、信用卡、Lockbox 和外部支付平台可以共用 AR 核销模型，但状态和回执来源不同。
+
+| 收款渠道 | 典型入口 | 主要阶段 | 关键风险 |
+| --- | --- | --- | --- |
+| 手工/支票/电汇 | Receipts Workbench | Enter → Confirm（如需要）→ Remit → Clear | 重复录入、客户识别、未核销现金 |
+| AutoLockbox | 银行文件/Transmission | Import → Validate → Post QuickCash | 文件重复导入、控制总额、错误匹配 |
+| Automatic Receipts/ACH | Receipt Batch | Select → Create → Approve → Format → Confirm/Clear | 授权失效、扣款失败、银行回执 |
+| 信用卡/在线支付 | iReceivables、Payments 或收单接口 | 授权 → 捕获/结算 → AR 收款 | 授权与结算不同步、退款/Chargeback |
+| 杂项收款 | Miscellaneous Receipt | Enter → Distribute → Account → Clear | 非客户收入误进应收、会计活动错误 |
+
+收款头、核销行和历史记录要分别解释：
+
+- `AR_CASH_RECEIPTS_ALL`：收款号码、客户、金额、币种、Receipt Method、状态快照和冲销信息。
+- `AR_RECEIVABLE_APPLICATIONS_ALL`：每次 Apply、Unapply、On-account、Unidentified 或调整的历史行；`DISPLAY`、`STATUS`、核销金额和日期共同决定当前有效结果。
+- `AR_CASH_RECEIPT_HISTORY_ALL`：确认、汇款、清算、风险消除和反冲等生命周期事件；以 `CURRENT_RECORD_FLAG` 和日期链判断当前阶段。
+
+未识别收款（Unidentified）必须先确定付款方才能核销；已识别但未找到发票的收款进入 Unapplied 或 On-account。两者都不是“可以忽略的现金”，应设责任人、账龄、清理 SLA 和月结报表。
+
+### 3.6 核销、AutoCash、折扣与跨币种
+
+人工应用适用于有明确汇款通知的收款；AutoLockbox 先用匹配号码/客户引用，再按 AutoCash Rule Set 应用剩余收款。Application Rule Set 决定一笔付款在行、税、运费、滞纳金之间的顺序；Payment Terms、Discount Grace Days、交易日期和核销日期共同影响折扣。
+
+| 情形 | 推荐处理 | 控制要点 |
+| --- | --- | --- |
+| 一笔收款对应一张发票 | 直接匹配 Transaction Number | 客户、币种、剩余余额和折扣日期 |
+| 一笔收款对应多张发票 | 按汇款通知或 AutoCash 顺序拆分 | 不能把差额自动挂到错误客户 |
+| 部分付款 | 保留开放余额，记录短款原因 | 是否创建 Claim/Chargeback 由业务决定 |
+| 多收款/超额 | 允许超核销、Unapplied 或 On-account | 需同时检查 Transaction Type 和 Lockbox Profile |
+| 客户扣款 | 创建 Claim/Dispute 或 Chargeback | 记录原因、责任部门、证据和结案会计 |
+| 跨币种核销 | 使用批准的 Cross Currency Rate/账户 | 记录 From/To Currency、汇率、日期和汇兑差异 |
+| 反核销 | 使用 Unapply/Reapply | 先检查已清算、已退款、催收和期间状态 |
+
+不要把 `AMOUNT_DUE_REMAINING` 直接当作历史账龄；截止日后的 Application、Unapplication、Adjustment、Chargeback 和 Reversal 会改变当前余额。跨币种场景还需区分交易币金额、收款币金额、账簿币金额和汇兑损益；标准 AutoCash 规则通常不支持跨币种自动核销，应改用受控的手工/专用跨币种流程。
+
+### 3.7 争议、扣款、Chargeback、退款与坏账
+
+| 业务事件 | 业务含义 | 会计/余额影响 | 处理闭环 |
+| --- | --- | --- | --- |
+| Deduction | 客户少付或自扣金额 | 收款部分未核销，形成短款/Claim | 识别原发票 → 分配责任 → 批准接受/拒绝 → 贷项、调整或补收 |
+| Dispute | 对金额、质量、服务或税提出异议 | 可暂缓催收或标记争议，不等于自动减免 | 记录争议原因、证据、Owner、承诺日期和结案类型 |
+| Chargeback | 将收款短款转为新的借项 | 原发票余额下降，新增 Chargeback 应收 | 原收款/原发票 → 创建 CB → 催收/核销/贷项 |
+| Adjustment | 小额差异、手续费或坏账调整 | 直接改变应收余额 | Activity、Reason、审批限额和 SLA |
+| Refund | 将客户贷项或多收款退回 | 减少现金/应付退款，冲减客户信用 | 核实贷项/收款可退余额 → 审批 → IBY/AP 付款 → 反核销/清算 |
+| Write-off | 按政策核销无法收回金额 | 借坏账/核销费用，贷应收（账户依配置） | 账龄/证据 → 额度审批 → Adjustment/Activity → 报表和税务留档 |
+
+Credit Memo 应优先关联原交易行、税和运费；Chargeback 不是简单把原发票改为 0，而是“原发票调整 + 新的 CB 借项”。Refund 需要区分客户余额退款、信用卡退款和应付流程退款，确认是否已经清算、是否存在未完成核销/争议及付款方式限制后再执行。
+
+### 3.8 账龄、催收、收入与月结控制
+
+Aging 以 Payment Schedule 的 Due Date、Amount Due Remaining 和 As-of Date 为基础。账龄桶、逾期日、Collector、Dunning、Strategy、Work Item 和 Promise to Pay 应由客户 Profile Class/Account/Site 规则驱动，并保留规则版本和执行历史。高级催收不是单纯发送催款函，还要跟踪承诺付款、争议、客户风险、行动结果和升级路径。
+
+月结至少形成以下控制总额：
+
+1. Transaction Register/AR Trial Balance 与 Receivable Control Account 一致。
+2. Revenue、Tax、Freight、Unapplied、Unidentified、On-account、Chargeback 和 Adjustment 分别对账。
+3. Receipt Register、Remittance、Clearing 与 CE 银行对账单一致；未清收款按天龄和责任人跟踪。
+4. AutoInvoice/Lockbox 接口批次的输入数量/金额 = 成功 + 拒绝 + 待处理；拒绝行有修正和重跑记录。
+5. Create Accounting、Transfer to GL、Journal Import/Post 的每个断点均有请求 ID、日志和异常清单。
+6. 关闭 AR 期间前处理未完成交易、未会计事件、未核销收款、逾期争议、待批调整、坏账和退款。
+
+官方依据：[Oracle Receivables User Guide](https://docs.oracle.com/cd/E26401_01/doc.122/f10570/index.htm)、[Receivables Reference Guide](https://docs.oracle.com/cd/E26401_01/doc.122/f10312/T447348T383863.htm)、[AutoInvoice](https://docs.oracle.com/cd/E26401_01/doc.122/f10570/T355475T382065.htm)、[AutoLockbox](https://docs.oracle.com/cd/E26401_01/doc.122/f10570/T355475T382159.htm)、[Receipts Workbench](https://docs.oracle.com/cd/E26401_01/doc.122/f10570/T355475T386747.htm)、[Credit Management](https://docs.oracle.com/cd/E26401_01/doc.122/e48901/T395686T395690.htm)、[TCA Technical Implementation Guide](https://docs.oracle.com/cd/E26401_01/doc.122/e48943/toc.htm)。
+
 ## 4. 功能设计重点
 
 ### 4.1 信用与争议
@@ -194,7 +337,19 @@ sequenceDiagram
 5. 对生成交易抽样检查 Grouping Rule、Transaction Number、Tax、AutoAccounting、Complete 状态和会计日期。
 6. 用来源数量/金额/税额 = 成功交易 + 拒绝记录建立批次平衡。
 
-### 9.5 收款的两个状态维度
+### 9.5 页面剧本：运行 AutoLockbox 与 Post QuickCash
+
+**常见职责与导航**：`Receivables Manager → Interfaces → Lockbox → Submit`. 具体菜单名称、并发程序参数和文件目录以目标实例为准。
+
+1. 接收银行文件后先落到受控目录，记录 Bank Account、Transmission Name/Sequence、文件名、文件大小、SHA-256 和接收时间；不要覆盖前一日文件。
+2. 在 Lockbox 定义中核对 Lockbox Number、Bank、Batch Source、Bank Account、Transmission Format、数据记录映射和 `Match Receipts By`。
+3. 运行 **Import**，确认 SQL*Loader/接口日志、Header/Trailer 控制总额、币种、小数位、正负号和记录数。
+4. 运行 **Validate**，处理客户、发票、收款方法、重复收款、日期和金额容差错误；拒绝行必须保留原始记录和错误原因。
+5. 对可识别客户/交易运行 **Post QuickCash**；它会按匹配号码或 AutoCash Rule Set 生成收款应用。未识别客户进入 `UNID`，已识别但无法匹配发票进入 `UNAPP`。
+6. 抽样核对 `AR_CASH_RECEIPTS_ALL`、`AR_RECEIVABLE_APPLICATIONS_ALL`、`AR_PAYMENT_SCHEDULES_ALL` 和 Receipt History，确认输入金额 = Applied + Unapplied + Unidentified。
+7. 将成功、拒绝、未识别和重复记录回传银行/收款平台；同一 Transmission 重跑前，必须确认是否已生成 Receipt、Application 或清算记录。
+
+### 9.6 收款的两个状态维度
 
 ```mermaid
 flowchart LR
@@ -219,7 +374,7 @@ flowchart LR
 
 两条轴可以并行变化：收款可在未完全核销时进入汇款/清算流程，并不要求先变为 `APP`。实际生命周期受 Receipt Class、Method、确认/汇款方式和本地化影响；逆向处理前必须同时判断核销、银行清算、会计过账及下游催收/退款状态。
 
-### 9.6 信用与催收高级控制
+### 9.7 信用与催收高级控制
 
 | 场景 | 资深顾问的设计问题 | 验收证据 |
 | --- | --- | --- |
@@ -229,11 +384,11 @@ flowchart LR
 | 退款 | 原收款、贷项、最低金额、支付方式和 IBY/AP 边界 | 退款审批、付款和核销 |
 | 坏账 | 资格、核销账户、税务影响和追收 | 审批、会计、后续收回 |
 
-### 9.7 月结页面检查
+### 9.8 月结页面检查
 
 检查未完成交易、AutoInvoice 拒绝、未核销/未识别收款、未确认/汇款/清算收款、未会计事件和未传 GL 分录；运行 Aging、AR Reconciliation/Trial Balance 及 Create Accounting。差异按 Transaction/Receipt、Schedule、Application、XLA 和 GL 分层定位。
 
-### 9.8 官方操作依据
+### 9.9 官方操作依据
 
 - [Oracle Receivables User Guide — Contents](https://docs.oracle.com/cd/E26401_01/doc.122/f10570/toc.htm)
 - [Oracle Receivables User Guide — AutoAccounting](https://docs.oracle.com/cd/E26401_01/doc.122/f10570/T355475T355481.htm)
