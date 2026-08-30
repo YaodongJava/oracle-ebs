@@ -322,12 +322,22 @@
 | 对象/字段 | 粒度 | 关键字段或关系 | 用途 |
 | --- | --- | --- | --- |
 | `CE_BANK_ACCOUNTS` | 内部银行账户 | `BANK_ACCOUNT_ID`、账户名/币种、所有者组织、有效期 | 现金账户主数据 |
+| `CE_BANK_ACCT_USES_ALL` | 银行账户用途 | `BANK_ACCT_USE_ID`、`BANK_ACCOUNT_ID`、`ORG_ID`、应用用途 | AP/AR/Payroll/Treasury/CE 授权边界 |
 | `CE_STATEMENT_HEADERS` | 银行对账单头 | `STATEMENT_HEADER_ID`、账户、编号、日期、期初/期末余额 | 对账单控制总额 |
 | `CE_STATEMENT_LINES` | 银行流水行 | `STATEMENT_LINE_ID`、交易日期、码、金额、状态 | 自动/手工匹配 |
 | `CE_STATEMENT_HEADERS_INT` | 对账单头接口 | 编号、账户、日期、控制余额、`ORG_ID`（按场景） | Bank Statement Loader 输入 |
 | `CE_STATEMENT_LINES_INTERFACE` | 对账单行接口 | 行号、日期、交易码、金额、银行参考 | 银行文件暂存 |
+| Bank Statement Open Interface | 银行对账单开放接口 | Header/Line 接口行、状态、控制总额 | 银行文件加载与校验 |
+| Reconciliation Open Interface | 对账开放接口 | 外部交易号、账户、日期、币种、金额、状态 | Treasury/外部系统交易参与 CE 对账 |
+| `IBY_PAY_SERVICE_REQUESTS` | Payment Process Request | `PAYMENT_SERVICE_REQUEST_ID`、调用应用外部键、状态 | PPR 选择、分组和付款流程 |
+| `IBY_PAY_INSTRUCTIONS_ALL` | 付款指令 | `PAYMENT_INSTRUCTION_ID`、PPR、格式、状态 | 付款文件和传输分组 |
+| `IBY_PAYMENTS_ALL` | IBY 付款 | `PAYMENT_ID`、付款指令、状态 | 单笔付款生命周期 |
+| `IBY_EXT_BANK_ACCOUNTS` | 外部银行账户 | `EXT_BANK_ACCOUNT_ID`、收款人/国家/银行信息 | 供应商、客户或员工收款账户 |
 | IBY Payment Instruction | 支付指令 | Instruction、付款、文件、银行回执状态 | 支付执行链 |
 | `ZX_LINES` | 税行 | `APPLICATION_ID`、实体/事件类、`TRX_ID`、税制/税率、税额 | EBTax 结果 |
+| `ZX_LINES_DET_FACTORS` | 税务确定因素 | Entity/Event/Transaction/Line 组合及输入快照 | 解释税务规则命中结果 |
+| `ZX_RATES_B` | 税率 | Regime、Tax、Status、Rate、有效期 | 百分比/数量税率主数据 |
+| `ZX_PARTY_TAX_PROFILE` / `ZX_REGISTRATIONS` | 交易方税档案/登记 | Party、法人、税制/辖区、登记号、有效期 | 注册、免税和税务报告 |
 | Tax configuration | 税务配置 | Regime、Tax、Status、Rate、Jurisdiction、Rule | 税务确定规则 |
 
 ### 名词解释
@@ -336,14 +346,47 @@
 | --- | --- |
 | CE | Cash Management；现金管理；银行账户、对账单、自动对账和现金控制 |
 | Bank Statement | 银行对账单；银行提供的账户级流水和余额 |
+| Bank Account Use | 银行账户用途；按应用和 OU 授权 AP、AR、Payroll、Treasury 或 CE 使用内部账户 |
+| Statement Header / Line | 对账单头/行；头保存账户、编号、日期和控制总额，行保存每笔银行流水 |
+| Bank Transaction Code | 银行交易代码；把银行格式中的付款、收款、费用、利息等映射为 CE 交易类型 |
+| Value Date | 价值日；银行资金实际起息/可用日期，可与交易日、会计日不同 |
 | AutoReconciliation | 自动对账；按交易码、参考号、金额/日期容差匹配 |
+| Manual Reconciliation | 手工对账；用户选择源交易或建立银行来源杂项行并记录原因 |
+| Matched / Cleared / Reconciled | 匹配/清算/对账；分别表示找到源交易、更新清算状态、完成银行对账确认 |
+| Unmatched / Multiple Match | 未匹配/多重匹配；前者无候选，后者候选不唯一，不应自动过账 |
+| Miscellaneous Transaction | 杂项交易；银行手续费、利息等无 AP/AR 源单据的银行行，需批准的 Activity/账户 |
+| Reconciliation Open Interface | 对账开放接口；让 Treasury 或外部系统交易出现在 CE 可匹配交易中 |
 | Cash Clearing | 现金清算；源模块现金/清算账户和银行事实之间的过渡 |
 | IBY | Oracle Payments；支付指令、格式、传输和回执框架 |
+| PPR | Payment Process Request；付款流程请求，按模板和选择规则挑选发票并分组付款 |
+| Payment Instruction | 付款指令；把 Proposed Payments 按银行/格式/账户生成待传输文件 |
+| Technical ACK / Business ACK | 技术回执/业务回执；分别表示文件可达与银行受理/拒绝，不等同结算 |
+| Lockbox | 自动收款箱；导入银行收款批次并按客户/发票/参考号核销 |
+| Cash Position | 现金头寸；按已确认/已清算事实计算当前可用现金 |
+| Cash Forecast | 现金预测；按来源和时间桶估计未来现金，不等同银行或 GL 实际余额 |
+| Cash Forecast Template | 现金预测模板；定义来源、日期、时间桶、币种、状态过滤和重复消除 |
+| Sweep / Cash Pool | 归集/资金池；在多个账户间按规则转移现金，需分别核对两端结算与对账 |
 | EBTax/ZX | E-Business Tax；交易税务确定和税行引擎，不等于全部法定申报 |
 | Configuration Owner | 配置所有者；控制税务配置适用范围 |
+| Tax Regime | 税制；按国家/地区或业务建立 Tax、Status、Rate、Jurisdiction 的容器 |
+| Tax | 税种；VAT/GST/Sales Tax 等税务类别 |
+| Tax Status | 税状态；同一 Tax 下的 Standard、Zero、Exempt 等状态 |
+| Tax Rate | 税率；按百分比或数量费率及有效期定义 Tax Amount 计算输入 |
+| Tax Jurisdiction | 税务辖区；由 Place of Supply 决定，可维护辖区级税率 |
+| Tax Determining Factors | 税务确定因素；交易日期、Party/Registration、产品分类、地点、类型等输入 |
+| Party Tax Profile / Registration | 交易方税档案/登记；法人、客户、供应商及地点的税号和税务属性 |
+| Fiscal Classification | 财政/税务分类；产品、交易方或交易的税务分类码 |
+| Place of Supply | 供应地；税务判定交易发生地的规则结果 |
+| Taxable Basis / Tax Formula | 计税基础/税务公式；决定 Taxable Amount 和特殊计算逻辑 |
 | Recovery | 税额抵扣/不可抵扣规则；影响税额去向和账户 |
+| Recoverable / Nonrecoverable Tax | 可抵扣/不可抵扣税；按 Recovery Rate 分配到抵扣账户或成本 |
+| Recovery Rate | 抵扣率；税法允许从进项税中抵扣的百分比，可按规则或默认值取得 |
+| Offset Tax | 反向计税/自计税抵销税；为原税负债创建匹配的抵销税行和会计 |
+| Inclusive / Compound Tax | 含税/复合税；分别影响计税基础和多税种叠加顺序 |
+| Tax-only Line | 仅税行；记录与采购/销售行分离的税额，须符合产品规则 |
+| Tax Reporting Type | 税务报告类型；将税行分类到法定提取或申报口径 |
 
-官方基线：[Cash Management](https://docs.oracle.com/cd/E26401_01/doc.122/e48900/toc.htm)、[EBTax Implementation](https://docs.oracle.com/cd/E26401_01/doc.122/e48750/toc.htm)、[EBTax User](https://docs.oracle.com/cd/E26401_01/doc.122/e48751/toc.htm)。
+官方基线：[Cash Management](https://docs.oracle.com/cd/E26401_01/doc.122/e48900/toc.htm)、[Cash Management 自动对账与多币种](https://docs.oracle.com/cd/E26401_01/doc.122/e48900/T359831T359837.htm)、[EBTax Implementation](https://docs.oracle.com/cd/E26401_01/doc.122/e48750/toc.htm)、[EBTax User](https://docs.oracle.com/cd/E26401_01/doc.122/e48751/toc.htm)、[Oracle Payments/Payables PPR](https://docs.oracle.com/cd/E26401_01/doc.122/e48760/T295436T369088.htm)。
 
 <a id="dict-07"></a>
 ## 07 供应链财务与成本：INV、WIP、CST 和 LCM

@@ -88,42 +88,342 @@ AP 付款 / AR 收款 / 资金交易
 
 银行账户应由 Legal Entity 或组织按授权使用。账户、分行、签字权限、用途、币种和支付/收款方法变更都属于高风险主数据变更。
 
+### 2.1 银行、分行、账户和使用权限
+
+| 层次 | 业务对象 | 关键属性 | 控制重点 |
+| --- | --- | --- | --- |
+| 贸易社区 | Bank、Branch、Party/Supplier/Customer | 银行名称、分行、国家、地址、SWIFT/本地清算代码 | TCA 身份和银行证明；避免重复分行 |
+| 内部账户 | Internal Bank Account | 账号、币种、账户所有者、开户/销户日期 | 账号脱敏、有效期、唯一性和法人所有权 |
+| 应用用途 | Bank Account Use | AP、AR、Payroll、Treasury、Cash Management 用途及 OU | 只向获授权 OU/应用开放；不要把账户所有者和 OU 混为一层 |
+| 支付配置 | Payment Method/Profile | 付款方式、Payment Process Profile、格式、传输 | 付款格式、银行账户、审批和权限分离 |
+| 对账配置 | Reconciliation | 交易码、清算账户、匹配规则、容差、Value Date | 规则版本化；同一账户不同银行格式分别测试 |
+
+账户变更要有申请、银行证明、双人复核、生效日期、旧值封存和下游通知。关闭账户前先完成未达付款/收款、未发送支付文件、未清算流水和税务/法定报表影响评估。
+
+### 2.2 付款、收款到银行的两条清算链
+
+```mermaid
+flowchart LR
+    AP[AP 发票已验证/批准] --> PPR[Payment Process Request]
+    PPR --> PI[Payment Instruction]
+    PI --> FILE[付款文件/传输]
+    FILE --> BANK[银行受理/结算]
+    BANK --> STMT[银行对账单]
+    STMT --> REC[匹配并清算]
+    AR[AR 收款/Lockbox] --> REMIT[汇款/清算批次]
+    REMIT --> BANK
+    REC --> SLA[XLA/GL]
+```
+
+**AP 付款**应区分 Invoice Validation、Payment Selection、PPR、Proposed Payment、Payment Instruction、文件传输、银行 ACK、Cleared 和 Reconciled；PPR 完成不代表银行已经受理。**AR 收款**应区分 Receipt 创建、确认、汇款、清算、核销和银行对账；Lockbox 导入成功不代表每笔收款都已应用到发票。
+
+| 状态层 | AP 示例 | AR 示例 | 处理含义 |
+| --- | --- | --- | --- |
+| 业务批准 | 发票可付款 | 收款已录入/Lockbox 已验证 | 可进入付款或核销选择 |
+| 资金指令 | PPR/Payment Instruction | Remittance Batch | 已生成待银行处理的指令/批次 |
+| 银行回执 | Technical ACK/Accepted/Rejected | Deposit/Cleared/Returned | 外部银行事实，须保存 Message ID |
+| EBS 清算 | Payment Cleared | Receipt Cleared | 源模块现金账户完成清算 |
+| 银行对账 | Statement Line Matched | Statement Line Matched | CE 将银行行与源交易匹配并标记 Reconciled |
+
+支付文件重发必须判断“文件未生成、已生成未传输、已传输未收到回执、银行已受理”四种情况。银行已受理的文件不能通过重新运行 PPR 生成第二笔付款；应使用标准重传/回执处理，并以 Payment Instruction、Transmission 和银行 Message ID 去重。
+
+### 2.3 现金头寸、预测和内部资金调拨
+
+Cash Position（现金头寸）回答“现在有多少可确认现金”；Cash Forecast（现金预测）回答“未来某个时间桶预计有多少现金”。二者都要按法人、银行账户、币种、价值日/到期日和数据来源分层，不能用预测值替代银行对账余额。
+
+| 数据类别 | 典型来源 | 日期口径 | 置信度/用途 |
+| --- | --- | --- | --- |
+| 已确认余额 | 已导入银行对账单、已清算 AP/AR | Statement Date/Value Date | 最高；现金日报和对账 |
+| 在途交易 | 已批准但未付款发票、已录入未清算收款 | Payment/Receipt Date、Maturity Date | 中高；短期头寸 |
+| 承诺 | PO、Requisition、合同付款计划 | Need-by/Due Date | 中；资金计划 |
+| 预测输入 | 工资、税款、利息、外部资金计划 | Forecast Date/Bucket | 需标注来源和置信度 |
+| 内部调拨 | Bank Transfer、Sweep、Cash Pool | Initiation/Settlement/Value Date | 要区分授权、结算和银行到账 |
+
+Cash Forecast Template 应定义来源、时间桶、币种、包含条件、重复消除和日期转换规则。若同时选入 AP Invoice 和 Payment、PO 和 Invoice，应明确是否只保留较确定的一层，避免把同一现金流计算两次。内部转账/归集要记录转出账户、转入账户、金额、币种、授权人、结算日期、银行参考号和两边的对账状态。
+
+### 2.4 Treasury 可选边界
+
+Oracle Treasury（如部署）负责借款、投资、外汇、利率、交易对手、限额、估值和结算；Cash Management 负责银行账户、银行流水、对账和现金预测。实施时应将前台交易、风险/限额、中台确认、后台结算、会计和对账职责分离。未部署 Treasury 时，外部资金系统可以通过 Reconciliation Open Interface 把可对账交易提供给 CE，但不能把外部余额直接写成 EBS 银行余额。
+
 ## 3. 银行流水接口与对账
 
 接口契约至少包含账户标识、流水号、价值日、交易日、币种、金额、借贷标识、银行交易码、客户参考和文件控制总额。重复文件识别应组合文件 ID、账户、日期和哈希/控制总额。
 
-自动对账规则要定义匹配字段、日期窗口、金额容差、优先级和一对多/多对一场景。无法可靠匹配的流水进入异常队列；人工匹配需要原因和审批证据。
+### 3.1 导入、验证、对账的标准顺序
+
+```mermaid
+flowchart TB
+    A[银行文件/人工录入] --> B[Loader/Open Interface]
+    B --> C{Header/Line 校验}
+    C -- 失败 --> D[接口错误与修正]
+    D --> B
+    C -- 通过 --> E[Bank Statement Import]
+    E --> F[Statement Header/Lines]
+    F --> G{AutoReconciliation}
+    G -- 唯一匹配 --> H[Match + Clear + Reconcile]
+    G -- 无匹配/多匹配 --> I[异常队列/手工匹配]
+    I --> H
+    H --> J[CE/源模块会计与 GL 对账]
+```
+
+Oracle Cash Management 的电子对账单链路通常是：Bank Statement Loader 将文件加载到 Open Interface，Bank Statement Import 把接口行转为正式 Statement，再运行 AutoReconciliation；也可以在同一请求中导入并自动对账。每次运行保存 Request ID、文件哈希、Statement Number、账户、日期、币种、控制总额和错误报告。
+
+### 3.2 文件级、对账单级和流水级控制
+
+| 层级 | 必须校验 | 重复/异常处理 |
+| --- | --- | --- |
+| 文件 | 文件名、来源、编码、Checksum、账户数、总行数、借贷总额 | 同哈希拒绝；修正版保留版本关系 |
+| Statement Header | Bank Account、Statement Number、Statement Date、Currency、Opening/Closing Balance、Control Total | 同账户同编号/日期不能重复导入；多账户文件拆成多个 Statement |
+| Statement Line | Line Number、TRX Date、Value Date、TRX Code、Amount、Currency、Bank Reference | 行号重复、金额方向、日期、交易码或币种无效进入错误 |
+| 对账结果 | 匹配对象、匹配规则、容差、清算状态、人工原因 | 多候选不自动匹配；撤销对账需授权和会计影响评估 |
+
+Bank Transaction Code 必须按银行格式映射为 CE 交易码。不能仅根据银行文件的正负号推断 Debit/Credit，因为不同格式可能把借方、贷方和费用表示为不同字段。
+
+### 3.3 自动/手工匹配规则
+
+自动匹配优先使用业务上唯一且稳定的参考号，再使用账户、币种、金额和日期窗口。常见匹配组合如下：
+
+| 交易 | 首选参考 | 辅助条件 | 典型容差/例外 |
+| --- | --- | --- | --- |
+| AP Payment | Payment Number、Payment Batch Name | 银行账户、金额、币种、Cleared Date | 银行费用/金额差异按规则进入 Bank Charges/Errors |
+| AR Receipt | Receipt Number、Deposit Number | 客户、金额、币种、日期 | 一对多核销需先确认批次和应用金额 |
+| Treasury Settlement | Settlement Number | 日期、金额、币种 | 可通过 Reconciliation Open Interface |
+| GL Journal | Journal/External Reference | CCID、金额、日期 | 银行手续费等银行来源项可建 Miscellaneous Transaction |
+| 外部交易 | External Transaction ID | 账户、交易码、Value Date | 需先在开放接口中提供可用状态 |
+
+自动对账后应分组分析 Matched、Unmatched、Multiple Match、Error 和 External/Miscellaneous。手工对账要保存选择的源交易、金额差、银行参考、业务原因和审批人；不能用 Miscellaneous Transaction 隐藏尚未调查的差异。
+
+### 3.4 多币种对账
+
+| 场景 | 交易币种 | 银行账户币种 | 处理要点 |
+| --- | --- | --- | --- |
+| Domestic | 与账簿和账户相同 | 本位币 | 通常不需要交易汇率 |
+| International | 与银行账户不同 | 本位币 | 可按清算日期/类型计算汇率并产生汇兑差异 |
+| Foreign | 外币 | 同一外币 | 对账单行必须提供汇率信息或启用外币账户参数 |
+| Foreign Translated | 外币 | 另一种外币 | AP/AR 场景通常不支持，必须按目标产品验证 |
+
+外币流水需同时考虑 `Amount`、`Original Amount`、Currency、Exchange Rate、Rate Type 和 Rate Date。Cash Management 可能用清算日期计算汇率，但 AutoReconciliation 不一定回写所选汇率到对账单行；查询时要从 Reconciled 详情或会计分录确认实际使用的汇率。
+
+### 3.5 银行错误、退票和撤销
+
+银行可能报告 NSF/退票、止付、直接借记、银行手续费、利息或银行录入错误。先将原始错误行和更正行一起保留，再使用标准 Reversal、Unclear、Unreconcile 或 Miscellaneous Transaction 处理；已生成 SLA/GL 的交易必须评估冲销会计和报表影响。银行对账完成后运行 GL Reconciliation Report，区分账面现金、银行余额、未对账收款、未对账付款、未对账日记账和银行错误。
 
 ## 4. 现金头寸与资金管理
 
 Cash Position（现金头寸）强调已发生或高确定性现金；Cash Forecast（现金预测）结合 AP、AR、采购、订单、工资和外部预测。必须标记来源、日期口径、置信度和重复消除规则。
 
-Treasury（资金管理）可涉及借款、投资、外汇、利率和套期。实施前确认产品安装与许可证，并明确前台交易、风险控制、后台结算和会计职责分离。
+### 4.1 头寸与预测的计算口径
+
+```text
+可用现金头寸
+= 已对账/已清算银行余额
+  + 可确认入账收款
+  - 已授权未清算付款
+  ± 已确认内部调拨
+
+预测期末现金
+= 期初已确认余额
+  + 预测收款（按日期/置信度）
+  - 预测付款（AP、工资、税、债务、投资）
+  ± 内部资金调拨
+  ± 汇率/利息假设
+```
+
+公式用于管理口径，不能替代 CE/GL 的正式余额。每个来源要带 `Source Type`、业务键、币种、日期、金额、是否已在另一来源出现以及可撤销/已结算标志。预测输出至少按法人、银行账户、币种、时间桶和来源分组，并能回溯到发票、收款、PO、工资或手工预测。
+
+### 4.2 Cash Forecast Template 设计
+
+| 配置 | 设计问题 | 验证场景 |
+| --- | --- | --- |
+| Source | AP、AR、PO、Requisition、Payroll、Cashflow、手工输入是否启用 | 同一发票同时被 Invoice 和 Payment 来源选取 |
+| Date Type | Due Date、Maturity Date、Expected Date、Value Date 如何转换 | 周末/节假日、跨时区、跨期间 |
+| Bucket | 日、周、月或自定义时间桶 | 月末截止、滚动 13 周、跨年 |
+| Currency | 原币、账户币、法人币、报告币 | 外币汇率缺失/汇率日期不同 |
+| Inclusion | 状态、OU/Ledger、账户、项目、最小金额 | 已取消、已付款、已核销交易排除 |
+| Confidence | 已确认、承诺、预测、人工覆盖 | 管理层只查看高置信度头寸 |
+
+每次预测运行保存模板版本、参数、汇率日期、生成时间和来源快照。预测差异应拆成实际发生、日期变化、金额变化、汇率变化、来源重复和手工覆盖，不要直接修改结果金额。
+
+### 4.3 银行转账、Sweep 和 Cash Pool
+
+银行转账至少有 Initiated、Authorized、In Transit、Settled、Reconciled、Cancelled/Failed 状态。Sweep 交易要先根据银行对账单生成对应的资金交易，再与转入/转出行匹配；同日多账户流水需依靠 Statement Number、Sequence、Value Date 和银行参考号区分。内部转账两端的金额、币种、价值日和清算账户必须成对核对。
 
 ## 5. E-Business Tax 税务确定
 
 典型决定链：Tax Regime（税制）→ Tax（税种）→ Tax Status（税状态）→ Tax Rate（税率）→ Tax Jurisdiction（税务辖区）→ Tax Rule（税规则）。交易方税档案、产品税分类、地点、交易类型和日期共同影响结果。
 
-Recoverable Tax（可抵扣税）与 Nonrecoverable Tax（不可抵扣税）会进入不同账户或成本。税额人工覆盖必须受权限、原因和审计控制，不能用来绕过错误主数据或规则。
+### 5.1 EBTax 决定因素和规则顺序
+
+```mermaid
+flowchart TB
+    A[AP/AR/PO/OM 交易] --> B[Configuration Owner / Legal Entity / OU]
+    B --> C[Transaction Date / Event Class]
+    C --> D[Party Tax Profile / Registration / Exemption]
+    D --> E[Product Fiscal Classification]
+    E --> F[Ship/Bill From-To / Place of Supply]
+    F --> G[Tax Applicability]
+    G --> H[Tax Status / Rate / Jurisdiction]
+    H --> I[Taxable Basis / Formula]
+    I --> J[Recovery / Offset / Rounding]
+    J --> K[ZX Tax Lines + AP/AR/PO Accounting]
+```
+
+| 税务决定因素 | 典型来源 | 影响 |
+| --- | --- | --- |
+| Configuration Owner | Legal Entity、OU、共享配置 | 哪一套 Tax Regime/规则可用 |
+| Transaction/Event Class | AP Invoice、AR Transaction、PO、OM | 适用的事件模型、规则和税行层级 |
+| Party Tax Profile | 法人登记、客户/客户地点、供应商/供应商地点 | 注册号、税务分类、免税和反向计税 |
+| Product Fiscal Classification | 物料、服务、产品类别、税务分类码 | 税种适用、税率、免税和报告类型 |
+| Place of Supply | 发货地、收货地、开票地、服务地点 | 税务辖区和跨境判断 |
+| Transaction Date | 发票/收货/服务/税务日期 | 有效期、税率、登记和规则版本 |
+
+EBTax 只有在规则或默认值完整时才应将 Tax 标记为 Available for Transactions：通常至少需要 Place of Supply、Tax Registration、Tax Status/Rate、Taxable Basis、Tax Calculation、Jurisdiction，并在启用 Recovery 时配置 Recovery Rate。规则优先级、默认值和手工覆盖必须在测试矩阵中明确。
+
+### 5.2 税种、税率、辖区和抵扣
+
+| 概念 | 说明 | 典型错误 |
+| --- | --- | --- |
+| Tax Regime | 某一国家/地区或业务税制容器 | 法人/OU 未关联或有效期错 |
+| Tax | 税种，如 VAT/GST/Sales Tax | 税未启用、辖区未定义 |
+| Tax Status | 税种下的状态，如 Standard/Zero/Exempt | 状态规则优先级或产品分类错误 |
+| Tax Rate | 税率码、百分比/数量费率及有效期 | 只改当前税率而破坏历史交易 |
+| Tax Jurisdiction | 地理辖区和辖区税率 | Place of Supply 无法确定 |
+| Recovery Rate | 进项税全额/部分/不可抵扣比例 | Recovery Rule 未命中或账户错误 |
+| Offset Tax | 反向计税/自计税的抵销税 | 把普通 Tax Rate 当 Offset Tax |
+
+税额基本公式为 `Tax Amount = Taxable Basis × Tax Rate`，但 Inclusive Tax、Compound Tax、舍入、最低/最高阈值、数量费率和税务公式会改变计算。可抵扣金额、不可抵扣金额和税负成本需分别核对；税行金额正确不代表税务会计账户正确。
+
+### 5.3 免税、人工税行和本地化边界
+
+- 免税证书、客户/产品免税、特殊税率和有效期应由税务主数据维护；最具体的有效免税记录通常优先于泛化记录。
+- 反向计税/自计税需要原税与 Offset Tax 成对设计，并按当地法规和会计要求确认 100% 抵扣等限制。
+- AP/AR 手工税行只在产品允许且经过授权时使用；手工税行不会重新评估全部 Tax Rules，不能作为修复主数据的捷径。
+- EBTax 负责交易税务确定和税行，不等于某国全部法定申报、电子发票、代扣税或本地化税务；国家/地区功能、补丁、外部税引擎和法规需单独验收。
 
 ## 6. 会计和对账
 
-- 付款/收款：先区分已生成、已确认、已汇款、已清算和已对账。
-- 银行：账面余额、银行余额、在途项目和调节项必须可解释。
-- 税务：交易税行、SLA 税务会计、税务登记簿和 GL 税账户按期间与法人对账。
-- 汇率：交易换算、银行实际结算和期末重估差异应分别记录。
+### 6.1 现金会计分层
+
+| 层次 | 事实 | 典型凭证/结果 |
+| --- | --- | --- |
+| 源模块 | AP 付款、AR 收款、Treasury 结算 | Liability/Receivable 与 Cash Clearing |
+| 银行事实 | Statement Header/Line、Value Date、Bank Reference | 银行余额、费用、利息、退票 |
+| CE 对账 | Matched、Cleared、Reconciled、External | 清算状态和对账审计 |
+| SLA/GL | 现金、清算、银行费用、汇兑损益 | XLA Event/AE → GL Journal/Balance |
+
+对账状态和会计状态是两套独立状态：一笔交易可以已会计但未对账，也可以已与银行行匹配但会计仍失败。查询和关账必须分别检查两者。
+
+### 6.2 对账公式和报表
+
+```text
+银行期末余额
+− 未达付款
+＋ 未达收款
+± 未达 GL 日记账/银行错误
+= 调整后账面现金余额
+
+税额控制
+＝ 交易税行
+＝ 税务登记簿/法定提取（按报告口径）
+＝ 税务 SLA/GL 税账户（按会计口径）
+```
+
+银行余额与 GL 余额差异必须拆成未达付款、未达收款、未达日记账、银行手续费/利息、汇率差、银行错误和数据重复。Oracle Cash Management 的 GL Reconciliation Report 可按 Summary/Detail 查看 GL 现金账户、调整后银行余额和未对账项目；每个银行账户最好对应清晰、可独立对账的 GL Cash Account。
+
+### 6.3 期间关闭顺序
+
+```text
+银行文件/付款/收款/税务交易全部导入
+→ 清理接口错误和未完成回执
+→ AP/AR/CE/Treasury 源模块会计 Final
+→ AutoReconciliation + 手工异常签核
+→ ZX 税行、税务登记簿、税账户对账
+→ Transfer to GL / Journal Import / Posting
+→ 银行余额、现金清算、税账户和 GL 对账
+→ 关闭 CE/源子账/GL 期间并归档证据
+```
+
+税率或登记变更跨越期间时，保留旧版本和生效日期；不要通过更新历史税行或直接冲销税账户掩盖税务差异。
 
 ## 7. 技术视角
 
-CE、IBY、AP、AR 与 ZX 跨模块关联时，以银行账户、支付/收款标识、流水编号和会计事件逐层追踪。银行文件和税务接口属于敏感数据；日志不得输出完整账号、税号、凭据或支付报文。
+### 7.1 跨模块技术架构
 
-接口需要幂等、文件级与行级状态、控制总额、错误重放和回执相关号。目标实例可能使用不同银行格式或外部税引擎，必须用真实契约验证。
+```mermaid
+flowchart TB
+    BANK[银行文件/API/回执] --> LAND[安全落地区<br/>原文件哈希/加密/版本]
+    LAND --> CEI[CE Statement Open Interface]
+    CEI --> CE[Cash Management<br/>Import / AutoReconciliation]
+    APAR[AP/AR/Payroll/Treasury] --> CE
+    CE --> XLA[XLA Events / Accounting]
+    APAR --> IBY[Oracle Payments IBY]
+    IBY --> OUT[格式/传输/ACK]
+    OUT --> BANK
+    APAR --> ZX[EBTax Determination]
+    ZX --> TAXLINE[ZX Tax Lines / Recovery]
+    TAXLINE --> XLA
+    XLA --> GL[GL Interface / Journal Import / Posting]
+```
+
+银行文件、付款文件、税号、客户/供应商银行账户和税务登记均属敏感数据。落地层使用加密、访问控制、病毒扫描、Checksum、不可变归档和生命周期策略；日志只保留掩码账号、请求 ID、外部键、状态和错误摘要。
+
+### 7.2 接口矩阵和幂等设计
+
+| 来源 → 目标 | 推荐边界 | 关键输入/外部键 | 成功证据 |
+| --- | --- | --- | --- |
+| 银行 → CE | Bank Statement Loader/Open Interface | Account、Statement Number/Date、Line Number、TRX Code、Amount、Value Date、Hash | 正式 Statement Header/Lines、Import Report |
+| 外部资金系统 → CE | Reconciliation Open Interface | External Transaction ID、Account、Date、Currency、Amount、状态 | CE 可用交易可被匹配/清算 |
+| AP → IBY | PPR/Payment Process Profile | Invoice、Supplier、Payee Bank、Payment Method、PPR ID | Payment Instruction、Transmission、ACK |
+| AR/外部收款 → AR/CE | AutoLockbox/Receipt/Open Interface | Receipt/Deposit/Batch、Customer、Amount、银行参考 | Receipt、Application、Cleared/Reconciled |
+| AP/AR/PO → ZX | 标准交易接口传 Determining Factors | Tax Classification、Party/Location、Tax Date、Regime | ZX Tax Line、Recovery/Accounting |
+| CE/IBY/ZX → GL | Create Accounting/Transfer/Journal Import | Event、Ledger、Accounting Date、CCID、借贷金额 | XLA Final、GL Journal/Posting |
+
+推荐幂等键：`source_system + bank_account_or_legal_entity + statement_or_document + line_or_sequence + currency + business_date`。同一文件修正版使用版本号和父文件键，不能覆盖原始文件。接口日志保存 `request_id`、父/子请求、外部键、EBS 主键、状态、错误码、重试次数、文件哈希和银行 Message ID。
+
+### 7.3 接口状态与重放
+
+```text
+RECEIVED → VALIDATED → LOADED/IMPORTED → RECONCILED/ACCOUNTED
+        ↘ REJECTED → CORRECTED → RETRIED
+        ↘ DUPLICATE → ARCHIVED
+        ↘ ACK_PENDING → ACCEPTED/REJECTED/UNKNOWN
+```
+
+重放前先查询 EBS 主键和外部键：银行文件看 Statement Number/Hash，付款看 Payment Instruction/Transmission，收款看 Receipt/Deposit，税务看源交易/行和 Tax Line。部分成功时只重送失败行；对 `UNKNOWN` 回执先向银行查询，不要直接新建付款。
+
+### 7.4 性能、安全和版本
+
+- 大批量银行文件按账户/日期分片，Loader、Import 和 AutoReconciliation 分阶段运行，避免同一账户并发锁定。
+- 对账查询按 Statement Header、账户、日期和状态过滤；税行查询必须带 Application、Entity/Event Class 和 `TRX_ID`，避免跨产品误连。
+- 不直接更新 `CE_*`、`IBY_*`、`ZX_*`、`XLA_*` 业务表；使用标准程序、Open Interface、API 或 Integration Repository 服务。
+- 银行格式、税务规则和本地化补丁纳入版本管理；以真实文件和代表性交易回放自动化回归测试。
 
 ## 8. 高频问题与练习
 
-- 银行流水未匹配：检查账户、交易码、日期窗口、金额、参考号和规则优先级。
-- 税未计算/税率错误：检查配置有效期、税注册、地点、产品税分类、规则和人工覆盖。
-- CE 与 GL 差异：检查未清算项目、会计日期、未会计交易、手工日记账和期间。
+### 8.1 高频问题定位矩阵
+
+| 症状 | 先查什么 | 常见根因 | 正确修复 |
+| --- | --- | --- | --- |
+| 银行流水未导入 | 文件哈希、账户、Statement Number、接口错误 | 文件格式/编码、账号映射、控制总额或重复 | 修正 Loader/映射后只重跑失败文件 |
+| 银行流水未匹配 | 交易码、Reference、金额、币种、日期窗口 | 银行代码未映射、参考号截断、容差不合适 | 调整规则或人工匹配并留证，不伪造源交易 |
+| 自动对账金额差异 | Bank Amount、Original Amount、Charges、汇率 | 银行费用、汇率、正负号或 Value Date | 按 Bank Charges/Errors 或标准调整处理 |
+| 付款文件状态未知 | Payment Instruction、Transmission、ACK/Message ID | 只有技术回执、业务回执延迟或传输重试 | 先查银行和 IBY 状态，再决定重传 |
+| 现金预测偏高/重复 | Template Source、日期、状态和来源键 | Invoice+Payment、PO+Invoice 重复计入 | 明确选择规则，保留来源快照后重算 |
+| 税未计算 | Owner、Regime、Tax、Party Registration、Place | 税不可用、登记/地点缺失、日期不在有效期 | 修正配置/主数据并重新计算交易 |
+| 税率错误 | Status、Rate、Jurisdiction、Fiscal Class | 规则优先级、免税、产品分类或辖区不符 | 对比确定因素，不直接改最终税额 |
+| 税额正确但账户错误 | ZX Tax Line、Recovery、SLA/AutoAccounting | 抵扣率、税账户或会计规则错误 | 修正 Recovery/账户规则并重做会计 |
+| CE 与 GL 不符 | Clearing/Reconciliation、会计事件和期间 | 未清算、未会计、手工 GL、重复或汇兑 | 按银行-CE-源子账-SLA-GL 链路逐层对账 |
+
+### 8.2 最小端到端测试矩阵
+
+| 场景 | 必测变体 | 预期控制点 |
+| --- | --- | --- |
+| AP 付款 | 本币/外币、银行费用、退票、重传 | PPR、IBY 状态、银行 ACK、清算和对账 |
+| AR 收款 | 单发票、多发票、On-account、Unidentified、退回 | Receipt、Application、Remittance、Cleared、Lockbox 错误 |
+| 银行对账 | 唯一匹配、多匹配、无匹配、Misc、银行错误 | 规则优先级、容差、人工原因、GL Reconciliation |
+| 现金预测 | Invoice+Payment、PO+Invoice、工资/税款、内部转账 | 来源去重、时间桶、币种、置信度和版本 |
+| 税务 | 标准、零税率、免税、反向计税、部分抵扣、贷项 | Regime→Rate、Place、Registration、Recovery、税行和报告 |
+| 多组织/多币种 | 跨 OU/法人、外币账户、跨辖区 | 安全上下文、账户用途、汇率日期、税务登记和清算账户 |
 
 建议完成一笔 AP 付款至银行清算、一笔 AR Lockbox 至对账，以及一笔含可抵扣/不可抵扣税的采购交易。
 
@@ -226,10 +526,64 @@ flowchart TD
 - 外部税引擎需记录请求/响应、超时、降级和重放策略；禁止日志泄露敏感信息。
 - 现金与税务月结分别建立 CE-GL、银行-CE、ZX 子账-税务报表-GL 对账。
 
-### 9.8 官方操作依据
+### 9.8 页面剧本：AP 付款到银行对账
+
+1. **付款前**：确认发票已验证、无付款挂起，供应商/收款人银行账户、付款方法、币种、到期日和 Payment Process Profile 有效。
+2. **创建 PPR**：在 Payments Manager 选择模板、付款日期、账簿/OU、付款账户、选择规则和付款文件格式；保存 PPR 编号。
+3. **审核 Proposed Payments**：核对供应商、发票、金额、折扣、预付款应用和付款组；发现异常时从 PPR 排除而不是删除发票。
+4. **生成 Payment Instruction**：检查格式化日志、付款指令金额、文件哈希和收款人数量；审批人与文件生成/传输人分离。
+5. **传输与回执**：发送到银行，分别记录传输成功、技术 ACK、业务接受/拒绝、结算和退票；未知状态先查询银行 Message ID。
+6. **导入银行对账单**：按账户和 Statement Date 导入，检查付款号/批次号、银行金额、费用和 Value Date。
+7. **自动/手工对账**：AutoReconciliation 唯一匹配后确认 Cleared/Reconciled；银行费用按批准的 Cash Management Activity 处理。
+8. **会计与归档**：确认 AP/IBY/CE SLA、GL 批次、付款文件、银行回执和对账报告可相互下钻。
+
+### 9.9 页面剧本：AR 收款与 Lockbox 对账
+
+1. 接收银行 Lockbox 文件，验证 Transmission、Batch、Deposit、账户、币种、总额和文件哈希。
+2. 运行 Lockbox 导入/验证；按 Receipt、客户、发票参考和金额检查已应用、On-account、Unidentified 与拒绝行。
+3. 修正客户/发票匹配或建立调查队列；不要把不明收款强制应用到相似金额发票。
+4. 确认 Receipt、Application、Remittance、Cleared 状态，再导入对应银行 Statement。
+5. AutoReconciliation 匹配 Deposit/Receipt；退票或短款使用标准 Reversal/调整并复核 AR 余额。
+6. 对账完成后核对 AR Receipt、CE 清算、银行余额、SLA/GL 和 Lockbox Exception Report。
+
+### 9.10 页面剧本：现金预测与资金调拨
+
+1. 复制并版本化 Cash Forecast Template，确认来源、时间桶、币种、日期类型、OU/Ledger 和状态过滤。
+2. 运行 Forecast，分层查看已确认余额、AP/AR 在途、PO/合同承诺、工资/税款和手工预测。
+3. 检查 Invoice+Payment、PO+Invoice 等重复来源，记录排除规则与来源快照。
+4. 发现短缺时创建 Bank Transfer/Sweep/Cash Pool 计划，指定转出/转入账户、授权人、币种、Value Date 和清算账户。
+5. 结算后导入银行流水，匹配两端转账；将预测值与实际银行余额按“金额/日期/汇率/来源”拆分差异。
+
+### 9.11 页面剧本：EBTax 税务配置与交易验证
+
+1. 在 Tax Managers 职责中确认 Configuration Owner、Legal Entity/OU、Tax Regime 与 Party Tax Profile。
+2. 按 Regime to Rate Flow 配置 Tax、Tax Status、Tax Rate、Jurisdiction、有效期、Recovery Rate 和 Reporting Type。
+3. 配置确定因素：Party Registration/Exemption、产品 Fiscal Classification、Place of Supply、交易类型和税务日期。
+4. 用 AP、AR、PO/Receipt 和 Credit/Return 各测试标准、免税、零税率、反向计税、部分抵扣和外币交易。
+5. 查询 ZX Tax Lines，核对 Taxable Basis、Tax Rate、Tax Amount、Recoverable/Nonrecoverable、税币/功能币和舍入。
+6. 运行源模块 Create Accounting，核对税账户、应付/应收、税务登记簿和法定报表；保留规则命中和人工覆盖证据。
+
+### 9.12 页面剧本：现金与税务月结
+
+| 顺序 | 操作 | 验收证据 |
+| --- | --- | --- |
+| 1 | 完成银行文件、付款、收款、Lockbox、Treasury 和税务接口导入 | 文件/批次控制总额、哈希、请求 ID |
+| 2 | 清理接口错误、未知回执、未匹配和重复 | Exception Report、调查项、重放记录 |
+| 3 | 完成 AP/AR/CE/IBY/Treasury 会计 | SLA Final、GL Import/Posting |
+| 4 | 完成 AutoReconciliation 和人工异常审批 | 银行余额、未达项、清算状态 |
+| 5 | 核对 ZX 税行、登记簿、Recovery 和税账户 | 税务报表/GL 对账、税务负责人签核 |
+| 6 | 关闭期间并归档 | 参数、日志、输出、回执、对账和版本化配置 |
+
+### 9.13 官方操作依据
 
 - [Oracle Cash Management User Guide — Bank Reconciliation](https://docs.oracle.com/cd/E26401_01/doc.122/e48900/T359831T359834.htm)
+- [Oracle Cash Management User Guide — Automatic Reconciliation and Multi-Currency](https://docs.oracle.com/cd/E26401_01/doc.122/e48900/T359831T359837.htm)
+- [Oracle Cash Management User Guide — Reconciliation Open Interface](https://docs.oracle.com/cd/E26401_01/doc.122/e48900/T359831T359835.htm)
+- [Oracle Cash Management User Guide](https://docs.oracle.com/cd/E26401_01/doc.122/e48900/toc.htm)
 - [Oracle E-Business Tax User Guide — Tax Regimes and Rates](https://docs.oracle.com/cd/E26401_01/doc.122/e48751/T439959T439962.htm)
+- [Oracle E-Business Tax User Guide — Tax Registrations and Recovery](https://docs.oracle.com/cd/E26401_01/doc.122/e48751/T439959T439963.htm)
+- [Oracle E-Business Tax User Guide — Tax Transactions and Manual Tax Lines](https://docs.oracle.com/cd/E26401_01/doc.122/e48751/T439959T470305.htm)
+- [Oracle Payables User Guide — Payment Process Requests](https://docs.oracle.com/cd/E26401_01/doc.122/e48760/T295436T369088.htm)
 
 ## 10. 专题详解
 
