@@ -93,39 +93,288 @@ erDiagram
 
 ## 3. 成本方法与要素
 
-Standard Cost（标准成本）以预设标准计价，实际差异进入采购价差、材料/资源/制造费用差异等账户；Average Cost（平均成本）随接收和交易更新单位成本。成本方法通常在组织层决定，变更影响重大，不能当作普通参数调整。
+成本方法由 Inventory Organization/Cost Organization 层的配置决定；成本类型（Cost Type）是成本版本/模拟版本，不是成本方法。生产环境更换方法或组织成本组会影响历史估值、WIP、COGS 和报表，必须按期间、物料范围和会计影响单独立项。
 
-常见 Cost Element（成本要素）包括 Material（材料）、Material Overhead（材料间接费）、Resource（资源）、Outside Processing（外协加工）和 Overhead（制造费用）。要素既服务分析，也影响账户和差异解释。
+### 3.1 成本方法比较
+
+| 方法 | 存货计价逻辑 | 制造/WIP特点 | 适用与风险 |
+| --- | --- | --- | --- |
+| Standard Costing | 按冻结标准成本计价；实际与标准的差额记入价格、用量、费率或成本更新差异 | WIP 按标准/实际投入和完工规则计算，工单关闭时确认差异 | 适合成本控制和预算；标准更新会重估库存并产生调整 |
+| Average Costing | 按数量加权的移动平均成本；接收和实际制造成本更新单位成本 | 采购成本和制造资源/材料逐步进入平均成本；WIP 不因平均成本更新而自动重估 | 适合成本波动频繁行业；需控制负库存、回溯交易和平均成本调整 |
+| FIFO/LIFO Layer Costing | 按收发顺序维护成本层，出库消耗特定层 | 成本层和制造交易会影响出库成本及层结转 | 受法规、版本和组织选项限制；层维护和负库存风险较高 |
+| Periodic Average Costing | 在期间内累计成本和数量，期末以期间平均成本计价 | 期间结束才计算成本和差异，不能作为普通 Perpetual Costing 替代 | 适合按期吸收实际采购/制造成本；需额外 Periodic Rates/Cost Type 设置 |
+| Periodic Incremental LIFO | 以期间层和增量方式计算库存 | 期末计算层和增量差异 | 适用范围窄，必须由法规和实施文档确认 |
+
+“平均成本”不是“实际成本完全正确”：平均成本仍受成本更新、发票价差、负库存、回溯日期和调整账户影响；“标准成本”也不是只维护一个单价，需按五类成本要素和层级维护。FIFO/LIFO、周期成本和重复制造场景要以目标版本的 Cost Management 文档、许可证和本地化功能为准。
+
+平均成本组织的核心计算可用下式复核：`新平均成本 =（现有库存价值 + 本次事务价值）÷（现有数量 + 本次事务数量）`。采购接收进入 Receiving Inspection 通常不更新平均成本，交付到库存才进入加权计算；同一组织内各子库存通常共享同一物料平均单位成本。Average Cost Update 支持新单位成本、百分比变化或现有库存价值变化三种方式，必须指定 Adjustment Account；若错误来源于 WIP 发料，应先退回库存、修正平均成本后再发回 WIP。
+
+### 3.2 成本类型、要素和子要素
+
+| 成本层 | 示例 | 业务用途 |
+| --- | --- | --- |
+| Cost Type | Frozen、Pending、Average、Simulation、Periodic Rates | 冻结生产成本、待发布成本、模拟/对比和周期费率 |
+| Cost Element | Material、Material Overhead、Resource、Outside Processing、Overhead | 分析库存/WIP 构成、定义账户和差异来源 |
+| Cost Sub-element | Item、Activity、Resource、Overhead Rate | 细化材料项目、资源费率、作业和间接费 |
+| Cost Level | This Level、Previous Level | 区分当前装配层成本与下层子装配成本 |
+
+五类 Cost Element 的边界：
+
+- **Material**：采购件、库存件或组件的材料成本；制造装配可能同时包含 Previous Level Material。
+- **Material Overhead**：按材料基础或活动费率吸收的材料间接费用。
+- **Resource**：人工、机器、外包资源等，按单位、批次、金额或实际费率计费。
+- **Outside Processing（OSP）**：外协采购服务或外协资源，通常与采购订单/接收关联。
+- **Overhead**：按资源、作业、完工或其他基础吸收的制造间接费用。
+
+每个成本要素可以分配不同的 Valuation、Absorption、Variance 和 Adjustment 账户；相同账户可汇总多个要素，但会牺牲差异分析粒度。资源和制造费用要同时维护 Department、Resource、Rate、Basis、有效期和组织，不能只在物料成本表中查单价。
+
+### 3.3 成本卷积、待定成本和冻结成本
+
+```mermaid
+flowchart LR
+    BOM[BOM/替代/版本] --> ROLL[Cost Rollup]
+    ROUTE[Routing/Resource/OSP] --> ROLL
+    RATE[资源费率/制造费用率] --> ROLL
+    ROLL --> PENDING[Pending Cost]
+    PENDING --> REVIEW[成本比较/异常审核]
+    REVIEW --> UPDATE[Standard Cost Update]
+    UPDATE --> FROZEN[Frozen Cost]
+    FROZEN --> VAL[库存/WIP/COGS 计价]
+    UPDATE --> VAR[成本更新差异/重估报告]
+```
+
+标准成本卷积应先检查 BOM、Routing、资源、OSP、间接费用、替代件、组织共享成本和生效日期，再比较 Pending 与 Frozen 的要素/层级差异。发布前冻结采购、生产和发运窗口，保存更新前后成本、库存数量/价值、WIP 余额和差异账户控制总额。标准成本更新只适用于符合组织/主成本组织条件的配置，不能在任意组织随意执行。
+
+平均成本更新则直接改变指定物料/成本要素的平均单位成本，并以 Adjustment Account 对冲库存价值变化；更新会重估组织拥有的现有库存和在途库存，但不按同样方式重估 WIP。更新失败行应通过标准 Material Transactions/Cost 窗口修正重提交。
+
+标准成本更新从指定 Cost Type 复制成本到 Frozen，可按物料、类别、范围或零成本项选择更新范围；Oracle 会生成 Inventory、Intransit 和（启用 WIP 时）WIP Standard Cost Adjustment 报告及成本历史。标准成本更新只能从使用 Standard Costing 的主成本组织执行；成本更新期间可以继续业务事务，但相关会计处理会等待成本更新完成，期间关闭、工单关闭或 GL 传送运行时更新也可能排队。
+
+### 3.4 差异分类与解释
+
+| 差异 | 典型原因 | 责任和证据 |
+| --- | --- | --- |
+| Purchase Price Variance（PPV） | PO 价格/接收价格与标准成本不同 | 采购订单、供应商发票、接收日期和标准成本 |
+| Invoice Price Variance（IPV） | 发票价格与采购接收/订单价格不同 | AP 发票验证、匹配、汇率和税 |
+| Material Usage Variance | 实际领料数量与 BOM/标准用量不同 | 领料、退料、替代件、废品和 WIP 工单 |
+| Resource Rate/Efficiency Variance | 资源实际费率或用量与标准不同 | Resource、Department、工时、效率和 Routing |
+| Overhead Variance | 间接费用率、吸收基础或实际池不同 | Overhead、Activity、费率和制造费用池 |
+| Standard Cost Adjustment | Frozen 标准成本更新导致库存/WIP 重估 | Cost Update、Pending/Frozen 比较和调整报表 |
+| Job Close/Period Variance | 工单关闭或期间结算时投入与完工/报废不平 | WIP Value、完工数量、废品、状态和关闭日期 |
+
+差异分析要同时说明“数量差、费率差、结构差、期间差和汇率差”，并关联事务号、工单号、采购单号或成本更新批次；只按 GL 差异账户汇总无法支持改善行动。
 
 ## 4. 关键业务会计
 
-- 采购接收：接收价值、接收应计、检验/入库和采购价差。
-- 库存交易：组织/子库存转移、杂项收发、账户别名和在途库存。
-- WIP：材料领退、资源计费、外协、完工、废品和工单关闭差异。
-- 销售成本：发运后暂估 COGS，并按收入确认比例进行 COGS/Revenue Matching（销售成本与收入匹配）。
-- Landed Cost Management（到岸成本管理，LCM）：把运费、关税等附加费用分摊到库存成本。
+### 4.1 采购接收与应计
+
+采购链要区分 Receive、Inspect、Deliver、Return、Correct 和 Invoice Match 的事实与会计时点。典型标准成本分录可能为：
+
+| 业务事件 | 借方（示例） | 贷方（示例） | 对账依据 |
+| --- | --- | --- | --- |
+| Receive 到 Receiving | Receiving Inspection/库存接收 | PO Accrual | PO、接收数量、价格和接收事务 |
+| Deliver 到库存 | Inventory Valuation | Receiving Inspection | 交付数量、子库存、物料成本 |
+| AP 发票验证 | PO/应付分配、税 | AP Liability、Accrual/PPV/IPV | 发票、匹配、税和汇率 |
+| Return to Supplier | Receiving/Accrual 冲回 | Inventory/Receiving | 退货原因、数量和原接收 |
+
+实际账户由成本方法、Receiving Options、Accrual Method、组织参数和 SLA 决定。应计未清不等于库存差异：收货与发票截止、价格差和税要分别建立控制总额。
+
+### 4.2 库存事务与成本层
+
+库存事务包括杂项接收/发出、子库存转移、组织间转移、在途交接、周期盘点、调整、Lot/Serial 事务和账户别名。每笔事务至少核对 Item、Organization、Subinventory、Locator、Lot/Serial、Quantity、UOM、Transaction Date、Source 和成本状态。
+
+| 事务类型 | 数量流 | 价值流/风险 |
+| --- | --- | --- |
+| 子库存转移 | 同组织位置变更 | 可能只变更费用/库存账户，需核对转出/转入账户 |
+| 组织间转移 | 发出组织减少、接收组织增加或在途 | 发运与接收跨期间时出现 Intransit 余额 |
+| 杂项接收/发出 | 直接增加/减少现有量 | Account Alias、原因和权限决定对冲账户 |
+| 盘点调整 | 账面量调整为盘点量 | 差异账户和盘点审批必须可追溯 |
+| Lot/Serial | 数量附加批次/序列属性 | 负库存、失效日期和追溯要求更高 |
+
+成本层取决于 Standard、Average、FIFO/LIFO 等方法。跨组织共享成本时，确认是共享 Frozen Cost 还是各组织独立成本；在途交易要按发出/接收组织和会计期间分别核对。
+
+### 4.3 WIP 工单、资源和制造费用
+
+```mermaid
+flowchart LR
+    JOB[Discrete Job / Repetitive Schedule] --> ISSUE[Material Issue / Backflush]
+    JOB --> MOVE[Move / Operation Completion]
+    JOB --> RES[Resource / OSP Charge]
+    RES --> OH[Overhead Absorption]
+    ISSUE --> WIPVAL[WIP Valuation by Element]
+    MOVE --> WIPVAL
+    OH --> WIPVAL
+    WIPVAL --> COMP[Assembly Completion / Scrap]
+    COMP --> CLOSE[Close Job / Period Variance]
+    CLOSE --> GL[WIP Valuation + Variance Accounts]
+```
+
+WIP Accounting Class 为每类工单定义 Valuation、Absorption 和 Variance 账户；可按成本要素分别显示，也可把多个要素汇总。工单状态控制可否领料、移动、资源、完工、废品、成本更新和关闭，常见状态包括 Unreleased、Released、Complete、Complete-No Charges、On Hold、Closed（具体值以 WIP Lookup 为准）。
+
+- **材料**：手工发料、倒冲、退料、替代件和批次/序列发料；需要与 BOM/实际用量对比。
+- **资源**：按资源费率、员工实际费率或标准费率计费；区分单位基础和批次固定费用。
+- **OSP**：外协采购订单、接收和发票可能跨越 WIP 期间；需核对 OSP 资源和应计。
+- **Overhead**：按资源值、资源事务或工序完工吸收；费率池、基础和有效期必须可解释。
+- **完工/废品**：成品成本从 WIP 转入库存，废品和报废根据设置进入差异/废品账户。
+
+工单关闭时计算最终成本和差异；若未完成必需领料、资源或完工事务，差异可能被低估。关闭前应先确认 Pending Move、Pending Material、Pending Resource、未计成本和跨期间事务。
+
+### 4.4 发运、COGS 与收入匹配
+
+销售出库包含 Pick Release、Ship Confirm、Inventory Issue、COGS Recognition 和 AR/收入事件。发运后库存数量减少不等于 COGS 已确认；COGS Recognition 会按收入确认比例把 Deferred COGS 转入 COGS，具体时点取决于 OM/AR、成本方法和配置。
+
+```text
+订单/发运
+→ Inventory Issue（库存减少/Deferred COGS）
+→ AR 发票/收入确认
+→ COGS Recognition（按收入比例）
+→ COGS / Inventory SLA
+→ GL 与收入匹配对账
+```
+
+发运截止要按 Ship Date、Invoice Date、Revenue Date 和 GL Date 分别检查；退货、贷项、部分发运、跨组织发运和收入延迟需验证 COGS/Revenue Matching 不重复或遗漏。
+
+### 4.5 Landed Cost Management（LCM）
+
+LCM 可在收货前估计、收货后服务或针对任意单据/事务计算预计和实际到岸成本。常见成本因素包括运费、保险、处理费、仓储费、集装箱费、关税和进出口费用。
+
+| 阶段 | 业务动作 | 成本控制 |
+| --- | --- | --- |
+| 估计 | 按 PO/装运/数量预测费用 | 估计因子、分摊基础、供应商和币种 |
+| 收货 | 将估计成本随收货记录 | 库存价值、接收应计和在途 |
+| 实际 | AP 发票/费用单匹配并更新 | 估计-实际差异、税和汇率 |
+| 结算 | 将成本分摊到库存、在途或费用 | 项目、组织、成本要素和 GL 账户 |
+
+LCM 分摊可按数量、金额、重量、体积、装运或自定义因子；估计与实际必须可并列查询，不应直接用手工库存调整替代 LCM 事务。
 
 具体分录取决于组织参数、成本方法和 SLA，示例不可替代实例验证。
 
 ## 5. 功能顾问实施重点
 
-1. 确认库存组织、成本组织/方法和会计日历。
-2. 定义成本要素、子要素、资源、制造费用和账户。
-3. 建立物料成本、成本更新与冻结流程。
-4. 配置采购接收、库存、WIP、发运及 COGS 规则。
-5. 设计关账顺序、差异阈值、库存价值报表和 GL 对账。
+### 5.1 基础组织和成本架构
 
-测试需覆盖负库存、退货、跨组织转移、外币采购、成本更新、工单取消/关闭、追溯交易和跨期发运。
+1. **企业与组织**：确认 Legal Entity、Ledger、Operating Unit、Inventory Organization、成本组织和组织 Cost Group 的关系；共享成本时明确主成本组织和复制范围。
+2. **成本方法**：为每个库存组织选择 Standard、Average、FIFO/LIFO 或 Periodic 选项；记录成本方法、成本期间、库存会计期间和 GL 期间的边界。
+3. **成本类型**：定义 Frozen、Pending、Simulation、Average 或 Periodic Rates 等 Cost Type；限制谁可以创建、更新和发布生产成本。
+4. **成本要素**：定义 Material、Material Overhead、Resource、OSP、Overhead 及子要素；为每个要素配置库存、WIP、吸收、差异、调整和清算账户。
+5. **制造基础**：维护 BOM、Routing、Department、Resource、Resource Rate、OSP Item/供应商和 Overhead Rate，并校验生效日期及版本。
+
+### 5.2 采购、库存和 WIP 配置
+
+| 领域 | 关键设置 | 验收问题 |
+| --- | --- | --- |
+| Receiving | Receipt Routing、Accrual、Inspection、Invoice Match | 接收/交付/退货是否在正确期间和账户 |
+| Inventory | Subinventory、Locator、Lot/Serial、Negative Balance、Account Alias | 数量、安全库存、批次和账户是否受控 |
+| WIP | Accounting Class、Job Type、Job Status、BOM/Routing、Move/Resource | 哪些状态允许领料、移动、完工和关闭 |
+| Shipping/COGS | Pick/Ship、COGS Recognition、Revenue Matching | 发运和收入不同步时 COGS 如何确认 |
+| LCM | Cost Factor、分摊基础、估计/实际、AP 匹配 | 到岸成本是否进入正确库存/在途/费用 |
+| SLA/GL | Event Class、Accounting Class、账户规则、传送粒度 | 成本事务能否下钻到 GL，是否保留明细 |
+
+### 5.3 成本发布与变更控制
+
+标准成本发布前执行 Cost Rollup、Cost Type Comparison、Pending Cost Review、Inventory/WIP Standard Cost Adjustment 报告；冻结生产、采购和发运窗口，取得财务批准后再运行 Standard Cost Update。平均成本更新要指定 Adjustment Account，说明是单位成本、百分比还是库存价值调整，并评估现有库存和在途重估。
+
+成本方法、成本组织、COA、WIP Accounting Class 和 COGS 账户属于高风险变更。每次变更建立旧值/新值、有效日期、影响物料和组织、预期分录、回退方案和测试证据，禁止在生产直接修改成本表。
+
+### 5.4 关账与报表设计
+
+成本期间通常按库存组织独立开关，并与 GL 使用同一财务日历。建议至少提供：
+
+- Inventory Valuation（按物料、组织、子库存、成本要素和期间）；
+- Intransit/Receiving Accrual 与 AP 截止；
+- WIP Value、Job Value、Period/Job Close Variance；
+- Standard Cost Update/Adjustment、PPV/IPV、资源/制造费用差异；
+- COGS 与收入匹配、退货和未确认 COGS；
+- Cost Manager/Transaction Manager 异常、未计成本和未会计事务。
+
+测试需覆盖负库存、退货、跨组织转移、外币采购、成本更新、工单取消/关闭、追溯交易、跨期发运、Lot/Serial、OSP 跨期和估计/实际到岸成本。
 
 ## 6. 技术与接口视角
 
-常见对象涉及 `MTL_MATERIAL_TRANSACTIONS`、`MTL_TRANSACTION_ACCOUNTS`、成本表、接收表、WIP 交易/成本表及 XLA。成本接口通常异步处理；接口表有记录不代表物料交易或会计已完成。应按 `transaction_id`、组织、请求 ID、处理状态和错误码追踪。
+### 6.1 技术架构与处理器
 
-批量接口须保存来源唯一键、物料、组织、子库存/货位、数量/UOM、日期、交易类型、账户和批次控制总额。重跑要识别事务管理器已处理但回写未完成的情况。
+```mermaid
+flowchart TB
+    SRC[PO/Receiving/OM/WIP/External] --> INT[Open Interface / Standard Forms]
+    INT --> TM[Inventory Transaction Manager]
+    TM --> MMT[MTL_MATERIAL_TRANSACTIONS]
+    MMT --> CP[Cost Manager / Cost Processor]
+    CP --> ACC[MTL_TRANSACTION_ACCOUNTS / WIP Accounting]
+    ACC --> XLA[XLA Events / Cost Accounting]
+    XLA --> GL[GL Interface / Journal Import / Posting]
+    BOM[BOM/Routing/Resource/Rate] --> ROLL[Cost Rollup / Cost Update]
+    ROLL --> COST[CST Item Costs / Pending/Frozen]
+    COST --> CP
+    MMT --> WIP[WIP Transactions / Job Cost]
+    WIP --> XLA
+    SHIP[Shipping/COGS] --> XLA
+```
+
+接口表有记录不代表物料事务、成本处理或会计已完成。排错要按 `interface_id → transaction_id → cost status → accounting event → GL journal` 追踪，并同时确认 Inventory Organization、Cost Organization、Period 和请求 ID。
+
+### 6.2 接口矩阵
+
+| 来源 → 目标 | 推荐边界 | 关键输入/幂等键 | 成功证据 |
+| --- | --- | --- | --- |
+| PO/Receiving → Inventory | 标准接收/交付/退货流程 | PO/Receipt/Shipment/Line、Item、Org、Qty、UOM、Lot/Serial | `RCV_TRANSACTIONS`、`MTL_MATERIAL_TRANSACTIONS` |
+| 外部库存 → Inventory | `MTL_TRANSACTIONS_INTERFACE` + Transaction Manager | Source System/Document/Line、Item/Org/Subinventory/Locator、Qty/UOM、Date | 接口状态成功、MMT 事务号和错误为空 |
+| BOM/Routing/费率 → Cost | Cost Rollup/Cost Type/Standard Cost Update | Cost Type、Item/Org、BOM/Routing 版本、生效日 | Pending/Frozen 成本、比较和调整报告 |
+| WIP → Cost/GL | WIP Material/Move/Resource/Completion/Close | Job、Operation、Resource、Qty、事务日期和会计分类 | WIP Value、Variance、XLA/GL |
+| OM/Shipping → COGS | Inventory Issue + COGS Recognition | Order/Delivery/Line、Item、Qty、收入事件 | COGS/Inventory 分录、收入匹配状态 |
+| LCM/AP → Inventory | Landed Cost 因子/实际费用匹配 | Shipment/Receipt、Cost Factor、分摊基础、币种 | 估计/实际 LCM 成本和库存价值 |
+
+自定义暂存表至少保存来源唯一键、批次控制总额、物料、组织、子库存/货位、Lot/Serial、数量/UOM、事务日期、成本类型、账户、状态、错误码、请求 ID、EBS 主键和原始报文哈希。重跑前先查询是否已生成 MMT、WIP 事务或 XLA 事件，处理“事务已成功但回写失败”的情况。
+
+### 6.3 关键对象与追溯路径
+
+| 业务对象 | 常见对象 | 追溯关系 |
+| --- | --- | --- |
+| 物料主数据 | `MTL_SYSTEM_ITEMS_B`、`MTL_PARAMETERS` | Item + Inventory Organization + Cost Group |
+| 物料事务 | `MTL_MATERIAL_TRANSACTIONS`、`MTL_TRANSACTION_ACCOUNTS` | `TRANSACTION_ID → 成本账户/批次/来源` |
+| 接收事务 | `RCV_TRANSACTIONS`、`RCV_SHIPMENT_HEADERS/LINES` | Receipt → PO → MMT/应计 |
+| 物料成本 | `CST_ITEM_COSTS`、成本类型/成本要素视图 | Item + Org + Cost Type + Element/Level |
+| WIP | `WIP_ENTITIES`、`WIP_OPERATIONS`、`WIP_TRANSACTIONS`、WIP 成本/值视图 | Job → Material/Move/Resource/Completion/Close |
+| COGS | COGS/收入匹配事务和 XLA | Delivery/Order Line → Inventory Issue → COGS Recognition |
+| LCM | LCM 成本因子、分摊和实际费用对象 | Receipt/Shipment → Estimated/Actual Landed Cost |
+| 会计 | `XLA_EVENTS`、`XLA_AE_HEADERS/LINES`、`GL_IMPORT_REFERENCES` | 事务 → Event → SLA → GL Journal |
+
+表名、状态值和成本列会随 R12.2 补丁、制造模块和本地化变化；生产 SQL 先用 eTRM、`ALL_TAB_COLUMNS`、Integration Repository 和请求日志核对。查询必须按组织、期间、物料或事务范围过滤，并遵守职责和数据访问权限。
+
+### 6.4 异步处理、性能和安全
+
+- Cost Manager、Transaction Manager、WIP 处理、COGS Recognition 和 Create Accounting 分阶段运行；同一组织/物料/期间避免并发重算或重放。
+- 大批量事务按组织、日期、Item 或来源批次分片；接口表建外部键、状态、错误和批次索引，成功数据按策略归档。
+- Lot/Serial、UOM、子库存/货位和负库存校验必须在进入标准接口前完成；错误行隔离，不能因一行错误整批无限重试。
+- 成本更新和期间关闭期间控制后台重试；配置、费率、BOM/Routing 和成本发布均需版本化。
+- 生产环境禁止直接更新 `MTL_*`、`CST_*`、`WIP_*`、`XLA_*`、`GL_*` 业务表；使用标准表单、Open Interface、公开 API 或支持的并发程序。
 
 ## 7. 月结与排错
 
-建议顺序：清理接口和未处理物料交易 → 完成接收与应计 → 处理 WIP 未计费/未关闭工单 → 完成发运和 COGS → 运行成本处理与会计 → 对账库存/WIP/接收/COGS 与 GL → 关闭库存和成本期间。
+### 7.1 月结顺序与关期门禁
+
+```mermaid
+flowchart TB
+    A[冻结截止与来源交易] --> B[Receiving/AP Cutoff]
+    B --> C[Inventory/MTL 事务处理]
+    C --> D[WIP 领料/资源/完工/关闭]
+    D --> E[COGS Recognition / Revenue Matching]
+    E --> F[Cost Processor / Create Accounting]
+    F --> G[Inventory/WIP/Accrual/COGS 与 GL 对账]
+    G --> H{异常已解释?}
+    H -- 否 --> I[修正/标准重处理]
+    I --> C
+    H -- 是 --> J[关闭组织成本期间]
+```
+
+建议顺序：
+
+1. 冻结截止时间，完成 PO/Receiving、AP 发票、库存、WIP、发运和外部接口导入。
+2. 清理 Material/Receiving/WIP Interface、Transaction Manager、Cost Manager 和未计成本事务。
+3. 完成接收与应计截止，核对 Receipt Accrual、AP Liability、PPV/IPV 和在途。
+4. 处理 WIP 未计费/未关闭工单、资源/OSP、完工、废品和 Job Close Variance。
+5. 完成发运、COGS Recognition 和收入匹配，处理退货、贷项和跨期发运。
+6. 运行成本处理与 Create Accounting，确认 XLA Final、Transfer、Journal Import 和 Posting。
+7. 对账库存/WIP/接收/COGS 与 GL，保存控制总额、异常清单和签核。
+8. 只在无未解释门禁项后关闭 Inventory/Costing 期间；成本期间和 GL 期间分别确认状态。
 
 | 现象 | 优先检查 |
 | --- | --- |
@@ -135,11 +384,59 @@ Standard Cost（标准成本）以预设标准计价，实际差异进入采购�
 | COGS 未确认 | 发运、AR 收入、匹配程序和事件状态 |
 | 库存与 GL 不符 | 未会计交易、截止期间、账户、手工 GL 和报表口径 |
 
+### 7.2 排错路径
+
+| 层级 | 诊断问题 | 处理方式 |
+| --- | --- | --- |
+| 接口 | 是否缺 Item/Org/UOM/Subinventory/Lot/Serial/Date/Source | 通过接口错误报告修正后只重送失败行 |
+| 事务管理器 | 是否停留在 Pending/Processing/Error | 查 Manager 日志、锁、期间和并发请求 |
+| 成本 | 是否 Uncosted、成本为零或成本层不符 | 查 Cost Method、Cost Type、Item Cost、负库存和回溯 |
+| WIP | 工单是否允许事务、完工/废品/资源是否完整 | 查 Job Status、BOM/Routing、Accounting Class 和 WIP Value |
+| COGS | Inventory Issue 是否完成、收入是否确认 | 查 Delivery/AR/COGS Recognition 和跨期规则 |
+| 会计 | Event 是否生成、SLA 是否 Final、GL 是否过账 | 查 XLA、Transfer、Journal Import、CCID 和期间 |
+
+每个错误记录 `request_id`、组织、物料/工单、事务号、处理状态、错误码、修复人、修复时间和重跑范围。修复后用同一业务键验证“原错误关闭 + 新结果唯一”，不要通过手工 GL 或杂项库存事务掩盖根因。
+
 ## 8. 建议练习
 
-- 比较同一采购价格变化在标准成本和平均成本下的结果。
-- 完成采购接收、WIP 生产、发运、开票和 COGS 确认的全链追溯。
-- 为月结设计数量、价值、会计三层对账表。
+### 8.1 高频问题定位矩阵
+
+| 现象 | 先确认的事实 | 可能根因 | 标准修复与验证 |
+| --- | --- | --- | --- |
+| 接口行一直 Pending/Error | 接口批次、来源唯一键、处理状态、错误码和请求 ID | Item/Org/UOM/Locator 无效、期间关闭、事务类型或 Lot/Serial 校验失败 | 修正来源或接口字段后只重送失败行；确认接口成功且生成唯一 MMT/WIP 事务 |
+| 数量正确但库存价值为零 | 事务是否已 costed、物料 Cost Type、成本要素和生效日期 | 成本未发布、成本处理器失败、成本层缺失或负库存 | 通过标准成本/平均成本窗口和 Cost Manager 重处理；以库存价值、事务账户和 XLA 复核 |
+| 采购接收与 AP 应计不符 | Receive/Deliver、发票匹配、币种/汇率和截止日期 | 接收路由、Accrual Method、价格/汇率、跨期间接收或退货 | 按 PO-Receipt-Invoice 逐行核对，使用采购/AP 标准更正；不得用杂项库存调整掩盖应计差异 |
+| WIP 工单差异异常大 | BOM 用量、替代件、资源工时/费率、OSP、Overhead、完工和废品 | Routing/费率版本错误、倒冲重复、漏报工、工单状态或跨期事务 | 先修正业务事务和费率，再重跑成本处理；按 Usage、Rate、Efficiency、Scrap 和 Job Close Variance 解释 |
+| COGS 未确认或重复确认 | Ship Confirm、Inventory Issue、AR/收入事件、COGS Recognition 状态 | 发运和开票跨期、收入未确认、接口重放或退货未匹配 | 依订单行和交货行重跑匹配程序；核对 Deferred COGS、COGS、收入和退货方向 |
+| 标准成本更新后 GL 波动 | 更新批次、Pending/Frozen 要素、库存数量、WIP 和调整账户 | BOM/Routing/费率变化、成本层级错误、更新窗口未冻结交易 | 审批成本比较和调整报告，确认库存重估控制总额及 XLA/GL 传送；失败行用标准程序重处理 |
+| 平均成本突然异常 | 更新前后数量、平均单位成本、调整账户、负库存和回溯日期 | 大批量接收/退货、负库存、错误成本更新或外币换算 | 按 Item/Org/Date 重建移动平均；确认库存和在途重估，WIP 不应被错误重估 |
+| 库存期间无法关闭 | Pending Material/WIP、Uncosted、Receiving Interface、GL 传送状态 | 旧日期事务、锁、并发请求失败或跨组织未完成 | 使用 Close Diagnostics 和管理器日志定位，完成标准重处理并保留请求证据后再关期 |
+| 到岸成本估计与实际差异无法解释 | Cost Factor、分摊基础、装运/收货关联、发票和汇率 | 估计因子过期、分摊舍入、服务发票未匹配或重复计费 | 按装运/收货及费用行比较 Estimated/Actual，调整 LCM 因子或 AP 匹配后重算 |
+
+### 8.2 最小端到端验收矩阵
+
+| 编号 | 场景 | 必测变体 | 主要断言与证据 |
+| --- | --- | --- | --- |
+| COST-01 | PO → Receive → Deliver → AP Invoice | 标准成本、平均成本；含退货和价格差 | 数量、接收应计、库存价值、PPV/IPV、AP 负债和 SLA/GL 可追溯 |
+| COST-02 | 库存事务 | 子库存转移、组织间转移、杂项、盘点、Lot/Serial | 转出/转入数量与价值平衡，在途余额和账户别名正确 |
+| COST-03 | WIP 离散工单 | 手工发料/退料、倒冲、替代件、资源、OSP、Overhead | WIP 各成本要素、完工/废品、Job Close Variance 与会计分录一致 |
+| COST-04 | 成本卷积与发布 | 多层 BOM、替代件、无效费率、循环 BOM、版本生效日 | Pending/Frozen 成本、异常清单、更新前后库存重估和批准链完整 |
+| COST-05 | 平均成本更新 | 接收、退货、负库存、在途、追溯日期 | 移动平均计算、库存/在途重估和 Adjustment Account 正确，WIP 不被误重估 |
+| COST-06 | 发运到 COGS | 部分发运、部分开票、延迟收入、退货/贷项 | Inventory Issue、Deferred COGS、COGS Recognition、收入和 AR 行级匹配 |
+| COST-07 | LCM | 收货前估计、收货后估计、实际费用、数量/金额/重量分摊 | 估计/实际到岸成本、库存/在途/费用去向、税和汇率可解释 |
+| COST-08 | 月结 | 跨期事务、未计成本、接口失败、WIP 未关闭、GL 未过账 | 关期门禁项全部清零或有批准例外；库存/WIP/应计/COGS 与 GL 控制总额一致 |
+| COST-09 | 接口幂等 | 超时重试、重复报文、部分成功、回写失败 | 同一来源唯一键只生成一笔业务事务；重试不会重复数量、成本或 XLA 事件 |
+| COST-10 | 权限与审计 | 成本维护、关期、接口重处理、生产只读查询 | 职责只能执行授权动作，审批、请求 ID、旧值/新值和日志可审计 |
+
+每个用例至少保留：测试数据、组织/期间、来源唯一键、请求 ID、页面或报表输出、事务号、会计事件、GL 凭证号、预期/实际控制总额和缺陷结论。涉及成本发布、平均成本更新或关期的用例必须在非生产环境先验证，并在生产执行前重新确认物料范围与期间。
+
+### 8.3 练习题
+
+1. **成本方法对比**：用同一物料建立两笔不同采购价格和一笔退货，分别在标准成本与平均成本下计算库存价值、PPV/IPV 和调整账户，说明负库存或回溯日期会怎样改变结果。
+2. **全链追溯**：完成采购接收、WIP 生产、完工、发运、开票和 COGS 确认，从业务单据追到 MMT/WIP 事务、成本账户、XLA 和 GL，并标注每个期间截止点。
+3. **工单差异**：故意制造 BOM 用量、资源费率和废品数量差异，使用 WIP Value、Job Value 和 Variance 报表将差异拆成 Usage、Rate、Efficiency、Scrap 和 Close 五类。
+4. **月结演练**：制造一笔未计成本事务、一笔跨期间接收和一笔收入延迟发运，按本章 7.1 顺序清理，提交关期前后数量、价值、会计三层对账表。
+5. **LCM 分摊**：同一装运同时发生运费、保险和关税，分别按数量、金额和重量分摊，比较舍入、币种和估计-实际差异对库存价值的影响。
 
 ## 9. 资深顾问实操：成本事务与关账
 
@@ -228,11 +525,60 @@ stateDiagram-v2
 | 价值 | 库存价值、WIP 价值、接收应计、COGS | 成本方法、成本层和截止是否一致 |
 | 会计 | 事务分配、XLA、GL 控制账户 | 是否未会计、未传输、手工 GL 或账户错误 |
 
-### 9.8 官方操作依据
+### 9.8 页面剧本：采购接收、应计与库存入账
 
-- [Oracle Cost Management User's Guide — Period Close](https://docs.oracle.com/cd/E26401_01/doc.122/e48829/T372621T378953.htm)
-- [Oracle Inventory User's Guide — Accounting Periods](https://docs.oracle.com/cd/E26401_01/doc.122/e48820/T291651T292307.htm)
-- [Oracle Landed Cost Management User's Guide](https://docs.oracle.com/cd/E26401_01/doc.122/e48799/T528387T528392.htm)
+1. 在 Purchasing/Receiving 查询 PO、发运计划、接收路由、接收数量和交付目的地；确认 Item、Organization、UOM、Subinventory/Locator 和项目/费用分配。
+2. 完成 Receive → Inspect（如启用）→ Deliver，记录 Receipt Number、Transaction ID、交易日期和会计日期。
+3. 在 Inventory Material Transactions 查询 Delivery 事务，核对数量、成本方法、成本状态、Receiving Inspection、库存和应计账户。
+4. AP 发票完成匹配和验证后，比较发票价格、接收价格、标准/平均成本、PPV/IPV、税和汇率；异常通过采购/AP 更正，不用库存杂项调整冲销。
+5. 月末运行 Receiving Accrual、Inventory Valuation 和 AP 截止报表，按 PO/Receipt/Invoice 三条链核对数量和金额。
+
+### 9.9 页面剧本：WIP 工单成本与关闭
+
+1. 查询 Job Number、Assembly、Organization、Accounting Class、BOM/Routing 版本和 Job Status；确认工单处于允许领料、移动、资源或完工的状态。
+2. 录入或导入材料发料/退料、替代件、批次/序列、Move、Resource、OSP、Overhead、Completion 和 Scrap。
+3. 运行成本处理，查看 WIP Value、Material/Resource/OSP/Overhead 各要素以及 This/Previous Level。
+4. 对比计划 BOM/Routing 与实际事务，按 Usage、Rate、Efficiency、Scrap、配置或期间原因解释差异。
+5. 完工后执行 Close Job，确认最终成本和 Job Close Variance 已生成；不关闭仍有未处理事务、跨期 OSP 或不完整完工数量的工单。
+6. 月结时运行 WIP Value/Discrete Job Value/Expense Job Value/Variance 报告，与 WIP 控制账户和 GL 对账。
+
+### 9.10 页面剧本：标准成本卷积与更新
+
+1. 锁定目标 Cost Organization、Inventory Organization、Cost Type、Item 范围和生效日期，备份 Frozen 成本、数量和库存价值。
+2. 检查 BOM、替代件、Routing、资源、OSP、Material Overhead、Overhead Rate、Department 和 Cost Element 是否齐全且有效。
+3. 运行 Cost Rollup，将结果写入 Pending Cost；查看 Cost Type Comparison、零成本、循环 BOM、无费率和大幅波动。
+4. 由财务/成本负责人审批 Pending → Frozen 的差异，确认成本更新窗口、并发冲突和交易冻结策略。
+5. 执行 Standard Cost Update，保存 Inventory/WIP Standard Cost Adjustment 报告、成本历史和请求日志。
+6. 更新后按物料/组织核对库存重估、WIP、差异账户和 GL；对失败项使用标准成本窗口/事务报告重处理，不直接修改成本表。
+
+### 9.11 页面剧本：到岸成本估计与实际结算
+
+1. 定义 Cost Factors（运费、保险、处理、仓储、关税等）、供应商/服务商、币种、有效期和分摊基础。
+2. 对 PO/装运/收货生成 Estimated Landed Cost，明确收货前、收货后或任意单据/事务模式。
+3. 选择按数量、金额、重量、体积、装运或自定义因子分摊，检查各行分摊比例和舍入。
+4. 收到 AP 实际费用后匹配原收货/装运，更新 Actual Landed Cost，比较估计-实际差异。
+5. 核对 LCM 成本进入库存、在途、费用或项目的账户，避免重复通过 Miscellaneous Receipt/Cost Adjustment 计入。
+
+### 9.12 页面剧本：发运到 COGS 确认
+
+1. 查询订单、交货、发运确认和 Inventory Issue，确认数量、物料、组织、发运日期、会计日期和库存成本。
+2. 检查销售收入/AR 事件是否已生成，按配置运行 COGS Recognition/Revenue Matching。
+3. 对比 Deferred COGS、COGS、Inventory Relief、收入确认比例和 AR 发票；部分发运和部分开票要按行核对。
+4. 处理退货、贷项、取消发运和跨期收入；确认 COGS 不重复确认、未确认余额有明确原因。
+5. 将 COGS/Inventory SLA 与 GL 控制账户、销售收入和库存价值报表对账。
+
+### 9.13 官方操作依据
+
+- [Oracle Cost Management User's Guide](https://docs.oracle.com/cd/E26401_01/doc.122/e48829/toc.htm)：成本方法、成本要素、成本更新、事务处理和期间结算总目录。
+- [Oracle Cost Management — Average Costing](https://docs.oracle.com/cd/E26401_01/doc.122/e48829/T372621T374058.htm)：移动加权平均成本、接收/制造成本更新及库存重估边界。
+- [Oracle Cost Management — Standard Cost Update](https://docs.oracle.com/cd/E26401_01/doc.122/e48829/T372621T373688.htm)：Pending/Frozen 标准成本更新、库存调整和报告要求。
+- [Oracle Cost Management User's Guide — Period Close](https://docs.oracle.com/cd/E26401_01/doc.122/e48829/T372621T378953.htm)：按库存组织关闭成本期间、未处理事务检查和与 GL 对账。
+- [Oracle Inventory User's Guide](https://docs.oracle.com/cd/E26401_01/doc.122/e48820/toc.htm)：库存组织、物料事务、接收、账户分配和会计期间总目录。
+- [Oracle Inventory User's Guide — Accounting Periods](https://docs.oracle.com/cd/E26401_01/doc.122/e48820/T291651T292307.htm)：库存会计期间开关和关期前待处理活动。
+- [Oracle Work in Process User's Guide — WIP Costing](https://docs.oracle.com/cd/E26401_01/doc.122/e48905/T228107T228120.htm)：WIP 会计分类、成本要素、资源、外协、间接费用和差异。
+- [Oracle Work in Process User's Guide — WIP Status](https://docs.oracle.com/cd/E26401_01/doc.122/e48905/T228107T228119.htm)：工单状态与可执行事务的控制关系。
+- [Oracle Landed Cost Management User's Guide](https://docs.oracle.com/cd/E26401_01/doc.122/e48799/toc.htm)：到岸成本因子、估计/实际成本和分摊流程总目录。
+- [Oracle Landed Cost Management — Cost Processing](https://docs.oracle.com/cd/E26401_01/doc.122/e48799/T528387T528392.htm)：收货前、收货后及任意单据/事务的预计和实际到岸成本处理。
 
 ## 10. 专题详解
 

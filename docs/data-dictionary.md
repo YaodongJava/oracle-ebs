@@ -397,27 +397,89 @@
 | --- | --- | --- | --- |
 | `MTL_SYSTEM_ITEMS_B` | 物料-组织 | `INVENTORY_ITEM_ID`、`ORGANIZATION_ID`、Item 状态/属性 | 物料组织级定义 |
 | `MTL_PARAMETERS` | 库存组织参数 | `ORGANIZATION_ID`、成本方法/组织参数 | INV/CST 边界 |
+| `MTL_ONHAND_QUANTITIES_DETAIL` | 现有量明细 | `ONHAND_QUANTITIES_ID`、物料/组织/子库存/货位/批次、主单位数量 | 当前现有量、成本层或收货层对账 |
 | `MTL_MATERIAL_TRANSACTIONS` | 物料事务 | `TRANSACTION_ID`、物料、组织、数量、日期、成本状态 | 收发、转移、调整 |
 | `MTL_TRANSACTION_ACCOUNTS` | 物料事务账户 | 事务、账户、借贷/价值 | 库存会计分配 |
+| `MTL_TRANSACTION_TYPES` / `MTL_TRANSACTION_SOURCES` | 事务类型/来源 | `TRANSACTION_TYPE_ID`、Action、Source Type、Source ID | 解释 Receipt、Issue、Transfer、WIP、Sales Order 等事务语义 |
 | `MTL_TRANSACTIONS_INTERFACE` | 物料事务接口 | 接口 ID、事务类型、物料/组织、数量、处理状态 | 外部库存事务输入 |
-| `CST_ITEM_COSTS` / Cost Type | 物料成本 | 物料、组织、Cost Type、成本要素、Item Cost | Frozen/Pending 成本 |
+| `MTL_MATERIAL_TRANSACTIONS_TEMP` | 物料事务工作层 | `TRANSACTION_TEMP_ID`、`TRANSACTION_HEADER_ID`、处理状态 | Transaction Worker 临时处理；不得手工改状态 |
+| `RCV_SHIPMENT_HEADERS/LINES` | 接收装运头/行 | `SHIPMENT_HEADER_ID`、`SHIPMENT_LINE_ID`、供应商、PO、物料/数量 | Receipt/Deliver 来源与接收截止 |
+| `RCV_TRANSACTIONS` | 接收事务 | `TRANSACTION_ID`、`PARENT_TRANSACTION_ID`、PO 发运行、事务类型、数量 | Receive、Inspect、Deliver、Return、Correct 事件链 |
+| `CST_COST_TYPES` | 成本类型 | `COST_TYPE_ID`、Cost Type、更新许可 | Frozen、Pending、Simulation、Average/Periodic Rates 版本 |
+| `CST_ITEM_COSTS` | 物料成本汇总 | 物料、组织、Cost Type、要素汇总、Item Cost | Frozen/Pending 成本版本与单价 |
+| `CST_ITEM_COST_DETAILS` | 物料成本明细 | 成本要素、子要素、层级、资源/费率、Item Cost | Material、Resource、OSP、Overhead 分解 |
+| `CST_QUANTITY_LAYERS` | 数量/成本层 | Layer、Item、Org、Cost Group、数量、Item Cost | FIFO/LIFO 或层成本收发及结转 |
+| Cost Rollup/Cost Update | 成本卷积/更新批次 | Cost Type、物料/组织、BOM/Routing/费率、生效日、请求 ID | Pending → Frozen、标准成本重估和成本历史 |
 | `WIP_ENTITIES` | 工单实体 | `WIP_ENTITY_ID`、工单号、组织、状态 | 离散制造工单 |
-| `WIP_TRANSACTIONS` | WIP 事务 | 工单、事务类型、数量、资源/材料 | 发料、资源、完工、关闭 |
+| `WIP_DISCRETE_JOBS` | 离散工单 | `WIP_ENTITY_ID`、`STATUS_TYPE`、主装配、数量、Accounting Class | 工单状态、计划量、完工和关闭 |
+| `WIP_OPERATIONS` | 工序 | 工单、工序号、部门、资源、计数点/完成点 | Move、资源报工、工序完工 |
+| `WIP_TRANSACTIONS` | WIP 事务 | 工单、事务类型、数量、资源/材料 | 发料、退料、移动、资源、OSP、完工、废品、关闭 |
+| `WIP_TRANSACTION_ACCOUNTS` | WIP 会计分布 | `TRANSACTION_ID`、Accounting Line Type、Reference Account | WIP 要素、吸收、差异和清算账户 |
+| BOM/Routing/Resource/Overhead | 制造成本来源 | BOM 组件、Routing 工序、Resource/Rate、Overhead/Basis | 成本卷积的 Previous/This Level 输入 |
+| `ORG_ACCT_PERIODS` | 库存会计期间 | `ACCT_PERIOD_ID`、组织、期间、`OPEN_FLAG`、关闭日期 | 成本事务、库存关期和截止控制 |
+| COGS Recognition / Revenue Matching | 销售成本匹配 | Order/Delivery/Line、Inventory Issue、收入事件、处理状态 | Deferred COGS → COGS 与收入确认比例匹配 |
+| Landed Cost / Cost Factor | 到岸成本因子 | Shipment/Receipt、费用类型、分摊基础、估计/实际、币种 | 运费、保险、关税、处理费等进入库存/在途/费用 |
+| `XLA_EVENTS` | 成本会计事件 | `EVENT_ID`、实体、事件类型、状态和会计日期 | 物料/WIP/COGS/LCM 事务是否具备 SLA 会计资格 |
+| `XLA_AE_HEADERS/LINES` | SLA 分录头/行 | `AE_HEADER_ID`、事件、会计类、CCID、借贷、传送状态 | 成本子账分录、账户推导和 GL 下钻 |
+| `GL_IMPORT_REFERENCES` | GL 来源引用 | `JE_HEADER_ID`、`JE_LINE_NUM`、来源事务标识 | 从总账行回溯成本事务或 SLA |
+| `FND_CONCURRENT_REQUESTS` | 并发请求 | `REQUEST_ID`、程序、参数、Phase/Status、日志/输出 | Transaction Manager、Cost Manager、Create Accounting 和报表执行证据 |
+
+### 关键字段判读
+
+| 字段/状态 | 判读方式 | 常见误区与控制 |
+| --- | --- | --- |
+| `TRANSACTION_QUANTITY` / `PRIMARY_QUANTITY` | 前者是事务 UOM 数量，后者是主单位数量；跨来源对账优先统一主单位 | 不能把不同 UOM 的数量直接相加；需同时查看 UOM 转换和负数方向 |
+| `COSTED_FLAG` / `ACTUAL_COST` | 判断物料事务是否已成本及其单位成本；状态码需结合 `ERROR_CODE`、错误说明和 Cost Manager 日志解码 | 数量已写入 MMT 不代表已完成成本；不要直接修改标志位 |
+| `PROCESS_FLAG` / `LOCK_FLAG` | 判断接口行是否等待、处理中或错误，以及是否被工作器锁定 | 不要通过手工解锁或重置 Flag 规避标准重处理；先保留批次和请求证据 |
+| `TRANSACTION_DATE` / `ACCT_PERIOD_ID` | 决定成本事务落在哪个库存组织期间；会计日期和业务发生日期需分开记录 | 跨期间回溯事务可能阻塞关期或改变历史成本，须有审批和截止规则 |
+| `COST_TYPE_ID` / `LEVEL_TYPE` | 解释成本版本、成本要素和 This/Previous Level 的来源 | 只看 `CST_ITEM_COSTS.ITEM_COST` 会丢失子要素、层级和费率细节 |
+| WIP `STATUS_TYPE` / Accounting Class | 决定工单可执行的领料、移动、资源、完工、废品和关闭动作及其账户 | 状态名称和可执行事务受实例 Lookup/补丁影响，不能硬编码业务规则 |
+| `EVENT_ID` / `EVENT_STATUS_CODE` / `PROCESS_STATUS_CODE` | 连接来源事务与 SLA 会计资格、处理状态和会计日期 | 事件已生成不代表已 Final 或已传 GL，必须继续核对 XLA 和 Journal Import |
+| `SOURCE_CODE` / `HEADER_ID` / `LINE_ID` | 组成外部系统来源唯一键，连接接口批次与 EBS 事务 | 超时重试前先查询已生成事务，避免数量、成本和会计事件重复 |
+| `REQUEST_ID` | 关联并发程序、参数、日志、输出和重跑范围 | 只记录程序名而不记录请求 ID，无法证明处理时点和结果 |
+
+表名、列名、状态码和可查询视图会随 R12.2 补丁、已安装产品和本地化变化；带有“/”或功能名的条目是逻辑对象或对象集合，实施 SQL 需先用目标实例 eTRM、`ALL_TAB_COLUMNS`、Lookup 和 Integration Repository 核对。
 
 ### 名词解释
 
 | 名词 | 解释 |
 | --- | --- |
 | Inventory Organization | 库存组织；库存数量、制造和物料事务边界 |
-| Cost Organization/Method | 成本组织/方法；决定标准、平均等成本计算边界 |
-| Cost Element | 成本要素；Material、Material Overhead、Resource、OSP、Overhead |
-| Frozen/Pending | 冻结/待更新成本版本；Pending 不会自动成为 Frozen |
-| PPV/IPV | Purchase/Invoice Price Variance；采购价差/发票价差 |
-| WIP | Work in Process；在制品；材料、资源、间接费和完工/关闭差异 |
-| COGS Matching | 销售成本匹配；发运成本与收入确认协同 |
-| LCM | Landed Cost Management；到岸成本管理；运费、关税等附加费用分摊 |
+| Cost Organization | 成本组织；为一个或多个库存组织提供成本方法、成本类型、成本要素和账户边界；与 Master Organization/Cost Group 关系需按实例确认 |
+| Costing Method | 成本方法；Standard、Average、FIFO/LIFO、Periodic 等决定库存出入库和制造成本的计价逻辑，不能与 Cost Type 混淆 |
+| Cost Type | 成本类型/成本版本；Frozen、Pending、Simulation、Average 或 Periodic Rates 用于发布、模拟和周期费率维护 |
+| Cost Group | 成本组；启用 Project References/Cost Collection 时可按项目等维度隔离平均成本，否则通常使用组织默认成本组；具体可用性以组织参数为准 |
+| Cost Element | 成本要素；Material、Material Overhead、Resource、Outside Processing、Overhead 五类成本构成 |
+| Cost Sub-element | 成本子要素；Item、Activity、Resource、Overhead Rate 等更细的费率或来源维度 |
+| This Level / Previous Level | 本层/前层成本；区分当前装配的材料、资源、间接费与下层子装配传入成本 |
+| Frozen/Pending/Simulation | 冻结/待更新/模拟成本版本；Pending 或 Simulation 只有经过审批和标准程序才会影响 Frozen |
+| Cost Rollup | 成本卷积；按 BOM、Routing、资源、OSP 和 Overhead 计算多层物料成本并写入指定 Cost Type |
+| Standard Cost Update | 标准成本更新；将 Pending 成本发布为 Frozen，重估库存并生成成本更新/调整报告 |
+| Average Cost Update | 平均成本更新；按指定调整方式改变移动平均成本，通常重估现有及在途库存，WIP 边界须单独确认 |
+| FIFO/LIFO Layer | FIFO/LIFO 成本层；按收发顺序维护数量和单位成本层，负库存和跨期间收发会增加层维护风险 |
+| Periodic Costing | 周期成本；在期间内累计数量/成本，期末按周期平均或增量层计算，不等同于实时 Perpetual Costing |
+| Costed / Uncosted | 已成本/未成本；事务数量已落地但成本计算尚未完成或失败时，不能直接作为库存价值最终结果 |
+| PPV/IPV | Purchase/Invoice Price Variance；采购价格与标准/接收价格、发票价格与采购/接收价格的差异 |
+| Usage/Rate/Efficiency Variance | 用量/费率/效率差异；分别解释材料数量、资源/间接费率和实际工时/产出效率偏差 |
+| WIP Close Variance | 工单关闭差异；工单投入、完工、废品和标准/实际成本在关闭时的未吸收差异 |
+| WIP | Work in Process；在制品；由工单、工序、材料、资源、OSP、Overhead、完工和关闭差异组成 |
+| WIP Accounting Class | WIP 会计分类；为离散工单定义材料、资源、外协、间接费、估价、吸收和差异账户 |
+| Discrete Job / Repetitive Schedule | 离散工单/重复计划；分别按工单实体或重复生产计划收集材料、资源、完工和差异 |
+| Material Issue / Backflush | 手工发料/倒冲；分别由仓库事务或工序/完工规则自动扣减组件，必须防止重复扣料 |
+| Resource / OSP / Overhead | 资源/外协/制造费用；分别按人工机器费率、外协采购服务和间接费用池吸收 WIP 成本 |
+| Receipt / Deliver / Return / Correct | 接收/交付/退货/更正；组成接收事件链，需通过父子事务追溯原始数量和会计 |
+| Receiving Inspection / Accrual | 接收检验/接收应计；分别是质量路由和收货到发票之间的暂估负债/清算控制 |
+| COGS Matching | 销售成本匹配；发运产生的库存成本先进入 Deferred COGS，再按收入确认规则转入 COGS |
+| Inventory Issue | 库存发出；销售、WIP、杂项或组织间发出导致现有量减少并生成库存价值释放 |
+| LCM | Landed Cost Management；到岸成本管理，将运费、保险、关税、处理和仓储等费用分摊至相关收货/库存/在途 |
+| Cost Factor | 到岸成本因子；定义费用类型、供应商/服务商、币种、有效期和分摊基础 |
+| Estimated / Actual Landed Cost | 预计/实际到岸成本；预计可在收货前或后计算，实际由费用发票/单据匹配并形成差异 |
+| Cost Manager / Transaction Manager | 成本管理器/事务管理器；异步处理物料事务、成本计算和会计前置，不应通过手改状态恢复 |
+| Cost Period Close | 成本期间关闭；完成未处理事务、未计成本、WIP、接收应计、COGS 和 GL 对账后关闭库存组织期间 |
+| Lot/Serial / Negative Inventory | 批次/序列/负库存；影响追溯、成本层和允许事务，需在接口和关期前重点检查 |
+| SLA Cost Accounting | 成本子账会计；把库存、WIP、COGS 和 LCM 事件按规则生成 XLA 分录并传入 GL |
 
-官方基线：[Inventory User's Guide](https://docs.oracle.com/cd/E26401_01/doc.122/e48820/toc.htm)、[Cost Management](https://docs.oracle.com/cd/E26401_01/doc.122/e48829/toc.htm)、[WIP User's Guide](https://docs.oracle.com/cd/E26401_01/doc.122/e48905/toc.htm)。
+官方基线：[Inventory User's Guide](https://docs.oracle.com/cd/E26401_01/doc.122/e48820/toc.htm)、[Cost Management](https://docs.oracle.com/cd/E26401_01/doc.122/e48829/toc.htm)、[WIP User's Guide](https://docs.oracle.com/cd/E26401_01/doc.122/e48905/toc.htm)、[Landed Cost Management](https://docs.oracle.com/cd/E26401_01/doc.122/e48799/toc.htm)。
 
 <a id="dict-08"></a>
 ## 08 报表、关账与治理
