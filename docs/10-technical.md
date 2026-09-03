@@ -4,7 +4,7 @@
 
 ## 阅读导航
 
-- [架构总览](#technical-architecture) · [设计原则](#technical-design) · [安全与身份](#technical-security) · [诊断与死锁](#technical-diagnostics) · [实施案例](#technical-cases) · [详细实施手册](#technical-handbook)
+- [架构总览](#technical-architecture) · [选型与边界](#technical-design) · [安全与身份](#technical-security) · [诊断与死锁](#technical-diagnostics) · [实施案例](#technical-cases) · [并发程序](#src-docs-09-technical-concurrent-programs) · [Forms/OAF](#src-docs-09-technical-java-extensions) · [Workflow/AME](#src-docs-09-technical-workflow-ame-oaf-governance) · [报表与 Web ADI](#src-docs-09-technical-reporting-file-exchange) · [实施手册](#technical-handbook)
 
 ## 模块数据字典与名词解释
 
@@ -207,6 +207,23 @@ erDiagram
 | 异步通知 | Business Event/Workflow、XML Gateway | 在触发器中同步调用外部 HTTP | Event Key、Deferred/Error、重试和回执 |
 | 对外服务 | ISG REST/SOAP、Concurrent Program REST | 暴露业务表/诊断包 | Grant、WSDL/WADL、限流、幂等、版本 |
 | 报表/文件 | BI Publisher/OPP、FSG、Web ADI | 生产库临时脚本拼接敏感数据 | 数据定义、模板、字体、权限、输出保留 |
+
+#### Oracle 标准扩展点速查
+
+下表不是要求全部启用，而是防止设计时只想到“写一段 PL/SQL”。是否可用还取决于已安装产品、许可证、补丁级别、责任授权和该产品是否公开扩展点。
+
+| 目标 | 优先考虑的标准能力 | 适合做什么 | 不能替代什么 |
+| --- | --- | --- | --- |
+| 受控代码值/字段 | Lookup、Profile Option、DFF/KFF、Value Set | 增加可治理属性、默认值、受限选择与编码 | 服务端业务校验、权限或数据修复 |
+| Forms 界面 | Forms Personalization、CUSTOM.pll、客户 Form | 显示、默认、校验、Zoom、受控独立页面 | 修改 Oracle Form 或直接写业务表 |
+| OAF 自助页面 | OAF Personalization、已公开 Extension、客户页面/服务层 | 页面展示、事件、查询与受控业务操作 | 覆盖 seeded XML、CO、AM 或 EO |
+| 业务审批/流程 | Workflow、Business Event、AME、产品 Account Generator（如适用） | 通知、分支、审批人规则、会计/编码派生流程 | 把 Workflow 运行时表当作人工修复入口 |
+| 后台任务 | Concurrent Program、Request Set、FND_REQUEST、OPP | 可调度批处理、导入、报表与状态追踪 | 在网页请求内跑长事务 |
+| 业务写入 | 产品 Public API、Open Interface、标准 Import | 单笔受控写入或大批量异步导入 | 直接 DML 基表或接口状态表 |
+| 服务与事件 | Integration Repository/ISG、Business Event、SIF、XML Gateway/EDI Gateway | SOAP/REST、事件通知、B2B 标准报文和出站调用 | 将数据库表或诊断包直接暴露给外部 |
+| 报表与桌面协作 | BI Publisher、FSG、Oracle Reports、Web ADI | 格式化输出、财务报表、既有 RDF、受控 Excel 下载/上传 | 无限制导出、个人宏或临时 SQL 成为生产报表 |
+| 定义迁移 | FNDLOAD、WFLOAD、iSetup、产品工具 | 可支持的配置/Workflow/业务设置迁移 | 运行交易、密钥和环境连接直接复制 |
+| 通知与监控 | Workflow Mailer、Oracle Alert（已启用时）、OAM/日志/报表 | 事件告警、通知分发、运行监控 | 完整的外部监控平台或业务对账 |
 
 ### 2.5 数据模型、上下文与安全查询
 
@@ -631,7 +648,9 @@ SFTP/API Landing（原始不可变）
 - 从业务单据追溯 XLA/GL，再从 GL 反查来源交易、接口批次和外部回执。
 
 <a id="technical-handbook"></a>
-## 6. 详细实施手册
+## 6. 技术实施手册（按交付对象）
+
+本章按实施人员实际交付的对象组织：先交付并发/接口，再交付页面与流程，最后交付报表、发布和运维。每一项都回答五个问题：**什么时候选它、要创建什么、怎样发布、如何验证、失败后如何回退**。同一需求只选一个主入口；例如“批量导入发票”优先选标准 Open Interface，而不是同时再写 Forms、OAF 和自建 Web Service。
 
 
 <!-- source: docs/09-technical/README.md -->
@@ -756,6 +775,164 @@ Concurrent Program 关联 Executable、Parameters/Value Sets、Incompatibility�
 
 R12.2 在 Online Patching 时使用 `ADZDPATCH` 协调不兼容程序；不要为了让 adop 继续而随意终止 ICM/ADZDPATCH。
 
+#### 先理解三个对象
+
+- **Executable（可执行文件定义）**：告诉 EBS“代码在哪里、如何启动”。它不是用户在 SRS 中看到的业务名称。
+- **Concurrent Program（并发程序定义）**：把 Executable、参数、值集、冲突规则、输出与运行权限包装成一个可提交任务；同一个 Executable 可以对应多个不同参数的 Program。
+- **Concurrent Request（并发请求）**：一次具体运行，拥有唯一 `REQUEST_ID`、参数、日志、输出、阶段和状态。代码发布成功不代表任何 Request 已成功。
+
+#### 可执行方法：选对比“能运行”更重要
+
+| 执行方法 | 通俗说明 | 合适场景 | 实现/注册要点 | 不适合的情况 |
+| --- | --- | --- | --- | --- |
+| **PL/SQL Stored Procedure** | Manager 连接数据库后调用存储过程 | 以数据库业务规则、标准 API、导入控制为主的批处理 | 前两个参数必须是 `errbuf OUT`、`retcode OUT`；用 `FND_FILE` 写日志/输出 | 需要操作系统工具、复杂二进制库或长时间外部进程 |
+| **Host** | Manager 调用受控的操作系统脚本 | 文件搬运、加解密包装、调用受批准的命令行工具 | 交付 `.prog` 与 `fndcpesr` 符号链接；业务参数从 `$5` 开始 | 把数据库密码、业务规则或未校验输入拼进 shell 命令 |
+| **Spawned** | 以独立 OS 进程运行的 C/Pro*C 程序 | 高性能 C/Pro*C、专用 OS 能力 | 独立可执行文件；新 C/Pro*C 程序优先此方式 | 只为运行简单 SQL 而引入编译和链接复杂度 |
+| **Immediate** | 在启动它的 Manager 进程内作为 C/Pro*C 子程序运行 | 仅兼容历史程序库 | 需要 Program Library、重建与 relink | **新开发**；Oracle 仅为向后兼容保留，故障可能影响 Manager |
+| **Java Concurrent Program** | Manager 按 Java 执行方式运行 Java 类 | 已验证 EBS Java 依赖、文件/格式处理、既有 Java 服务逻辑 | 类名、JAR、类路径、参数、日志与退出状态都纳入补丁工件 | 把常驻服务、未受控线程或外部凭据塞入 Manager |
+| **Java Stored Procedure** | 数据库中的 Java 存储过程 | 目标实例明确支持且有数据库侧需求 | 受数据库 Java 与安全基线约束 | 以它代替常规 PL/SQL 或 Java Concurrent Program |
+| **SQL*Plus / SQL*Loader / Oracle Reports** | AOL 启动相应 Oracle 工具和文件 | 历史 SQL 脚本、装载控制文件、RDF 报表 | 文件名、扩展名和产品目录要与定义匹配 | 新建大规模业务写入或不受控 SQL 脚本 |
+| **Request Set Stage Function** | 用 PL/SQL 函数决定请求集阶段完成后的走向 | 有明确条件分支的请求集 | 只负责阶段状态判断与参数；保留每个分支的运行证据 | 用它承载业务导入主逻辑或绕过失败处理 |
+| **Multi Language Function** | 支持多语言/地区/数字格式的辅助函数 | 产品已有 MLS 需求 | 在 Program 的 MLS Function 字段引用，不是普通业务 Executable | 作为新业务程序的执行方式 |
+
+Oracle 对新开发明确建议：C/Pro*C 用 Spawned；不要新建 Immediate 程序。PL/SQL 存储过程虽不产生独立 OS 进程，但在定义上应选择 **PL/SQL Stored Procedure**，不要误注册成 Immediate。
+
+#### 从需求到可运行请求：七步交付
+
+1. **界定输入/输出**：业务键、组织/账簿、日期范围、控制总额、幂等规则、成功与 Warning/Error 的含义。
+2. **实现代码或模板**：必须能在不依赖页面会话的条件下运行；参数不信任、日志不写凭据或敏感载荷。
+3. **定义 Executable**：填写应用、内部名、执行方法、文件/过程名；一旦被 Program 使用，执行方法通常不应随意改动。
+4. **定义 Concurrent Program**：设置短名、Executable、SRS 可见性、参数顺序与 Value Set、输出、打印样式、冲突规则及可运行 Manager。
+5. **授权与编排**：把 Program 放入正确 Request Group；若用 Request Set，明确 Stage 内并行、Stage 间顺序、失败分支和重启规则。
+6. **以最小范围提交**：记录 Request ID、参数、日志、输出、业务键、处理数量/金额和产生的下游请求。
+7. **发布和回退**：定义/值集/请求集用目标实例支持的 LDT/FNDLOAD 或受控配置迁移；文件、包、JAR 进入 ADOP 补丁工件。禁用 Program 或切回旧工件前，先处理运行中请求和已提交的后续批次。
+
+#### 最小可运行的 PL/SQL Concurrent Program
+
+```sql
+CREATE OR REPLACE PACKAGE xxar_reconcile_pkg AS
+  PROCEDURE run(
+    errbuf       OUT VARCHAR2,
+    retcode      OUT NUMBER,
+    p_org_id     IN  NUMBER,
+    p_gl_date_to IN  VARCHAR2
+  );
+END xxar_reconcile_pkg;
+/
+
+CREATE OR REPLACE PACKAGE BODY xxar_reconcile_pkg AS
+  PROCEDURE run(
+    errbuf       OUT VARCHAR2,
+    retcode      OUT NUMBER,
+    p_org_id     IN  NUMBER,
+    p_gl_date_to IN  VARCHAR2
+  ) IS
+    l_count PLS_INTEGER := 0;
+  BEGIN
+    errbuf := NULL;
+    retcode := 0; -- 0=Normal, 1=Warning, 2=Error
+
+    IF p_org_id IS NULL OR p_gl_date_to IS NULL THEN
+      retcode := 2;
+      errbuf := 'ORG_ID and GL date are required.';
+      RETURN;
+    END IF;
+
+    -- 示例只说明日志和状态约定；实际业务必须调用标准 API/报表或只读查询。
+    fnd_file.put_line(fnd_file.log,
+      'Start reconciliation: org_id=' || p_org_id || ', gl_date_to=' || p_gl_date_to);
+    fnd_file.put_line(fnd_file.output, 'Checked rows=' || l_count);
+  EXCEPTION
+    WHEN OTHERS THEN
+      ROLLBACK;
+      retcode := 2;
+      errbuf := SUBSTR(SQLERRM, 1, 240);
+      fnd_file.put_line(fnd_file.log,
+        DBMS_UTILITY.format_error_backtrace);
+  END run;
+END xxar_reconcile_pkg;
+/
+```
+
+注册时将执行方法设为 `PL/SQL Stored Procedure`，执行文件填写 `XXAR_RECONCILE_PKG.RUN`（实际名称按对象名）；前两个参数 `errbuf`、`retcode` **不在** Concurrent Program 参数窗口中给业务用户配置。Oracle 规定 `retcode=0/1/2` 分别代表 Normal/Warning/Error。
+
+#### Host 程序的安全示例
+
+```bash
+#!/usr/bin/env bash
+# 文件：$XXINT_TOP/bin/xxint_file_probe.prog；Executable 名为 XXINT_FILE_PROBE
+set -euo pipefail
+
+# $1-$4 是 EBS 传入的数据库/用户/Request 信息；业务参数从 $5 开始。
+input_dir="${5:?input directory is required}"
+file_name="${6:?file name is required}"
+
+case "$file_name" in
+  *[!A-Za-z0-9._-]*|*..*) echo "Invalid file name" >&2; exit 2 ;;
+esac
+case "$input_dir" in
+  /u01/ebs/interfaces/inbound) ;;
+  *) echo "Directory is not allowlisted" >&2; exit 2 ;;
+esac
+
+test -r "$input_dir/$file_name"
+echo "Ready: $file_name"
+```
+
+Host 程序只应处理允许目录中的受控文件。不要打印 `$1` 中可能携带的连接信息，不用 `eval`，不接受任意路径、命令片段或未限制的环境变量。真实环境中还要由 OS 权限、病毒扫描、加密/签名和归档策略共同约束。
+
+#### 从 PL/SQL 提交并等待请求
+
+```sql
+DECLARE
+  l_request_id NUMBER;
+  l_phase      VARCHAR2(30);
+  l_status     VARCHAR2(30);
+  l_dev_phase  VARCHAR2(30);
+  l_dev_status VARCHAR2(30);
+  l_message    VARCHAR2(240);
+  l_done       BOOLEAN;
+BEGIN
+  l_request_id := fnd_request.submit_request(
+    application => 'XXAR',
+    program     => 'XXAR_RECONCILE',
+    description => 'Reconcile selected organization',
+    start_time  => NULL,
+    sub_request => FALSE,
+    argument1   => :p_org_id,
+    argument2   => :p_gl_date_to
+  );
+
+  IF l_request_id = 0 THEN
+    raise_application_error(-20061, fnd_message.get);
+  END IF;
+
+  COMMIT; -- FND_REQUEST.SUBMIT_REQUEST 返回后仍需由调用方提交。
+
+  l_done := fnd_concurrent.wait_for_request(
+    request_id => l_request_id,
+    interval   => 10,
+    max_wait   => 600,
+    phase      => l_phase,
+    status     => l_status,
+    dev_phase  => l_dev_phase,
+    dev_status => l_dev_status,
+    message    => l_message
+  );
+
+  IF NOT l_done OR l_dev_phase <> 'COMPLETE' OR l_dev_status NOT IN ('NORMAL', 'WARNING') THEN
+    raise_application_error(-20062, 'Request ' || l_request_id || ': ' || l_message);
+  END IF;
+END;
+/
+```
+
+仅在调用方确实需要同步等待时才使用 `WAIT_FOR_REQUEST`，并设置有限超时；页面请求或高并发接口不应长时间占用数据库会话轮询。父程序需要提交子请求并在子请求完成后恢复时，使用 `FND_CONC_GLOBAL.SET_REQ_GLOBALS`/`REQUEST_DATA` 的标准模式，而不是死循环查询请求表。
+
+#### Request Set 的正确拆分
+
+一组 Request Set 的**同一 Stage 内请求并行运行**；只有当前 Stage 完成后，下一 Stage 才提交。适合的划分是：`导入`（可并行）→ `验证/处理`（按依赖顺序）→ `会计/报表`（按业务门禁）。Stage Function 只计算该阶段完成后是继续、警告、错误或跳转，不应改写接口数据或隐藏失败。
+
 <a id="src-docs-09-technical-concurrent-programs--sql"></a>
 #### SQL
 
@@ -802,10 +979,16 @@ SELECT request_id, phase_code, status_code,
 - [Operations](#src-docs-09-technical-operations)
 - [Integration](#src-docs-09-technical-integration)
 
+#### 官方参考
+
+- [Oracle E-Business Suite Developer's Guide — Concurrent Processing](https://docs.oracle.com/cd/E26401_01/doc.122/e22961/T302934T458252.htm)
+- [Oracle E-Business Suite Setup Guide — Concurrent Program Executables](https://docs.oracle.com/cd/E26401_01/doc.122/e22953/T174296T575591.htm)
+- [Oracle E-Business Suite Developer's Guide — PL/SQL Concurrent Processing APIs](https://docs.oracle.com/cd/E26401_01/doc.122/e22961/T302934T458258.htm)
+
 
 <!-- source: docs/09-technical/customization.md -->
 <a id="src-docs-09-technical-customization"></a>
-### 6.4 PL/SQL、Forms、Personalization 与 OAF 定制
+### 6.4 PL/SQL、公开 API 与数据库扩展
 
 
 <a id="src-docs-09-technical-customization--r122-定制原则"></a>
@@ -814,8 +997,7 @@ SELECT request_id, phase_code, status_code,
 - 优先级：标准设置 > Personalization/Extension > Published API/Open Interface > 经评审的定制；禁止修改 Oracle seeded 源码和基表。
 - 自定义对象使用客户前缀/Schema，通过 APPS Synonym/Grant 接入，所有 DDL 满足 Edition-Based Redefinition（EBR）。
 - 数据库对象变更通过 `adop` Online Patching 周期发布，开发环境执行一致性/在线补丁检查。
-- Forms Personalization 用于可见性、默认、验证和菜单动作；CUSTOM.pll 仅在 Personalization 无法实现时使用。
-- OAF 使用 Personalization 或 Controller Extension，不修改 seeded XML/Java；扩展需评估升级/补丁兼容。
+- 页面定制、Forms Personalization、CUSTOM.pll 和 OAF 扩展见第 6.11 节；它们不能替代业务 API、数据安全或会计校验。
 
 <a id="src-docs-09-technical-customization--plsql-标准"></a>
 #### PL/SQL 标准
@@ -824,6 +1006,27 @@ SELECT request_id, phase_code, status_code,
 2. 尊重 API 交易边界，默认由调用者 Commit/Rollback，不在底层工具函数隐式提交。
 3. 读取 `x_return_status/x_msg_count/x_msg_data` 及 Message Stack，日志记录业务键而非敏感数据。
 4. SQL 使用 Bind、明确组织/账簿条件、批量处理和可重启设计，避免 Row-by-row 大批量处理。
+
+#### 公共 API 调用的完整错误处理
+
+标准 API 常用 `FND_API` 返回约定，但不是每个产品 API 都有相同参数。调用前必须从目标版本的 Package Specification、Integration Repository 或产品文档确认签名；不能因某个 API 有 `p_commit` 就假定所有 API 都会自动提交。
+
+1. 在受控服务用户/并发请求上下文中初始化 `FND_GLOBAL.APPS_INITIALIZE`；需要多组织上下文时，再初始化 `MO_GLOBAL` 并设置正确 Operating Unit。
+2. 调用前清空 `FND_MSG_PUB`；调用后判断 `x_return_status`，逐条读取 Message Stack，而不是只记录 `SQLERRM`。
+3. 明确事务所有权：最外层 Worker 决定 `COMMIT/ROLLBACK`；内部包不应悄悄提交，以免部分成功无法补偿。
+4. 以来源唯一键查询既有业务对象后再写入；API 超时或会话中断时，先查结果，不能盲目重发。
+5. 对 API 版本、记录类型、必填字段、默认值和状态机做契约测试；补丁后重新编译并验证签名和业务结果。
+
+#### 弹性域、值集与 Lookup：轻量扩展的边界
+
+| 需求 | 首选对象 | 说明 | 常见误区 |
+| --- | --- | --- |
+| 新增业务属性但不改变标准交易主键 | Descriptive Flexfield（DFF） | 在产品提供的上下文/段中增加字段，控制值集和显示 | 把 DFF 当作可绕过业务校验的任意数据库列 |
+| 影响编码结构或账户组合 | Key Flexfield（KFF）及段/值集 | 例如会计科目、地点等结构性编码；影响范围大 | 在生产直接改段结构或历史组合 |
+| 控制允许值与翻译 | Value Set / Lookup | 值集负责格式/取值；Lookup 负责固定或可维护代码含义 | 用客户端硬编码枚举代替可治理的代码值 |
+| 改页面行为 | Forms/OAF Personalization | 仅在页面支持范围内做显示、默认、校验和动作 | 以隐藏字段取代服务端权限或数据安全 |
+
+弹性域与值集的交付要包括上下文、段、值集、默认、有效日期、职责/组织测试和数据迁移方式。它们会影响 API、Open Interface、报表和 Workflow 属性时，必须逐条做回归测试。
 
 <a id="src-docs-09-technical-customization--诊断-sql"></a>
 #### 诊断 SQL
@@ -1677,7 +1880,7 @@ SELECT fcr.request_id,
 
 <!-- source: docs/09-technical/workflow-ame-oaf-governance.md -->
 <a id="src-docs-09-technical-workflow-ame-oaf-governance"></a>
-### 6.10 Workflow、AME、OAF/Forms 与配置迁移治理
+### 6.10 Workflow、AME 与流程治理
 
 
 <a id="src-docs-09-technical-workflow-ame-oaf-governance--分工"></a>
@@ -1686,6 +1889,41 @@ SELECT fcr.request_id,
 - Oracle Workflow 负责业务流程、通知、活动、Business Event 与后台引擎处理。
 - AME 负责规则化审批人清单和条件；业务单据仍由各产品的审批集成点驱动。
 - OAF/Forms Personalization 用于受支持的界面行为调整；复杂定制需要遵守 R12.2 EBR/ADOP、扩展点、安全和回归要求。
+
+#### Workflow：把流程图落成可追溯的运行对象
+
+| 对象 | 通俗解释 | 设计时必须确定 |
+| --- | --- | --- |
+| Item Type | 一类流程的“模型”，例如自定义付款审批 | 内部名、所有者、是否与标准产品 Item Type 隔离 |
+| Item Key | 一次具体流程的唯一业务键 | 必须稳定且可追溯到业务单据；不可复用或含可变显示文本 |
+| Process / Activity | 流程图和其中的节点 | 开始/结束、分支、超时、错误路径、重试和补偿 |
+| Function Activity | 调用 PL/SQL 或 Java 的业务动作 | 输入/输出属性、事务边界、异常如何传递 |
+| Notification / Message | 发给审批人或知会人的消息 | Performer、响应值、正文数据、附件/敏感字段和失效策略 |
+| Lookup | 流程使用的代码及显示含义 | 代码稳定性、多语言、版本和报表引用 |
+| Background Engine | 推进 Deferred / Error 等后台活动 | 运行频率、选择参数、队列积压和错误处理责任人 |
+
+运行时从业务单据反查应遵循：**业务单据键 → Item Type + Item Key → 活动状态 → 通知 → Function 日志/错误 → Background Engine/Mailer → 外部回执**。`WF_ITEMS` 中存在项目，只表示流程实例建立；必须检查当前活动、结果、通知响应及错误队列，才能判断流程是否真正走完。
+
+#### Workflow 设计与发布的最小闭环
+
+1. 先画出正常、拒绝、退回、撤回、超时、代理、重复事件和下游失败的状态图；指定每个状态的业务负责人。
+2. 在 Workflow Builder 中定义 Item Type、属性、消息、活动、流程和错误流程；属性先定义再被活动/消息引用。内部名使用稳定 ASCII 标识，显示名可本地化。
+3. Function Activity 调用的包/Java 必须幂等：Background Engine 或异常恢复可能再次执行。涉及外部系统时以事件键/业务键查重。
+4. 用 **WFLOAD** 或目标实例支持的迁移流程发布定义，版本库同时保存源定义、依赖 Lookup、部署顺序和回退版本；不要迁移或直接修改生产运行时 `WF_*` 状态表。
+5. 用真实业务键执行流程，验证通知、审批响应、Deferred/Error、Mailer、超时/代理、数据访问和业务单据最终状态；发布后监控积压与异常增长。
+
+#### AME：只负责“谁审批”，不负责业务状态机
+
+AME 的 Transaction Type 是接入应用划分审批规则的容器；Attribute 提供运行时业务值，Condition 判断规则是否适用，Action/Approver Group 生成或调整审批人列表，Rule Use 控制规则在何时被采用。业务应用仍负责创建单据、调用 AME、发 Workflow 通知、接受响应并更新单据状态。
+
+| 需求 | 正确处理方式 |
+| --- | --- |
+| 调整已有产品审批条件 | 使用该产品已集成的 AME Transaction Type，配置 Attribute/Condition/Action/Rule 与有效日期 |
+| 新增金额、项目或 DFF 条件 | 先确认现有 Transaction Type 是否支持该属性；必要时由 AME 管理员受控创建属性 SQL，并做性能/权限测试 |
+| 新建客户自定义审批 Transaction Type | 不照抄产品表或自行猜测注册步骤；Oracle 文档要求联系 Oracle Support 获取 AME Developer Guide，再结合自定义应用流程实现 |
+| 审批人不正确 | 在 AME Test Workbench/业务单据中比对属性值、命中规则、组织层级、审批组、代理和当前有效日期 |
+
+规则改动会影响正在审批的交易；上线前明确旧交易按旧规则继续还是重新计算，并对规则优先级、重复审批人、币种换算、缺失主管和超时建立测试案例。AME 生成审批人列表不等于通知已发送，也不等于交易已批准。
 
 <a id="src-docs-09-technical-workflow-ame-oaf-governance--实施与发布顺序"></a>
 #### 实施与发布顺序
@@ -1732,10 +1970,12 @@ select wias.item_type,
 <a id="src-docs-09-technical-workflow-ame-oaf-governance--官方参考"></a>
 #### 官方参考
 
-本专题复用本文件“官方依据”中的 Technology Documentation 与 Maintenance Guide；Workflow/OAF 具体资料按专题内的产品链接补充。
+- [Oracle Workflow Developer's Guide — Item Types, Attributes and Activities](https://docs.oracle.com/cd/E26401_01/doc.122/e22011/T361836T361983.htm)
+- [Oracle Approvals Management Implementation Guide — Transaction Types and Rules](https://docs.oracle.com/cd/E26401_01/doc.122/e59054/T405156T405160.htm)
+- [Oracle Application Framework Personalization Guide](https://docs.oracle.com/cd/E26401_01/doc.122/e22031/T406873T406875.htm)
 
 <a id="src-docs-09-technical-java-extensions"></a>
-### 6.11 Java、OAF、Forms 与客户端扩展
+### 6.11 Forms Builder、Forms Personalization、OAF 与 Java 扩展
 
 Java 在 EBS 中既可能是 OAF/FMW 运行时的一部分，也可能作为并发程序、Workflow Java Function、Forms Web Service 或 SIF Deferred Agent 使用。扩展必须依赖目标实例已认证的 JDK、FMW/JRF 和 EBS 类库；“本机能编译”不等于“受支持或可在补丁后运行”。
 
@@ -1744,11 +1984,40 @@ Java 在 EBS 中既可能是 OAF/FMW 运行时的一部分，也可能作为并�
 | OAF Controller Extension（CO） | 页面请求、按钮事件、校验和导航 | 只扩展已发布页面/事件；不改 seeded XML、Controller 或 BC4J 类 | OA Extension/源码包、页面上下文、职责和回归 |
 | OAF AM/VO/EO Extension | 查询、业务对象和事务逻辑 | 优先调用公开 API；不要绕过实体校验直接更新基表 | Java 包、数据源、异常、事务和补丁回归 |
 | Forms Personalization | 显示、默认、验证、菜单动作 | 先于 CUSTOM.pll；避免把复杂业务规则塞进客户端触发器 | Function/Form/Level/Sequence、导出配置和负向测试 |
-| `CUSTOM.pll`/Forms Library | Personalization 无法覆盖的通用 Forms 行为 | 使用客户前缀、最小触发器和可回退库；不修改 Oracle 库 | PLL/PLX/FMX、重新生成 JAR、Forms 会话回归 |
+| `CUSTOM.pll`/Forms Library | Personalization 无法覆盖的通用 Forms 行为 | 使用客户前缀、最小触发器和可回退库；不修改 Oracle 库 | PLL/PLX/FMX、重新编译 Forms 工件、Forms 会话回归 |
 | Java Concurrent Program | 长任务、文件处理或 Java 生态库 | 通过 Concurrent Program 定义参数、日志、输出和完成状态；不要脱离 Manager 自行常驻 | 执行方法/类名、依赖 JAR、Request ID、日志/输出 |
 | Workflow Java Function/Rule | 活动函数、规则或消息转换 | 明确定义同步/Deferred、异常和超时；不在函数内保存明文凭据 | Item Type/Key、活动状态、Error Queue、重试 |
 | `PasswordValidation` | 本地 EBS 用户自定义密码校验 | 纯函数、低延迟、无外部网络；只作用于本地密码 | `SIGNON_PASSWORD_CUSTOM`、消息栈、策略回归 |
 | Java API for Forms / SIF Deferred Agent | Forms Web Service 或 EBS 出站 SOAP/REST | 以 Integration Repository/Workflow 契约为准，不能凭类名猜接口 | WSDL、事件、证书、Invocation Monitor、回执 |
+
+#### Forms：先选定制层级，再打开 Forms Builder
+
+| 方式 | 能解决什么 | 适用边界 | 发布与升级要点 |
+| --- | --- | --- |
+| 标准设置/Profile/Lookup | 启用、默认或受控选项 | 标准能力已覆盖 | 用标准配置迁移；先确认职责和生效范围 |
+| **Forms Personalization** | 属性、默认值、校验、消息、菜单动作 | 每个 Function/Form 的声明式规则 | Rule = Event + 可选 Condition + Scope + Actions；记录 Level、Sequence、启停和迁移工件 |
+| **CUSTOM.pll** | Personalization 不能覆盖的 Forms 通用事件、Zoom 或产品事件 | 仅限 Forms；只在明确 Form/Block/Event 分支执行 | 修改客户库而非 Oracle Forms；补丁/升级后重新编译并回归 |
+| 自定义 Forms（Form Builder） | 独立客户业务页面和受控导航 | 使用 TEMPLATE、标准库和函数安全 | 自定义模块、Function/Menu/Responsibility、FMB/PLL/PLX/FMX 都进入 ADOP 工件 |
+| 修改 Oracle seeded Form | 看似最快 | 不受支持，补丁会覆盖且难以追踪 | 禁止；改用以上任一受支持入口 |
+
+**Forms Personalization 的工作方式**：它不是修改 FMB 文件。对一个 Function/Form，定义一个或多个 Rule；每条 Rule 由 Event、可选 Condition、Scope 和一到多个 Action 构成。常见 Event 是 `WHEN-NEW-FORM-INSTANCE`、`WHEN-NEW-RECORD-INSTANCE` 等，常见 Action 是设置项属性、显示消息、执行内置动作或增加菜单项。先以 Responsibility/User 层做试验，再按批准范围提升；它只能改善界面行为，不能取代后端 API、职责功能权限或数据安全。
+
+**CUSTOM.pll 的工作方式**：CUSTOM 是 Oracle 提供的客户扩展库。逻辑应始终先判断事件，再判断当前 Form 和 Block；通用事件包括 `WHEN-NEW-FORM-INSTANCE`、`WHEN-VALIDATE-RECORD`、`ZOOM`、`SPECIALn`、`EXPORT` 和 `KEY-Fn`。调用其他 Form 时用 `FND_FUNCTION.EXECUTE` 等功能安全入口，不使用 `CALL_FORM` 绕过 EBS 菜单/职责控制。`CUSTOM.plx` 存在时 Forms 会优先使用它，因此每次改动都要确认实际加载的是新编译工件；可通过诊断菜单临时关闭 Custom Code 协助隔离故障。
+
+**自定义 Form 的最小交付**：业务函数、菜单/职责授权、FMB/PLL 源码和编译工件、数据块/项目/画布定义、标准库依赖、值集/LOV、异常消息、API 调用、测试脚本、ADOP 部署和回退说明。Form Builder 中的 Block/Item/Canvas/Window/Trigger 解决的是交互层；持久化业务写入仍应进入公开 API 或标准接口，不能在 Trigger 中直接改 Oracle 业务基表。
+
+#### OAF：页面控制器不是业务数据库入口
+
+OAF 页面通常由 Page、Region、Item 等 Web Bean 组成，Controller（CO）处理请求/事件，Application Module（AM）协调事务和服务调用，View Object（VO）提供查询数据，Entity Object（EO）代表可更新业务实体（若该页面使用）。`processRequest` 用于准备页面，`processFormRequest` 用于处理用户提交；复杂写入逻辑放在 AM 或公开 API 边界，Controller 负责导航、事件分派和用户消息。
+
+| 需求 | 优先顺序 | 验收重点 |
+| --- | --- | --- |
+| 隐藏/显示、提示、默认值 | OAF Personalization | 责任/组织/语言/页面上下文，以及补丁后仍生效 |
+| 新按钮、简单页面事件 | 已发布的 Controller Extension / AM 方法 | 事件名、Bean ID、权限、消息与双击重复提交 |
+| 新查询或复杂业务动作 | 客户 AM/VO/服务层，必要时调用公开 API | 绑定变量、分页、事务、MOAC、异常和性能 |
+| 改 Oracle 页面 XML、CO、AM、EO 源码 | 不采用 | 改为受支持 Extension 或独立客户页面 |
+
+OAF 开发环境、JDeveloper 版本和 OA Framework 类库必须与目标 EBS 补丁级别匹配。将客户 Java 包、页面元数据、注册 Function/Menu、Personalization、权限和测试样例一起版本化；不要把开发机生成的任意 JAR 直接复制到 Run 文件系统。Oracle 将 OAF 开发指南和组件参考放在 EBS 技术文档/MOS 指定资料中，实施前应以目标版本资料为准。
 
 #### OAF Controller 扩展示意
 
@@ -1787,7 +2056,7 @@ public class XXOrderCO extends OAControllerImpl {
 4. 按实例受支持流程更新类路径/注册定义、清理必要缓存并重启最小服务范围；不使用整栈重启掩盖类加载或配置问题。
 5. 回归新建/修改/重置密码、页面深链接、职责/MOAC、并发取消/重跑、Workflow Error Queue、补丁后类加载和节点切换。
 
-Oracle 的并发执行方法包含 Java Concurrent Program；并发程序定义、参数和执行文件需参考 [EBS Setup Guide：Concurrent Programs](https://docs.oracle.com/cd/E26401_01/doc.122/e22953/T174296T575591.htm)。OAF 扩展的工具和类层次参考 [Oracle Application Framework Developer's Guide](https://docs.oracle.com/cd/F21816_01/infoportal/oafdg/1225_OAFDevGuide.pdf)。
+Oracle 的并发执行方法包含 Java Concurrent Program；并发程序定义、参数和执行文件需参考 [EBS Setup Guide：Concurrent Programs](https://docs.oracle.com/cd/E26401_01/doc.122/e22953/T174296T575591.htm)。Forms 客户库的事件、Zoom 与升级边界见 [EBS Developer's Guide：Using the Custom Library](https://docs.oracle.com/cd/E26401_01/doc.122/e22961/T302934T458265.htm)；OAF 开发工具和版本资料以 [EBS R12.2 Technology Documentation](https://docs.oracle.com/cd/E26401_01/nav/technology.htm) 中目标补丁级别的 Oracle/MOS 指引为准。
 
 <a id="src-docs-09-technical-reporting-file-exchange"></a>
 ### 6.12 报表、打印、Web ADI 与文件交换
@@ -1810,6 +2079,41 @@ Oracle 的并发执行方法包含 Java Concurrent Program；并发程序定义�
 4. **分发**：Bursting/Delivery Channel 使用受控邮件、打印、WebDAV 或 SFTP；凭据从安全存储注入，日志只保留摘要和 Correlation ID。
 5. **验收**：核对输入行数/金额、报表总计、PDF/Excel/eText 内容、语言字体、权限、重复运行、OPP 队列和清理策略。
 
+#### BI Publisher：先固定数据契约，再做模板
+
+```text
+参数 / Value Set
+  → Data Definition 或 Data Template / 数据引擎
+  → 受控 XML 数据集
+  → RTF / Excel / PDF / eText Template
+  → Concurrent Request
+  → OPP 格式化
+  → 输出、分发、归档
+```
+
+| 交付对象 | 作用 | 常见错误 | 正确验证 |
+| --- | --- | --- | --- |
+| Data Definition | 把数据源、代码、应用与模板关联起来 | 同名代码跨应用冲突，或没有记录来源 SQL/包版本 | 记录 Code、Application、数据集样本、参数和所有者 |
+| Data Template / 数据引擎 | 生成结构化 XML 数据 | 大 SQL 无绑定变量、行级安全遗漏、XML 体积失控 | 先下载 XML，核对业务键、行数、金额、编码和组织边界 |
+| Template | 决定展示、格式和可选翻译/地区 | 只在设计机字体正常、生产 OPP 缺字体；把业务计算藏在模板 | 用真实边界数据测试分页、零值、负数、长文本、多语言和输出格式 |
+| Concurrent Program / OPP | 调度、生成和转换 | 把 Request Normal 当成 OPP 已完成；只调大 JVM 掩盖巨大 XML | 分别检查 Data Engine、OPP、模板、字体、临时目录和输出 |
+| Delivery / Bursting | 将输出发往受控目标 | 收件人/文件名规则不稳定，敏感输出外发 | 用业务键拆分，验证每份输出、收件人、失败回执和归档 |
+
+对于**新报表**，优先使用客户 Data Definition、客户 SQL/包和客户 Template；若只是改变 Oracle 预置报表外观，保留原 Data Definition 并以客户模板覆盖，避免修改 Oracle 交付文件。数据 SQL 必须使用绑定变量、稳定排序和最小列集；报表逻辑不能绕开职责/MOAC/账簿范围。XML 通过而 PDF 错误时，先检查模板字段路径、格式掩码、字体和 OPP 日志，不要立刻重跑业务程序。
+
+#### Web ADI：受控 Excel 上传，不是通用 ETL
+
+Web ADI 的典型链路是 **Integrator → Interface → Content → Layout → Mapping → Uploader**：Integrator 定义业务功能；Interface 定义可读写对象和参数；Content 决定导出/上传的数据集合；Layout 是用户看到的工作表；Mapping 把列映射到接口属性；Uploader 把数据交给 API/Open Interface 或受支持处理器。
+
+| 场景 | 适合 Web ADI | 不适合 Web ADI |
+| --- | --- | --- |
+| 少量、需要用户审阅和 Excel 录入的主数据/日记账/受支持业务对象 | 是；设置职责、Layout、值集、保护列、上传校验和审计 |  |
+| 数十万行无人值守的系统集成 |  | 否；应评估 Open Interface、文件接口或服务契约 |
+| 需要复杂跨系统补偿、死信、重放 |  | 否；使用有状态接口 Worker/中间件 |
+| 一次性分析下载 | 可用受控查询 Layout | 不应把上传模板改成无验证的离线数据库工具 |
+
+Web ADI 上线测试要覆盖 Excel/Office 兼容性、宏/客户端策略、职责与组织权限、值集校验、隐藏/保护列、重复上传、部分失败、日志和上传后业务/会计结果。上传成功只表示上传器完成；若后续仍需 Import/Concurrent Request，必须继续追踪 Request ID 和错误行。
+
 #### 文件交换控制
 
 - 入站文件先落到隔离 Landing 目录，校验名称、大小、Hash、字符集、签名/加密和来源，再移动到 `fs_ne` 的处理目录；处理完成后移动到成功/拒绝/归档目录。
@@ -1817,7 +2121,7 @@ Oracle 的并发执行方法包含 Java Concurrent Program；并发程序定义�
 - 文件处理表保存外部文件名、Hash、批次、行数、金额、状态、Request ID 和归档位置；重复 Hash 只记录重复，不再次导入。
 - 银行、税务、薪资和个人数据文件必须加密、限权、定期清理并审计下载；生产与非生产端点和证书隔离。
 
-BI Publisher 的数据提取、模板和分发能力见 [Oracle XML Publisher Administration and Developer's Guide](https://docs.oracle.com/cd/E26401_01/doc.122/e22953/T174296T206856.htm)；XML Gateway 的消息映射、Trading Partner、AQ 和传输代理见 [Oracle XML Gateway User's Guide](https://docs.oracle.com/cd/E26401_01/doc.122/e20929/)。
+BI Publisher 的数据提取、模板和分发能力见 [Oracle XML Publisher Administration and Developer's Guide](https://docs.oracle.com/cd/E26401_01/doc.122/e49092.pdf)；Web ADI 的部署与 Layout/Mapping 管理见 [Oracle Web Applications Desktop Integrator Implementation and Administration Guide](https://docs.oracle.com/cd/E26401_01/doc.122/e22007/title.htm)；XML Gateway 的消息映射、Trading Partner、AQ 和传输代理见 [Oracle XML Gateway User's Guide](https://docs.oracle.com/cd/E26401_01/doc.122/e20929/)。
 
 <a id="src-docs-09-technical-ha-dr-clone"></a>
 ### 6.13 高可用、克隆、备份与灾备
@@ -1897,6 +2201,23 @@ Rapid Clone 的源端准备、目标端配置和跨平台边界见 [EBS Concepts
 ```
 
 流水线可以自动做 Markdown/SQL/Java 静态检查、工件打包、校验 Hash、契约测试和结果归档，但不能替代 EBS 实例中的职责、组织、会计、并发和页面验证。任何自动化脚本都应支持 dry-run、审计日志、超时和人工批准。
+
+### 6.15 配置、元数据与代码的迁移边界
+
+不要把“能导出”理解为“能安全迁移”。先将工件分成代码、定义、运行数据和环境密钥四类：代码跟随 ADOP；定义使用各工具支持的迁移方式；运行数据按业务转换计划处理；密码、证书、端点和生产数据始终单独受控。
+
+| 工件 | 推荐交付方式 | 不能遗漏的验证 | 不应迁移/直接修改 |
+| --- | --- | --- | --- |
+| PL/SQL、Java、Shell、Forms 源码/编译件 | 客户应用补丁 + ADOP，保留源码、依赖和版本 | 编译有效、权限、同义词、Run/Patch 一致、回退版本 | 只拷贝到当前 Run 文件系统或修改 Oracle 交付文件 |
+| Concurrent Program、Value Set、Request Set、Lookup、Flexfield 等 AOL 定义 | 仅使用目标对象已提供的 FNDLOAD `.lct/.ldt` 或受支持配置工具 | 源/目标应用短名、依赖顺序、职责/Request Group、参数和实际运行 | 把 FNDLOAD 当作所有对象通用迁移器，或手工改未知 LDT 结构 |
+| Workflow 定义 | WFLOAD/Workflow Builder 支持的定义文件 | Item Type、Lookup、Function、Message、错误流程、版本与回退 | `WF_ITEMS`、通知、活动状态等运行数据 |
+| Forms/OAF Personalization | 各工具的受支持导出/部署机制，连同功能和安全定义交付 | Function/Page Context、Level、Sequence、职责、组织与补丁回归 | 直接复制生产 Personalization 基表记录 |
+| BI Publisher/XDO | 模板、Data Definition/数据源和对应受支持导入/导出工具 | 代码、应用、语言/地区、字体、OPP、参数、分发和安全 | 只迁模板却遗漏数据定义、Concurrent Program 或字体 |
+| Web ADI | Integrator 元数据、Layout、Mapping、权限和产品依赖 | 下载、上传、值集、Excel 客户端、重复提交和异常行 | 将个人工作簿/宏作为唯一生产工件 |
+| 业务设置与主数据 | iSetup、标准页面、Open Interface 或产品迁移工具 | 结构依赖、有效日期、控制总额、抽样业务和会计 | 用技术迁移掩盖业务数据转换和对账 |
+| 密钥、证书、端点、服务账号 | 环境专属安全流程和运行时注入 | 轮换、最小权限、非生产隔离和连接测试 | Git、LDT、报表模板、日志或克隆环境中的明文值 |
+
+发布包至少含 manifest（工件、版本、依赖、校验值）、部署顺序、受影响服务、变更窗口、验证请求/业务键、回退/补偿步骤及负责人。迁移后先核对“定义存在”，再核对“低权限用户能够安全运行”，最后核对“业务、会计、接口和报表结果正确”。
 
 <!-- 兼容旧版目录与学习材料的定位锚点；正文已按主题重编。 -->
 <a id="src-docs-10-technical-adop-and-ebr-readme"></a>
