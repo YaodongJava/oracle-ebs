@@ -104,14 +104,27 @@ erDiagram
 → 付款处理请求 PPR → 支付文件/银行回执 → 清算/对账 → GL
 ```
 
-常见会计（以实例 SLA 为准）：
+<a id="p2p-standard-entries"></a>
 
-```text
-收货或期末应计：Dr Inventory/Expense/Accrual  Cr Receiving/Expense Accrual
-发票：          Dr Expense/Asset/Tax/Accrual  Cr AP Liability
-付款：          Dr AP Liability               Cr Cash/Cash Clearing
-银行清算：      Dr Cash Clearing              Cr Cash
-```
+### 2.1 默认标准会计分录速查
+
+下表以 R12 标准**应计**模型说明经济方向；账户名称是类别，不是固定 CCID。实际行数和账户仍由 Inventory/Receiving、AP Options、IBY、CE、EBTax 及 SLA 的事件、账户规则决定。PO 审批、请购、付款排程、银行文件生成和纯状态变更在未启用承诺会计或未发生资金/成本事实时，通常**不单独产生 Actual 会计分录**。
+
+| 业务事实 | 标准经济分录（借 / 贷） | 产生时点与边界 |
+| --- | --- | --- |
+| 库存目的地收货到接收/检验 | 借：Receiving Inspection（或 Receiving Inventory）<br>贷：PO/Receiving Accrual | 是否在 Receive、Deliver 或期末应计确认，取决于 Receiving Options、目的地和应计方法 |
+| 从接收/检验交付至库存 | 借：Inventory Valuation<br>贷：Receiving Inspection | 仅把已接收价值转入库存；不代表供应商发票已入账 |
+| 费用目的地收货或期末应计 | 借：Expense/Expense Accrual<br>贷：Expense/Receiving Accrual | Receipt Accounting 与 Period-End Accrual 的时点不可混用；依实例设置而定 |
+| PO 匹配库存/应计发票 | 借：PO/Receiving Accrual、Tax（可抵扣部分）<br>贷：AP Liability | 发票验证后由 SLA 处理；价格/汇率/数量差异可能额外进入 PPV、IPV 或差异账户 |
+| 非 PO 费用或资产发票 | 借：Expense 或 Asset/CIP、Tax（可抵扣部分）<br>贷：AP Liability | 未匹配发票不会结清收货应计；费用、资产和项目分配由发票行/分配及 SLA 决定 |
+| 预付款发票与付款 | 预付款发票：借：Prepayment Asset，贷：AP Liability<br>付款：借：AP Liability，贷：Cash/Cash Clearing | 已付预付款才可核销到标准发票；外币核销可产生汇兑/舍入行 |
+| 预付款核销标准发票 | 借：Expense/Asset/Tax/Accrual（发票完整金额）<br>贷：AP Liability；另借：AP Liability，贷：Prepayment Asset（核销额） | 两组行共同反映发票确认与预付款结清；部分核销只结清相应金额 |
+| Credit Memo / Debit Memo | Credit Memo：借：AP Liability，贷：Expense/Asset/Tax/Accrual<br>Debit Memo：借：AP Liability，贷：Expense/Asset/Tax/Accrual | 方向取决于单据业务性质与分配；应通过标准发票类型/退款流程，不手工交换借贷列 |
+| 付款 | 借：AP Liability<br>贷：Cash 或 Cash Clearing | Direct Clearing 可直接贷现金；启用清算时先贷 Cash Clearing |
+| 银行清算 | 借：Cash Clearing<br>贷：Cash | 仅适用于以清算账户过渡的模型；银行回单/CE 对账状态本身不必然另起一笔会计 |
+| 付款作废/撤销 | 借：Cash 或 Cash Clearing<br>贷：AP Liability | 系统按付款状态和作废动作反转原付款会计；已清算/已对账付款先按标准流程取消匹配或处理银行退回 |
+
+承诺会计、预扣税、保留款、付款折扣、费用分摊和本地化税务不是所有实例的默认范围，故不将其写成通用必然分录；启用后应在本模块的 SLA 测试矩阵中单独定义。
 
 ## 3. 关键控制设计
 
@@ -594,13 +607,7 @@ stateDiagram-v2
 <a id="src-docs-02-ap-accounting-close-reports--会计链路"></a>
 #### 会计链路
 
-AP 发票、付款、作废、预付核销和汇兑损益通过 SLA 建立会计。常见经济分录（以实际 SLA 规则为准）：
-
-```text
-Invoice:  Dr Expense/Asset/Tax   Cr Liability
-Payment:  Dr Liability           Cr Cash/Cash Clearing
-Clearing: Dr Cash Clearing       Cr Cash
-```
+AP 发票、付款、作废、预付核销和汇兑损益通过 SLA 建立会计。业务分录、无即时会计事件的边界及清算模型见[默认标准会计分录速查](#p2p-standard-entries)；月结时仍须以实际 SLA 行、汇兑和税务结果对账。
 
 <a id="src-docs-02-ap-accounting-close-reports--月结顺序"></a>
 #### 月结顺序

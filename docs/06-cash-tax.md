@@ -336,6 +336,21 @@ EBTax 只有在规则或默认值完整时才应将 Tax 标记为 Available for 
 
 对账状态和会计状态是两套独立状态：一笔交易可以已会计但未对账，也可以已与银行行匹配但会计仍失败。查询和关账必须分别检查两者。
 
+### 6.1.1 默认标准会计分录与无会计边界
+
+银行对账单的导入、查询、自动匹配和手工匹配主要记录银行事实与对账关系，**不是必然的新会计事件**。AP 付款、AR 收款的原始会计通常仍由各自子账生成；CE 对银行转账、外部现金流、对账差异或特定清算事件可通过 SLA 生成会计。标准经济方向如下：
+
+| 业务事实 | 标准经济分录（借 / 贷） | 边界与核对 |
+| --- | --- | --- |
+| AP 付款使用清算账户 | 源 AP：借：AP Liability，贷：Cash Clearing<br>清算：借：Cash Clearing，贷：Cash | 清算会计来源可能是 AP/CE 集成设置；导入银行行或匹配本身不应重复贷记现金 |
+| AR 收款使用清算账户 | 源 AR：借：Cash Clearing，贷：Receivables/Unapplied Cash<br>清算：借：Cash，贷：Cash Clearing | 收款核销状态与清算状态需分别核对；未核销款不可直接冲减指定应收 |
+| 银行手续费/对账容差差额 | 借：Bank Charges/Bank Errors<br>贷：Cash | 仅当 CE 根据银行行创建外部交易或在容差内自动记账时适用；账户来自 Transaction Code/系统参数 |
+| 银行利息收入 | 借：Cash<br>贷：Interest Income | 应以银行流水、交易码和税务处理为依据；不是所有银行文件行都会自动创建该交易 |
+| 银行账户间转账 | 借：目标银行 Cash（或 Transfer Clearing）<br>贷：来源银行 Cash（或 Transfer Clearing） | 同账簿可直接或经清算账户；跨 Ledger/法人还需跨公司会计，不能以单一内部转账模板替代 |
+| 外币清算/银行差额 | 损失：借：Exchange Loss；收益：贷：Exchange Gain | 由账簿金额、汇率日期/类型和银行行汇率决定；银行原币金额和功能币金额须分开对账 |
+| 退票/NSF、支付退回 | 不在 CE 直接硬编码：按 AR/AP 标准撤销或退回流程恢复 Receivable/Liability，并冲回 Cash/Clearing | CE AutoReconciliation 可解除匹配/清算；后续会计必须回到来源交易和银行事实确认 |
+| EBTax 税务确定、税务报告 | 无独立“税务确定”分录；交易税行在 AP/AR/其他来源交易会计时进入 Tax Recoverable/Tax Liability 等账户 | Tax Regime/Rate/Rule 的建立和税表输出不是总账凭证；可抵扣、不可抵扣、offset tax、预扣税及本地化需按规则单独测试 |
+
 ### 6.2 对账公式和报表
 
 ```text

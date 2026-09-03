@@ -256,6 +256,23 @@ WIP Accounting Class 为每类工单定义 Valuation、Absorption 和 Variance �
 
 发运截止要按 Ship Date、Invoice Date、Revenue Date 和 GL Date 分别检查；退货、贷项、部分发运、跨组织发运和收入延迟需验证 COGS/Revenue Matching 不重复或遗漏。
 
+### 4.4.1 默认标准会计分录速查
+
+下表按标准库存/离散 WIP 的常见经济方向编排。具体账户由组织参数、物料/类别、成本组、WIP Accounting Class、成本方法和 SLA 决定；同一事务在不同成本方法或组织间选项下可有不同的中间账户。纯查询、BOM/Routing 维护、Pick Release、Move 但尚未产生成本事务等动作不一定即时产生会计。
+
+| 业务事实 | 标准经济分录（借 / 贷） | 产生时点与边界 |
+| --- | --- | --- |
+| 杂项接收 | 借：Inventory Valuation<br>贷：Miscellaneous Receipt/Offset Account | 对冲账户由 Account Alias 或事务来源控制；不是采购收货应计 |
+| 杂项发出 | 借：Miscellaneous Issue/Offset Account<br>贷：Inventory Valuation | 需审批原因和账户；不得用杂项发出代替销售发运或报废流程 |
+| 同组织子库存转移 | 通常无净额会计；若转出/转入子库存设置不同账户，则借：目标库存账户，贷：来源库存账户 | 数量一定变化，是否会计取决于子库存/事务设置 |
+| 组织间在途转移 | 发运：借：Intransit Inventory，贷：来源 Inventory<br>接收：借：目标 Inventory，贷：Intransit Inventory | 内部利润、运费、跨账簿/跨法人会计和 Transfer Price 需按组织间规则另测 |
+| WIP 发料/倒冲 | 借：WIP Valuation（按成本要素）<br>贷：Inventory Valuation | 退料时反向；倒冲的会计时点取决于完工/移动设置 |
+| WIP 资源、外协、制造费用吸收 | 借：WIP Valuation<br>贷：Resource/OSP/Overhead Absorption | 账户按 WIP Accounting Class 与成本要素派生；外协的采购应计/发票链还需与 PO/AP 对账 |
+| 工单完工入库 | 借：Finished Goods Inventory<br>贷：WIP Valuation | 完工成本由标准/实际/期间成本及工单已吸收成本决定 |
+| 工单关闭/期间差异 | 差异不利：借：WIP Variance，贷：WIP Valuation；有利差异方向相反 | 差异类别与金额随标准/平均/周期成本、关闭规则和剩余 WIP 而变 |
+| 销售发运且启用 COGS Matching | 发运：借：Deferred COGS，贷：Inventory<br>收入确认：借：COGS，贷：Deferred COGS | 如未启用延迟 COGS，系统可直接借 COGS、贷 Inventory；AR 收入分录属于 C2C 模块，需和本表匹配但不重复记账 |
+| 盘点差异/报废 | 数量增加：借：Inventory，贷：Physical Inventory/Adjustment Offset；数量减少反向 | 差异账户、原因码和审批由库存控制定义；需防止与实际报废/质量流程重复 |
+
 ### 4.5 Landed Cost Management（LCM）
 
 LCM 可在收货前估计、收货后服务或针对任意单据/事务计算预计和实际到岸成本。常见成本因素包括运费、保险、处理费、仓储费、集装箱费、关税和进出口费用。

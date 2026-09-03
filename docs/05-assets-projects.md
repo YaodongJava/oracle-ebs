@@ -376,6 +376,23 @@ flowchart LR
 | Projects Revenue | 收入、UBR/UER、调整 | Released Revenue = Revenue Events = SLA = GL Revenue |
 | Projects Billing → AR | 发票、税、UBR/UER、应收 | Released Invoice = AR Interface Success = AR Transaction = Tieback |
 
+### 5.1.1 默认标准会计分录速查
+
+下表只列出资产和项目中通常会产生 Actual 会计的业务事实。`Asset Cost`、`CIP Cost`、`Asset Clearing`、`Depreciation Expense`、`Accumulated Depreciation`、项目成本/收入等均是账户类别；最终段值由资产类别、资产分配、账簿、项目 AutoAccounting、SLA 和来源交易决定。创建资产类别、建立项目/任务、生成资产线但尚未送入 FA、运行查询等动作本身不产生会计。
+
+| 业务事实 | 标准经济分录（借 / 贷） | 产生时点与边界 |
+| --- | --- | --- |
+| AP Mass Addition 资本化为资产 | 借：Asset Cost（或 CIP Cost）<br>贷：Asset Clearing（或 CIP Clearing） | AP 发票先形成 AP Liability；Mass Additions Post/资产新增时由 FA 把清算余额转入资产成本。非资本性发票不应送入该链路 |
+| CIP 资产资本化 | 借：Asset Cost<br>贷：CIP Cost | 将 CIP 资产转为可折旧资产；只有资本化后才开始按书/方法计提折旧 |
+| 当期折旧 | 借：Depreciation Expense<br>贷：Accumulated Depreciation | Run Depreciation 计算后由 Create Accounting - Assets 生成；Bonus Depreciation、追溯调整和税务账可有独立费用/准备金行 |
+| 资产成本调整 | 增加成本通常为：借：Asset Cost，贷：Asset Clearing/Adjustment Account；减少时反向 | 是否补提/调整折旧取决于调整类型、生效日、折旧方法和已关闭期间；不能仅修改成本而忽略折旧影响 |
+| 资产转移 | 同一资产成本账户/准备金账户不变时可无净额会计；账户或分配变更时，在旧/新成本中心的费用/准备金账户间重分类 | 转移通常影响后续折旧费用归属；追溯转移还可能生成历史折旧重新分配 |
+| 资产退休/处置 | 借：Accumulated Depreciation、Cash/Receivable（处置收入）、Loss on Retirement（如有）<br>贷：Asset Cost、Gain on Retirement（如有） | 完整/部分退休按退役成本、准备金、处置收入和移除成本计算；收益/损失不是独立手工凭证的替代品 |
+| 项目原始成本/负担成本 | 借：Project Cost（Raw/Burden）<br>贷：来源清算/应计/成本账户 | AP、Payroll、Inventory、外部导入的贷方来源不同；项目成本处理先形成 Raw/Burden/Burdened Cost，再按项目 AutoAccounting/SLA 入账 |
+| 项目人工应计（如启用） | 借：Project Cost/Labor Expense<br>贷：Labor Accrual | `PRC: Generate Labor Accruals` 等可选流程适用；后续 Payroll Actual 通常冲回应计并记录实际成本 |
+| 合同项目收入确认 | 借：Unbilled Receivable（或 AR）<br>贷：Project Revenue | 收入与开票可分离；若先确认收入后开票，后续开票通常在 AR 与 Unbilled Receivable 间重分类，而非再次确认收入 |
+| 合同项目开票至 AR | 借：AR Receivables<br>贷：Unbilled Receivable（已确认收入时） | `Generate Draft Invoice → Release → Transfer to AR` 成功后才形成 AR 交易；税由 AR/EBTax 规则另行确定 |
+
 金额对账必须统一四个口径：交易币/功能币/报告币、借贷方向、会计日期/服务日期、明细/汇总传送粒度。舍入、汇率差、税和跨期间调整要单独列示，不能用“总账余额差异”笼统冲销。
 
 ### 5.2 建议关账顺序

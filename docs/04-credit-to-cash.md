@@ -267,14 +267,25 @@ Lockbox 处理银行收款文件、客户识别和自动核销。匹配规则应
 
 ## 5. 会计与对账
 
-常见分录（以 SLA 为准）：
+<a id="c2c-standard-entries"></a>
 
-```text
-开票：Dr Receivables   Cr Revenue/Tax/Freight
-收款：Dr Cash/Clearing Cr Receivables 或 Unapplied/On-account
-清算：Dr Cash          Cr Cash Clearing
-调整/贷项：按交易类型和活动规则冲减应收、收入或费用
-```
+### 5.1 默认标准会计分录速查
+
+下表为标准应计模型的经济方向。AutoAccounting 在 AR 交易生成阶段提供默认账户，SLA 可进一步派生账户、汇兑和描述；因此应将“Receivable”“Revenue”等理解为账户类别，而非所有实例相同的科目代码。创建客户、信用评估、订单 Hold、催收任务、导入文件和账龄查询本身不产生会计。
+
+| 业务事实 | 标准经济分录（借 / 贷） | 产生时点与边界 |
+| --- | --- | --- |
+| 标准发票 | 借：Receivables<br>贷：Revenue、Tax、Freight（如适用） | Complete/会计事件后按交易类型、行和税行生成；不把含税总额仅记入收入 |
+| Credit Memo | 借：Revenue/Tax/Freight（冲回原交易相关部分）<br>贷：Receivables | 对原发票的收入/税冲回由原交易、交易类型和税规则决定；不等同于收款退款 |
+| Debit Memo / Finance Charge | 借：Receivables<br>贷：Revenue 或 Receivables Activity Account | 是否为收入、费用补偿或融资费用取决于交易类型/Receivables Activity；需单独定义账户 |
+| 直接清算的客户收款并核销 | 借：Cash<br>贷：Receivables | 仅当收款方法不使用 Cash Clearing/Remittance 过渡时适用 |
+| 使用清算账户的收款 | 收款：借：Cash Clearing，贷：Receivables<br>银行清算：借：Cash，贷：Cash Clearing | 收款应用和银行清算是两个状态/事件；清算日期、汇率和账户来自收款方法与银行设置 |
+| 未核销/On-account 收款 | 收款：借：Cash 或 Cash Clearing，贷：Unapplied Cash/On-account<br>核销：借：Unapplied Cash/On-account，贷：Receivables | 不能在收到未识别款时直接贷应收；后续应用才减少具体客户交易余额 |
+| 负向调整/坏账核销 | 借：Write-off/Bad Debt/Allowance（按活动定义）<br>贷：Receivables | 调整活动和审批决定账户；坏账准备法、直接核销法及本地法规不同，不能硬编码同一账户 |
+| 退款或退票/NSF | 退款：借：Receivables 或 Refund Liability，贷：Cash<br>退票：按标准收款冲销恢复 Receivables 并冲回 Cash/Clearing | 必须通过 Receivables/Payments/Cash Management 的标准退款或撤销流程；已清算/已对账状态还需处理银行匹配 |
+| 汇兑差额 | 损失：借：Exchange Loss；收益：贷：Exchange Gain | 在外币交易、收款或清算的会计事件中按账簿币金额差生成；不可用手工改交易币金额代替 |
+
+### 5.2 对账
 
 月结依次清理 AutoInvoice 拒绝、未完成交易、未会计收款/调整、未传 GL 分录、未核销/未识别款项，再核对 Aging（账龄）、AR Trial Balance、收款清算和 GL 应收控制账户。
 
@@ -481,7 +492,7 @@ Transaction/Receipt/Adjustment Event
 → Journal Import → Post → Reconcile
 ```
 
-典型分录（以实际 AutoAccounting/SLA 为准）：Invoice 借 Receivable/贷 Revenue+Tax；Receipt 借 Cash/Remittance/未核销、贷 Receivable；Clear 在 Cash Clearing 与 Cash 间转换；Adjustment 在 Receivable 与 Adjustment Account 间转换。
+标准应计模型下各业务事实的借贷方向、清算模型、未核销款和退款/退票边界见[默认标准会计分录速查](#c2c-standard-entries)。本段的重点是会计处理链与期间控制，实际行仍以 AutoAccounting/SLA 为准。
 
 <a id="src-docs-03-ar-accounting-close-reports--月结"></a>
 #### 月结
