@@ -4,7 +4,7 @@
 
 ## 阅读导航
 
-- [学习目标](#1-学习目标与范围) · [企业结构](#2-企业结构的认知顺序) · [配置顺序](#3-推荐配置顺序) · [COA 与主数据](#4-coa-与主数据治理) · [权限](#5-权限与数据访问) · [诊断与练习](#7-基础问题诊断清单) · [页面与配置实操](#9-资深顾问实操页面与配置) · [专题详解](#10-专题详解)
+- [学习目标](#1-学习目标与范围) · [实施配置](#implementation) · [企业结构](#2-企业结构的认知顺序) · [配置顺序](#3-推荐配置顺序) · [COA 与主数据](#4-coa-与主数据治理) · [权限](#5-权限与数据访问) · [诊断与练习](#7-基础问题诊断清单) · [页面与配置实操](#9-资深顾问实操页面与配置) · [专题详解](#10-专题详解)
 - [模块数据字典与名词解释](data-dictionary.md#dict-01)
 
 ## 模块业务架构与核心 ER 图
@@ -65,6 +65,43 @@ erDiagram
 ## 1. 学习目标与范围
 
 学完本模块，应能解释企业组织如何映射到 EBS，能够设计 Ledger（账簿）、Chart of Accounts（会计科目表，COA）、日历、币种、Legal Entity（法人实体）、Operating Unit（业务实体）和数据访问，并能判断安全、主数据或 SLA 问题的责任边界。
+
+<a id="implementation"></a>
+
+## 实施配置手册：财务公共基础
+
+本节是新实例或新账簿上线的执行顺序。所有菜单以 R12.2 的预置职责和功能名称描述；实施项目可通过菜单排除、职责副本或本地化修改改变显示位置。**不要直接更新 FND、HR、GL 或 XLA 基表**；使用页面、受支持 API 或受控接口迁移。
+
+### 1. 配置前冻结输入与责任分工
+
+| 输入/决定 | 必须确认的内容 | 配置所有者 | 完成证据 |
+| --- | --- | --- | --- |
+| 法律与组织模型 | 法人、税务登记、OU、库存组织、平衡段值和它们的映射 | 财务 + 税务 + HR | 已批准的企业结构图和编码表 |
+| 会计模型 | COA 段、值集、会计日历、币种、会计方法、二级账簿/报告币种需求 | 总账负责人 | COA 设计、期间表和账簿设计书 |
+| 安全模型 | 职责、数据访问集、MOAC 安全配置文件、默认 OU、审批人 | 安全管理员 + 业务负责人 | SoD 矩阵、用户授权清单 |
+| 迁移与切换 | 配置移送方式、期初余额、未结单据、冻结窗口和回退边界 | 项目经理 + 技术负责人 | 模拟迁移与切换演练记录 |
+
+先在设计文档中为每个对象分配“全局一次、每 Ledger、每法人、每 OU、每库存组织”五种作用域；同名配置若作用域写错，是多组织上线最常见的缺陷来源。
+
+### 2. 具体配置步骤与导航
+
+| 顺序 | 配置项 | 预置职责 / 导航（功能名） | 关键输入与检查 | 验收动作 |
+| --- | --- | --- | --- | --- |
+| 1 | 值集与会计弹性域 | `System Administrator > Application > Flexfield > Validation > Sets`；`... > Key > Segments` | 先定义段值集和验证类型，再定义 Accounting Flexfield 结构、段、提示、默认值；保存后编译弹性域 | 以录入职责打开账户组合，验证每段值、默认、必输和说明性提示 |
+| 2 | 段值、层级、交叉验证 | `GL Super User > Setup > Financials > Flexfields > Key > Values`；`... > Cross-Validation Rules` | 建立明细值/父值、允许过账/预算、生效失效日；规则只阻断明确不允许的组合 | 用允许组合和禁止组合各录入一次日记账；确认历史已用组合不被误伤 |
+| 3 | 日历、币种、汇率类型 | `GL Super User > Setup > Financials > Calendars`；`Setup > Currencies > Define / Rates > Conversion Types` | 定义期间类型、年度和期间；定义币种精度、每日汇率类型；期间应覆盖上线期和预测期 | 查询会计日历期间；维护一条每日汇率并验证目标币种、日期和类型 |
+| 4 | 法人与账簿结构 | `Accounting Setup Manager > Accounting Setups`，或 `Legal Entity Configurator` | 建立/补全法人注册信息；在 Accounting Setup 中指定 Primary Ledger 的 COA、日历、币种和 SLA 方法；按需定义 Secondary Ledger/Reporting Currency | 检查 Accounting Setup Manager Checklist 全部 required 项；记录 Ledger ID、法人和账簿关联 |
+| 5 | 账簿选项与平衡 | `Accounting Setup Manager > Accounting Options` | 完成 ledger、子账会计、报告币种、平衡段值分配、跨公司/内部平衡账户、序列等选项 | 用两个平衡段值录入跨公司测试分录，确认平衡行和账户来源符合设计 |
+| 6 | OU、组织分类与账簿关联 | `HRMS Manager > Work Structures > Organization > Description`（或实施使用的组织定义功能）及 Accounting Setup Manager 的 Operating Units 步骤 | 先建立 HR Organization，再按需分类为 Operating Unit/Inventory Organization；为每 OU 指定法人、账簿和业务用途 | 在 AP/AR/PO 职责切换 OU，确认只显示本 OU 交易环境 |
+| 7 | MOAC 与数据访问 | `System Administrator > Profile > System`；`System Administrator > Security > Responsibility > Define`；安全配置文件维护职责 | 定义 Security Profile 和 Data Access Set；设置 `MO: Security Profile`、`MO: Operating Unit`、`GL: Data Access Set`、`GL: Ledger Name` 等所需 Profile | 用“单 OU 用户”和“共享服务用户”分别登录，验证查询范围、默认 OU、账簿和不可越权访问 |
+| 8 | 单据序列、附件、说明性弹性域 | `System Administrator > Application > Sequential Numbering`；`Application > Flexfield > Descriptive > Segments` | 为受监管单据设置序列、类别和生效日期；启用 DFF 前确认上下文与字段用途 | 创建样例单据，检查序号连续性、DFF 校验和附件可见范围 |
+
+### 3. 上线前的最小穿透测试
+
+1. 用每个 OU 创建一笔最小业务交易，确认默认法人、Ledger、税务/会计上下文正确。
+2. 以受限职责查询同一交易，确认 MOAC 与 Data Access Set 没有越权或漏权。
+3. 以测试日记账验证有效组合、跨公司平衡、期间状态和文档序列。
+4. 导出配置清单：对象名称、内部 ID、作用域、生效日期、负责人、变更单号；该清单是后续所有模块配置的基线。
 
 ## 2. 企业结构的认知顺序
 

@@ -4,7 +4,7 @@
 
 ## 阅读导航
 
-- [范围](#1-学习目标与边界) · [核心链路](#2-两条核心链路) · [固定资产](#3-fixed-assets-设计重点) · [项目](#4-projects-设计重点) · [会计对账](#5-会计和对账) · [技术排错](#6-技术视角) · [页面与资本化实操](#9-资深顾问实操资产项目与资本化) · [专题详解](#10-专题详解)
+- [范围](#1-学习目标与边界) · [实施配置](#implementation) · [核心链路](#2-两条核心链路) · [固定资产](#3-fixed-assets-设计重点) · [项目](#4-projects-设计重点) · [会计对账](#5-会计和对账) · [技术排错](#6-技术视角) · [页面与资本化实操](#9-资深顾问实操资产项目与资本化) · [专题详解](#10-专题详解)
 
 ## 模块数据字典与名词解释
 
@@ -76,6 +76,30 @@ erDiagram
 ## 1. 学习目标与边界
 
 应能解释 Asset Book（资产账簿）、类别、折旧、资产交易和 FA-GL 对账；理解 Projects Foundation、Project Costing（项目成本）、Project Billing（项目开票）和资本化；区分 Property Manager、iAssets、EAM、Grants 等可选产品。
+
+<a id="implementation"></a>
+
+## 实施配置手册：固定资产与项目
+
+资产和项目共享 GL、AP、PO、HR、组织与 SLA 基础，但各自还有独立的账簿/实施选项。先确定项目成本是否要资本化为 FA、是否包含合同开票；这些选择决定项目类型、成本分配、资产分组及接口测试范围。
+
+| 顺序 | 配置项 | 预置职责 / 导航（功能名） | 配置重点 | 验收动作 |
+| --- | --- | --- | --- | --- |
+| 1 | FA 账簿与日历 | `Assets Manager > Setup > Asset System > Asset Books`（功能名称在职责副本中可能不同） | 为 Corporate/Tax 账簿指定 Ledger、会计日历、折旧日历、最后开期、会计规则和短会计年度处理；不要把税务账当成可随意修改的复制账簿 | 查询账簿控制，确认每个账簿可开当前资产期间且对应正确 Ledger |
+| 2 | 资产类别与账户 | `Assets Manager > Setup > Asset System > Asset Categories` | 定义类别、Asset Clearing、Cost、Depreciation Reserve、Depreciation Expense、Retirement Clearing 等账户；以类别而非人工记忆控制账户 | 按类别新增测试资产，查看分配账户；用错误类别确认账户校验能阻断 |
+| 3 | 折旧方法、寿命与地点 | `Assets Manager > Setup > Asset System > Depreciation Methods`；`Setup > Asset System > Locations` | 定义方法、寿命/单位、约定、Prorate Calendar/Convention、地点和资产关键 DFF；不同账簿按准则分开设计 | 对不同投入使用日期运行试算折旧，复核期间数、费用/准备金和开始日期 |
+| 4 | Mass Additions/AP 衔接 | `Payables Manager > Setup > Options > Payables` 与 `Assets Manager > Mass Additions` | 定义资产追踪/资本化规则、发票分配到 Mass Additions 的条件、默认资产类别/地点和复核责任人 | 从 AP 资本性发票创建 Mass Addition，完成 Prepare/Posting 后追溯 AP 分配与资产 |
+| 5 | Projects 实施选项与组织 | `Projects Super User > Setup > Organizations > Implementation Options`；`Setup > Organizations` | 定义项目组织、项目/任务编号、货币、成本/收入处理、跨项目/跨 OU 策略和员工组织；确认 HR 组织/人员已可用 | 创建最小项目，验证项目组织、货币、客户/联系人和安全范围 |
+| 6 | 项目类型、任务与控制 | `Projects Super User > Setup > Projects > Project Types`；项目模板/任务模板功能 | 为成本类、资本类、合同类项目定义项目类型、状态控制、允许成本/收入/开票、任务控制和模板 | 用三个项目类型分别创建项目，确认不允许的成本或开票动作被阻断 |
+| 7 | 支出、成本与负担 | `Projects Super User > Setup > Expenditures > Expenditure Types / Categories`；成本分配/负担设置功能 | 配置 Expenditure Type、组织/非劳务资源、成本率、Burden Schedule、成本分配和 Account Generator/Workflow 依赖 | 导入一笔劳务和一笔 AP 成本，运行成本分配/负担，复核原始成本与负担成本 |
+| 8 | 资本化与项目资产线 | `Projects Super User > Setup > Asset Capitalization`（资产分组/类别/分配功能） | 定义 Capital Project、资产类别、Asset Assignment、Asset Group、成本归集、资产线生成和送 FA 的审批窗口 | 从合格项目成本生成资产线并送入 FA；核对无资格成本不会被资本化 |
+| 9 | 合同项目收入/开票（如适用） | `Projects Super User > Setup > Billing > Revenue / Invoice` | 定义合同、资金/客户、收入分配、开票方法、事件类型、AR Transaction Source/Type 和 Transfer 失败处理 | 对同一项目运行 Generate Revenue、Generate Draft Invoice、Release、Transfer 至 AR，核对每阶段状态 |
+
+### 上线与关账测试
+
+1. FA 覆盖新增、Mass Addition、调整、转移、折旧、退休及回滚限制；每一步验证资产账簿与 GL 的对账。
+2. PA 覆盖直接成本、AP/PO 成本、负担、调整、资本化和（如启用）收入/开票；保存项目、任务、支出项、请求号及会计追溯键。
+3. 不要在尚有未处理 Mass Addition、资产线、成本分配或未过账会计时关闭相关期间；建立“处理器完成—对账—关期”的门禁清单。
 
 ## 2. 两条核心链路
 

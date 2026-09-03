@@ -4,7 +4,7 @@
 
 ## 阅读导航
 
-- [产品边界](#1-学习目标与产品边界) · [业务会计主链](#2-业务与会计主链) · [关键控制](#3-关键控制设计) · [功能实施](#4-功能顾问实施顺序) · [接口设计](#5-技术与接口设计) · [月结排错](#6-月结与对账) · [页面与支付实操](#9-资深顾问实操发票匹配与支付) · [专题详解](#10-专题详解)
+- [产品边界](#1-学习目标与产品边界) · [实施配置](#implementation) · [业务会计主链](#2-业务与会计主链) · [关键控制](#3-关键控制设计) · [功能实施](#4-功能顾问实施顺序) · [接口设计](#5-技术与接口设计) · [月结排错](#6-月结与对账) · [页面与支付实操](#9-资深顾问实操发票匹配与支付) · [专题详解](#10-专题详解)
 - [模块数据字典与名词解释](data-dictionary.md#dict-03)
 
 ## 模块业务架构与核心 ER 图
@@ -73,6 +73,29 @@ erDiagram
 ## 1. 学习目标与产品边界
 
 应能解释 Purchasing（采购，PO）、Receiving（接收，RCV）、Payables（应付，AP）、E-Business Tax（电子商务税务，ZX）、Payments（支付，IBY）和 Cash Management（现金管理，CE）的职责边界，设计三单匹配、付款审批、接口幂等和月结对账。
+
+<a id="implementation"></a>
+
+## 实施配置手册：采购、应付与付款
+
+实施顺序必须遵循“共同基础 → 采购控制 → 收货 → 应付 → 支付 → 银行回执/对账”。下表中的导航以 `Purchasing Super User`、`Payables Manager`、`Payments Administrator` 等预置职责为参照；实际实例可能只授予职责副本。
+
+| 顺序 | 配置项 | 预置职责 / 导航（功能名） | 必填设计决定 | 验收用例 |
+| --- | --- | --- | --- | --- |
+| 1 | OU、库存组织、采购选项 | `Purchasing Super User > Setup > Organizations > Purchasing Options`；`Setup > Organizations > Financial Options` | 每 OU 的默认货币、税务、收货、匹配、会计和审批策略；采购 OU 与库存组织关系 | 创建请购单/PO，检查默认 OU、Ship-to、Bill-to、货币和会计上下文 |
+| 2 | 供应商与供应商地点 | `Payables Manager > Suppliers > Entry`（供应商管理页） | TCA Party、Supplier、Site、采购/付款用途、税务登记、付款条件、有效日期和变更审批 | 新建一个受控测试 Supplier Site，验证 PO 可选而非授权 OU 不可选 |
+| 3 | 采购单据类型与审批 | `Purchasing Super User > Setup > Purchasing > Document Types`；`Setup > Approvals > Approval Groups / Assignments` | Standard/Blanket/Contract/Planned 等文档类型的编号、允许金额、审批层级和修订规则 | 对金额阈值上下各建一张 PO，确认审批人、状态及不能绕过的更改 |
+| 4 | 接收、检验与容差 | `Purchasing Super User > Setup > Organizations > Receiving Options`；`Setup > Purchasing > Receiving Controls` | 选择 Direct/Standard/Inspection 路由，超收/早收容差、退货和目的地控制 | 收货、拒收、退货各一笔；再录入超过容差的收货验证被拦截 |
+| 5 | AP 系统选项与发票控制 | `Payables Manager > Setup > Options > Payables`；`Setup > Invoice > Tolerances` | 发票编号唯一性、会计日期、付款条件、税务、Hold 逻辑、2/3/4-way 匹配容差和分配默认值 | 录入合规 PO 匹配发票与超数量发票；运行 Validate，确认后者产生预期 Hold |
+| 6 | 付款方法和 Payment Process Profile | `Payments Administrator > Setup > Payment Administrator > Payment Methods / Payment Process Profiles` | 付款方式、内部银行账户、格式、传输协议、付款文件审批、拆分/合并和正/作废处理 | 运行小额 PPR 至“已格式化但未传送”阶段，检查付款指令、格式和签核 |
+| 7 | 银行账户与清算衔接 | `Cash Management Setup > Setup > Banks > Bank Accounts`；付款配置中的账户用途 | 确认账户所有者、币种、AP Use、清算账户、付款方法和 OU 使用权限一致 | 在 PPR 中选择账户；模拟银行回执/对账，确认支付状态和清算会计 |
+| 8 | 接口与并发程序 | `Payables Manager > Invoices > Import`；`View > Requests` | Invoice Open Interface 的来源、批次名、唯一键、校验责任人与重跑策略；不从接口表直接置成功 | 导入“成功、校验失败、重复”三类文件，保留批次号、Reject Report 和恢复记录 |
+
+### 上线门禁
+
+1. 每个 PO 类型完成请购—审批—PO—收货—发票验证测试；服务采购也必须单独覆盖。
+2. 每种付款方法完成 PPR、格式化、付款、撤销/作废与银行对账路径；生产银行传输只在授权切换窗口启用。
+3. 每 OU 核对 Supplier Site、税务、付款条件、默认分配和银行账户权限；供应商银行变更不得由付款执行人单人完成。
 
 ## 2. 业务与会计主链
 

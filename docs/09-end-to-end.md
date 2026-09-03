@@ -4,7 +4,7 @@
 
 ## 阅读导航
 
-- [分析框架](#1-通用分析框架) · [流程地图](#2-核心流程地图) · [跨模块主键](#3-跨模块相关键) · [会计追溯](#4-会计追溯标准) · [状态重跑](#5-状态与重跑) · [故障定位](#7-故障定位顺序) · [跨模块实战](#10-资深顾问实战跨模块追溯与恢复) · [流程专题](#11-流程专题与实现细节)
+- [分析框架](#1-通用分析框架) · [实施编排](#implementation) · [流程地图](#2-核心流程地图) · [跨模块主键](#3-跨模块相关键) · [会计追溯](#4-会计追溯标准) · [状态重跑](#5-状态与重跑) · [故障定位](#7-故障定位顺序) · [跨模块实战](#10-资深顾问实战跨模块追溯与恢复) · [流程专题](#11-流程专题与实现细节)
 
 ## 模块数据字典与名词解释
 
@@ -73,6 +73,41 @@ erDiagram
 ## 1. 通用分析框架
 
 对每条流程制作一张“七列流程表”：步骤、责任角色、EBS 产品、业务单据/主键、状态、会计事件、控制证据。跨系统时再加入接口批次、相关号、控制总额和重跑规则。
+
+<a id="implementation"></a>
+
+## 实施配置手册：跨模块方案落地与验收
+
+本章不重复各子模块的字段配置，而把它们组织为可实施、可切换、可恢复的端到端控制面。任何流程上线前均应有一个“流程负责人”统筹业务、会计、接口和运维责任；不能把跨模块失败简单转交给某个单一模块。
+
+### 1. 端到端配置编排
+
+| 波次 | 要配置/冻结的对象 | 主要模块与入口 | 必须形成的交付物 | 完成判定 |
+| --- | --- | --- | --- | --- |
+| 0 | 作用域、主键与责任矩阵 | 项目设计库；`System Administrator` 职责安全设置 | 流程图、七列流程表、RACI、外部业务键、批次命名、错误归属 | 每个系统边界都有唯一键、控制总额和重跑所有者 |
+| 1 | 企业结构与安全 | Accounting Setup Manager、HR/组织、MOAC、Data Access Set | Ledger/法人/OU 映射、COA、期间、职责和数据权限基线 | 同一用户按授权范围可处理/查询，越权操作被拒绝 |
+| 2 | 子账业务规则 | PO/AP/AR/FA/PA/INV/WIP/CE/Tax 对应 Setup 菜单 | 单据类型、状态、容差、账户来源、税、银行、成本/资产规则 | 每条流程的业务单据可从起点走至可会计状态 |
+| 3 | 会计与报表规则 | AMB、GL、FSG/BI Publisher | 事件—借贷—账户矩阵、转总账策略、控制账户和对账报表 | 可从来源交易下钻到 XLA、GL 与报表数字 |
+| 4 | 接口、调度与恢复 | 各模块 Open Interface、`View > Requests`、并发程序定义 | 接口契约、映射、文件控制总额、请求链、告警、幂等/补偿设计 | 成功、业务拒绝、技术失败、重复传输四类情形均有证据和处理结果 |
+| 5 | 切换与运营 | 月结日历、关期功能、服务台/运行手册 | 期初余额方案、未结单据迁移、冻结窗口、回退边界、日结/月结 Runbook | 完成模拟切换、至少一轮模拟月结和关键角色演练 |
+
+### 2. 流程级配置核对表
+
+| 流程 | 关键配置依赖 | 穿透测试的最小路径 | 必须保留的关联键/证据 |
+| --- | --- | --- | --- |
+| P2P | Supplier/Site、PO 类型/审批、接收、AP 匹配、付款方法、银行用途 | PO → Receipt → Invoice Validate → PPR → Bank/CE → SLA/GL | PO/Receipt/Invoice/Payment 编号、PPR、Statement Line、Event/Request ID |
+| C2C | Customer/Site Use、交易来源/类型、AutoInvoice、Receipt Method、AutoCash/Lockbox | Invoice → Receipt → Application → Remittance/Clearing → CE → SLA/GL | 接口行外部键、Transaction/Receipt/Batch、收款历史、Statement Line |
+| A2R/Project | Asset Book/Category、项目类型/支出、资本化规则、FA 资产线 | AP/PA Cost → Mass Addition/Asset Line → FA Additions → Depreciation → GL | Invoice/Expenditure Item、Asset Line/Asset Number、Depreciation Request |
+| 库存/WIP | 物料/组织、成本类型/要素、WIP 类别、期间、COGS | Receipt → Inventory/WIP → Completion/Shipment → Cost → SLA/GL | Transaction ID、WIP Job、Cost Distribution、Accounting Event |
+| 现金与税 | 银行账户用途、交易码/匹配规则、税制/税率/规则 | AP Payment 或 AR Receipt → Statement Import → Reconcile → Tax/GL 抽查 | 文件/Batch、Statement Header/Line、规则版本、对账状态 |
+
+### 3. 切换的执行顺序与停止条件
+
+1. **冻结**：冻结主数据和配置变更，记录最后成功接口批次、GL/子账余额和开放期间。
+2. **迁移与校验**：按批准范围迁移期初余额、未结单据和主数据；每批做记录数、金额、唯一键和错误行对账。
+3. **试运行**：由关键用户执行每条最小路径，取得会计、银行/税（如适用）和报表的证据。
+4. **Go/No-Go**：若控制账户不平、接口不可幂等重跑、关键用户越权或期间/账簿错误，停止切换并按批准回退方案处理；不得通过直接改表消除差异。
+5. **稳定期**：日结监控请求、接口、未处理事务和银行/子账差异；每个异常记录业务影响、临时控制、根因、补偿及关闭人。
 
 ## 2. 核心流程地图
 

@@ -4,7 +4,7 @@
 
 ## 阅读导航
 
-- [会计链](#2-端到端会计链) · [SLA 定义与流程](#r2r-sla) · [总账设计](#3-总账核心设计) · [月结](#4-月结控制顺序) · [功能视角](#5-功能顾问检查点) · [技术视角](#6-技术顾问检查点) · [差异诊断](#7-高频差异诊断) · [页面与关账实操](#9-资深顾问实操页面会计与关账) · [专题详解](#10-专题详解)
+- [实施配置](#implementation) · [会计链](#2-端到端会计链) · [SLA 定义与流程](#r2r-sla) · [总账设计](#3-总账核心设计) · [月结](#4-月结控制顺序) · [功能视角](#5-功能顾问检查点) · [技术视角](#6-技术顾问检查点) · [差异诊断](#7-高频差异诊断) · [页面与关账实操](#9-资深顾问实操页面会计与关账) · [专题详解](#10-专题详解)
 - [模块数据字典与名词解释](data-dictionary.md#dict-02)
 
 ## 模块业务架构与核心 ER 图
@@ -74,6 +74,29 @@ erDiagram
 ## 1. 学习目标与边界
 
 应能完成 Ledger 与日记账控制设计，理解 SLA、Financials Accounting Hub（财务会计中心，FAH）、Advanced Global Intercompany System（高级全球公司间系统，AGIS）、预算控制、重估、折算、合并和关账，并能从 GL 反向追溯到来源交易。
+
+<a id="implementation"></a>
+
+## 实施配置手册：GL、SLA 与关账控制
+
+以下步骤建立在 [财务公共基础](01-foundation.md#实施配置手册财务公共基础) 已完成的前提上。SLA 规则要先在测试账簿验证，再按受控迁移方式发布；切勿用修改历史 XLA 或 GL 记录来“修正”会计。
+
+| 顺序 | 配置项 | 预置职责 / 导航（功能名） | 关键配置内容 | 验收与产出 |
+| --- | --- | --- | --- | --- |
+| 1 | Ledger 与会计选项复核 | `Accounting Setup Manager > Accounting Setups / Accounting Options` | 确认 COA、日历、币种、期间控制、SLA 方法、平衡规则和 OU 分配已完成 | 保存账簿配置基线，并在 GL 职责下确认正确 Ledger Profile |
+| 2 | 日记账来源和类别 | `GL Super User > Setup > Journals > Sources / Categories` | 为外部导入、手工调整、子账来源定义可审计的 Source/Category；避免复用语义不同的来源 | 形成“来源—类别—审批—AutoPost—保留期”矩阵 |
+| 3 | 日记账控制 | `GL Super User > Setup > Journals > Journal Sources`；`... > AutoPost > Define` | 设置导入/过账控制、必要的审批和 AutoPost 规则；规则条件要含 Ledger、Source、Category 等足够维度 | 导入一笔应自动过账和一笔应人工审核的测试日记账 |
+| 4 | 期间、汇率与重估 | `GL Super User > Setup > Open/Close`；`Setup > Currencies > Rates > Daily`；`Setup > Currencies > Revaluation` | 维护期间状态；定义汇率类型、每日汇率和重估定义（范围、汇率、未实现损益账户） | 对外币余额运行小范围重估，复核反转日期、损益账户和日记账类别 |
+| 5 | SLA 会计方法 | `Subledger Accounting Setup > Accounting Methods Builder`（名称因职责而异） | 仅在复制预置 Application Accounting Definition 后维护：事件类/事件类型、Journal Line Definition、账户规则、描述规则、条件和优先级 | 对每个关键事件生成 Create Accounting 草稿，逐行对照借贷、账户、会计日期与来源 |
+| 6 | 转送与导入策略 | 各子账的 `Create Accounting` 请求；`GL Super User > Journal > Import > Run` | 明确每来源是 Final/Transfer、汇总层级、GL 日期、错误处理人和重跑边界；接口来源保留业务唯一键 | 从一笔子账交易下钻到 XLA、GL Import References、GL 日记账和余额 |
+| 7 | FSG 与关账报表 | `GL Super User > Reports > Define > Row Set / Column Set / Report`；`Reports > Request` | 先定义 Row Set、Column Set，再定义 Report/Content Set 和运行参数；对行列对象按 Definition Access Set 授权 | 用已过账余额运行报表，复核 PTD/YTD、符号、舍入、排除零值及控制总额 |
+| 8 | 预算、承诺与资金控制（如适用） | `GL Super User > Setup > Budgets`；资金控制相关菜单 | 定义预算组织、预算、预算规则和控制级别；不要把测试预算与生产预算混用 | 以足额/超额两笔交易分别验证 funds check、保留和例外审批 |
+
+### SLA 配置发布顺序
+
+`复制预置 AAD → 维护账户/描述规则 → 维护 JLD 与事件分配 → 编译/验证 → 分配至 Subledger Accounting Method → 在账簿选项启用 → 草稿会计测试 → Final/Transfer 测试`。
+
+发布前应固定测试样本：AP 标准发票/付款、AR 发票/收款、FA 折旧、库存事务及手工 GL 分录。每个样本保留来源单据号、事件类型、XLA 分录、GL 批次/凭证和预期借贷矩阵。
 
 ## 2. 端到端会计链
 

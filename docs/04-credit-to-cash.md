@@ -4,7 +4,7 @@
 
 ## 阅读导航
 
-- [范围](#1-学习目标与范围) · [业务主链](#2-业务主链) · [对象与状态](#3-关键对象与状态) · [功能设计](#4-功能设计重点) · [会计对账](#5-会计与对账) · [接口排错](#6-技术与接口视角) · [页面与收款实操](#9-资深顾问实操开票收款与信用) · [专题详解](#10-专题详解)
+- [范围](#1-学习目标与范围) · [实施配置](#implementation) · [业务主链](#2-业务主链) · [对象与状态](#3-关键对象与状态) · [功能设计](#4-功能设计重点) · [会计对账](#5-会计与对账) · [接口排错](#6-技术与接口视角) · [页面与收款实操](#9-资深顾问实操开票收款与信用) · [专题详解](#10-专题详解)
 - [模块数据字典与名词解释](data-dictionary.md#dict-04)
 
 ## 模块业务架构与核心 ER 图
@@ -70,6 +70,29 @@ erDiagram
 ## 1. 学习目标与范围
 
 应能区分 TCA 客户模型、Credit Management（信用管理）、Receivables（应收，AR）、Advanced Collections（高级催收）、iReceivables（客户自助应收）、Order Management（订单管理，OM）与 CE 的边界，并能设计 AutoInvoice、Lockbox（自动收款箱）、收款核销和 AR-GL 对账。
+
+<a id="implementation"></a>
+
+## 实施配置手册：客户、AR、收款与信用
+
+本模块按“客户主数据 → 应收交易 → 收款/核销 → 银行 → 催收”配置。若同时实施 OM、税务、Collections 或 Lockbox，先在设计书确定哪个产品拥有客户、订单、税和银行事实，避免在多个产品维护相同规则。
+
+| 顺序 | 配置项 | 预置职责 / 导航（功能名） | 关键输入与依赖 | 验收动作 |
+| --- | --- | --- | --- | --- |
+| 1 | AR 系统选项与 Ledger 关联 | `Receivables Manager > Setup > System > System Options` | 每 OU/业务上下文的会计、交易、收款、客户、税和自动处理默认值；先确认 Ledger、OU 与 MOAC | 打开系统选项导出配置；用测试职责确认正确 OU 上下文 |
+| 2 | TCA 客户模型与地点用途 | `Trading Community Manager / Receivables > Customers` | Party、Customer Account、Account Site、Site Use、账单/收货用途、付款条件、信用资料和地址有效期 | 建立一个客户及 Bill-to/Ship-to；在交易录入中验证只可选择有效用途 |
+| 3 | 交易来源、类型和编号 | `Receivables Manager > Setup > Transactions > Sources / Transaction Types`；`Setup > System > Document Sequences` | AutoInvoice 来源、交易类型、GL 分配、Open Receivables/Posting Allowed、贷项/调整和单据序列 | 手工标准发票、贷项通知单各一笔，复核编号、会计和余额方向 |
+| 4 | AutoInvoice 规则 | `Receivables Manager > Setup > Transactions > Grouping Rules / Line Ordering Rules`；`Interfaces > AutoInvoice` | Grouping Rule、Transaction Source、RA_INTERFACE_LINES 的必填合同、错误行归属和重传唯一键 | 导入可成功、缺客户地点、重复外部键三类行；逐项核对 AutoInvoice Import Report |
+| 5 | 收款分类、方法与 AutoCash | `Receivables Manager > Setup > Receipts > Receipt Classes / Receipt Methods / AutoCash Rule Sets` | 确认收款确认、汇款、清算步骤；方法与银行账户/币种/OU 的关联；AutoCash 规则顺序 | 录入一笔手工收款并自动核销；再测试无法完全核销时 Unapplied/On-account 的预期状态 |
+| 6 | Lockbox（如适用） | `Receivables Manager > Setup > Receipts > Lockboxes`；`Interfaces > Lockbox` | 银行、传输格式、Transmission Format、付款方法、批次控制总额和异常行责任人 | 导入一份含已匹配、部分匹配、未知客户的对账文件；核对控制总额和后续 Post QuickCash |
+| 7 | 信用、催收和争议 | Credit Management/Collections 对应职责的 `Setup` 功能 | 信用档案、额度、订单 Hold、催收策略、催收员、争议/扣款原因与升级时限 | 创建超过额度的测试订单/交易，确认 Hold；模拟逾期项目进入预期催收策略 |
+| 8 | 收入、税与银行协同 | AR 交易类型、`Tax Manager > Tax Configuration`、CE 银行账户用途 | 明确收入/应收/折扣/坏账账户由 SLA、交易类型或税规则的职责；收款的现金清算和 CE 对账边界 | 从交易到收款、核销、清算、Create Accounting、GL 下钻走通一笔多币种样例 |
+
+### 上线前控制点
+
+- 测试数据必须覆盖一个客户多个地点/用途、一个客户多币种、部分收款、On-account、退款/退票和贷项通知单。
+- AutoInvoice 与 Lockbox 文件均要求业务唯一键、文件/批次控制总额、错误行回收和重复重传规则；“请求成功”不等于每行已导入。
+- 客户创建、信用额度变更、核销/坏账和退款职责需要分离，并保留审批与审计证据。
 
 ## 2. 业务主链
 

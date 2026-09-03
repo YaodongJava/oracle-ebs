@@ -4,7 +4,7 @@
 
 ## 阅读导航
 
-- [范围](#1-学习目标与范围) · [数量与价值流](#2-数量流与价值流) · [成本方法](#3-成本方法与要素) · [业务会计](#4-关键业务会计) · [功能实施](#5-功能顾问实施重点) · [接口月结](#6-技术与接口视角) · [页面与关账实操](#9-资深顾问实操成本事务与关账) · [专题详解](#10-专题详解)
+- [范围](#1-学习目标与范围) · [实施配置](#implementation) · [数量与价值流](#2-数量流与价值流) · [成本方法](#3-成本方法与要素) · [业务会计](#4-关键业务会计) · [功能实施](#5-功能顾问实施重点) · [接口月结](#6-技术与接口视角) · [页面与关账实操](#9-资深顾问实操成本事务与关账) · [专题详解](#10-专题详解)
 
 ## 模块数据字典与名词解释
 
@@ -80,6 +80,29 @@ erDiagram
 ## 1. 学习目标与范围
 
 应能区分 Standard Costing（标准成本）、Average Costing（平均成本）等成本方法；理解成本要素、物料交易、接收、WIP（在制品）、销售成本/收入匹配、到岸成本及 SLA/GL；能完成库存价值和成本差异对账。
+
+<a id="implementation"></a>
+
+## 实施配置手册：库存、WIP 与成本
+
+成本实施的先后关系不能倒置：先有 Ledger、库存组织、物料和事务控制，再建立成本类型/要素/账户，最后启用 WIP、LCM 或周期成本等扩展。成本方法切换、成本更新和期间重开均会影响存货估值，必须走独立变更控制。
+
+| 顺序 | 配置项 | 预置职责 / 导航（功能名） | 配置重点 | 验收动作 |
+| --- | --- | --- | --- | --- |
+| 1 | 库存组织与组织参数 | `Inventory > Setup > Organizations > Organization Parameters` | 指定库存组织、Ledger、成本方法、成本组/会计选项、物料事务和负库存控制；确认组织与 OU/法人关系 | 以测试物料完成入库和子库存转移，确认组织、会计期间和事务来源 |
+| 2 | 物料、类别、UOM 与事务类型 | `Inventory > Items > Master Items / Organization Items`；`Setup > Items` | 定义库存属性、成本属性、主单位、物料类别、可交易组织和事务控制；物料不能靠描述区分成本策略 | 对库存、可购、可制造物料各创建一笔事务，验证允许/禁止行为 |
+| 3 | 成本类型、要素和子要素 | `Cost Management > Setup > Cost Types / Cost Elements / Sub-elements` | 定义 Frozen/Pending/模拟成本类型，材料/材料管理/资源/外协/间接费要素及子要素；明确每项所有者 | 查询成本类型和要素；为一个物料按要素维护成本并复核汇总 |
+| 4 | 成本账户与组织间规则 | `Cost Management > Setup > Organization > Costing Information`；`Setup > Inter-Organization Options` | 定义库存、接收应计、在制品、差异、成本更新、组织间转移等账户及来源；配置组织间转移/内部利润规则 | 创建跨子库存/跨组织测试事务，核对数量、价值和借贷账户 |
+| 5 | 标准成本卷积与更新（标准成本组织） | `Cost Management > Item Costs > Item Costs / Rollup Costs / Update Costs` | 维护 Pending 成本、资源/间接费、BOM/Routing；批准后执行 Update，指定调整账户和生效控制 | 用一个 BOM 样例进行 Rollup、Compare、Update；复核库存重估和差异分录 |
+| 6 | WIP 与制造成本（如适用） | `WIP > Setup > WIP Parameters / Accounting Classes`；资源、部门、工艺路线功能 | 定义 WIP 参数、离散工单类型、Accounting Class、资源、费率、部门和间接费；与成本要素映射 | 建立工单、发料、资源计费、完工、关闭，比较预期与实际差异 |
+| 7 | 接收应计、发票价差与 COGS | PO/Receiving 选项、Cost Management 处理器、OM/Shipping 的 COGS 设置 | 明确收货点/交付点应计、Accrual Reconciliation、AP 发票匹配及 COGS Recognition 的责任边界 | 完成 PO 收货—AP 发票—库存—发运—COGS 全链，核对期间和控制账户 |
+| 8 | 成本期间与处理器 | `Cost Management > Accounting Close Cycle > Inventory Accounting Periods`；`View > Requests` | 定义/打开期间，监控 Transaction Processor、Cost Manager、成本分配和接口请求；建立未处理事务清单 | 故意制造一笔待处理事务，验证可定位、修正、重跑且不重复计价 |
+
+### 验收与上线门禁
+
+1. 对每种成本方法至少测试采购接收、库存移动、退货、盘点调整、WIP（如启用）、发运与成本会计。
+2. 每次成本更新要保存旧/新成本、物料范围、影响库存数量、调整账户和批准人；不可直接改成本表绕过更新过程。
+3. 关期间先解决 Pending Transactions、未成本化事务、收货应计和 WIP 未关闭差异，再做库存价值—成本分配—SLA/GL 的三层对账。
 
 ## 2. 数量流与价值流
 
